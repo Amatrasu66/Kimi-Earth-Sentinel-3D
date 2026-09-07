@@ -1,3 +1,13 @@
+export type DataStatusKind = 'live' | 'simulated' | 'stale' | 'unavailable';
+
+/** Provenance block returned with every layer payload (see backend utils/provenance.py). */
+export interface DataStatus {
+  status: DataStatusKind;
+  source: string;
+  fetched_at: string;
+  message?: string | null;
+}
+
 export interface DataPoint {
   id: string;
   lat: number;
@@ -34,6 +44,20 @@ export interface LayerData {
   points: DataPoint[];
   stats?: Record<string, unknown>;
   unit?: string;
+  warnings?: string[];
+  /** Provenance: always present on backend responses (Phase 6). */
+  data_status?: DataStatus;
+}
+
+export interface HeatmapData {
+  layer_id: string;
+  resolution: number;
+  grid: string;
+  min_value: number;
+  max_value: number;
+  unit: string;
+  timestamp: string;
+  data_status?: DataStatus;
 }
 
 export interface EventDetail {
@@ -96,7 +120,7 @@ export const SEVERITY_COLORS: Record<SeverityLevel, string> = {
 
 export const LAYER_IDS = [
   'earthquakes',
-  'disasters', 
+  'disasters',
   'wildfires',
   'temperature',
   'precipitation',
@@ -104,5 +128,14 @@ export const LAYER_IDS = [
   'clouds',
   'wind',
 ] as const;
+
+// Layer-system extension points (Phase 13):
+// - Today exactly one layer is active at a time (`activeLayer` in App).
+// - To composite layers (e.g. Temperature + Earthquakes), replace
+//   `activeLayer: LayerId | null` with `visibleLayers: LayerId[]` plus a
+//   per-layer `opacity` map; MarkerSystem already renders any DataPoint[]
+//   so it can take concatenated points with per-layer instance colors.
+// - Legends, severity filters and time ranges are per-layer concerns;
+//   see DataPanel for the current single-layer implementation to extend.
 
 export type LayerId = (typeof LAYER_IDS)[number];

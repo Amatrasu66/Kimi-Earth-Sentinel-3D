@@ -1,103 +1,129 @@
 import time
-import base64
-import struct
-import random
-from flask import Blueprint, request, jsonify, current_app
+
+from flask import Blueprint, jsonify, request
+
 from ..cache import cache
 from ..models.layer import get_all_layers, get_layer
-from ..services.usgs import get_earthquake_data
-from ..services.nasa_eonet import get_eonet_events
-from ..services.open_meteo import get_weather_data
 from ..services.airnow import get_air_quality_data
-from ..services.nasa_firms import get_fire_data
 from ..services.fallback import generate_mock_layer_data
+from ..services.heatmap import get_heatmap
+from ..services.nasa_eonet import get_eonet_events
+from ..services.nasa_firms import get_fire_data
+from ..services.open_meteo import get_weather_data
+from ..services.usgs import get_earthquake_data
+from ..utils.provenance import SIMULATED, success_response, ttl_for_layer, with_status
+from ..utils.validation import (
+    error_response,
+    parse_bbox,
+    parse_limit,
+    parse_resolution,
+    parse_severity,
+    parse_time_range,
+)
 
-layers_bp = Blueprint('layers', __name__)
+layers_bp = Blueprint("layers", __name__)
 
 SERVICE_MAP = {
-    'earthquakes': get_earthquake_data,
-    'disasters': get_eonet_events,
-    'temperature': lambda **kw: get_weather_data(metric='temperature', **kw),
-    'precipitation': lambda **kw: get_weather_data(metric='precipitation', **kw),
-    'air_quality': get_air_quality_data,
-    'wildfires': get_fire_data,
-    'clouds': lambda **kw: get_weather_data(metric='cloudcover', **kw),
+    "earthquakes": get_earthquake_data,
+    "disasters": get_eonet_events,
+    "temperature": lambda **kw: get_weather_data(metric="temperature", layer_id="temperature", **kw),
+    "precipitation": lambda **kw: get_weather_data(
+        metric="precipitation", layer_id="precipitation", **kw
+    ),
+    "clouds": lambda **kw: get_weather_data(metric="cloudcover", layer_id="clouds", **kw),
+    "wind": lambda **kw: get_weather_data(metric="wind", layer_id="wind", **kw),
+    "air_quality": get_air_quality_data,
+    "wildfires": get_fire_data,
 }
 
-@layers_bp.route('/layers', methods=['GET'])
+
+@layers_bp.route("/layers", methods=["GET"])
 def list_layers():
     layers = [layer.to_dict() for layer in get_all_layers()]
-    return jsonify({
-        'success': True,
-        'data': {'layers': layers},
-        'meta': {'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}
-    })
+    return jsonify(
+        {
+            "success": True,
+            "data": {"layers": layers},
+            "meta": {"timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())},
+        }
+    )
 
-@layers_bp.route('/layers/<layer_id>/data', methods=['GET'])
+
+def _cache_key(layer_id, bbox, limit, min_severity):
+    return f"layer:{layer_id}:bbox={bbox or '-'}:limit={limit}:sev={min_severity or '-'}"
+
+
+@layers_bp.route("/layers/<layer_id>/data", methods=["GET"])
 def get_layer_data(layer_id):
     layer = get_layer(layer_id)
     if not layer:
-        return jsonify({
-            'success': False,
-            'error': {'code': 'NOT_FOUND', 'message': f'Layer {layer_id} not found'}
-        }), 404
-    
-    bbox = request.args.get('bbox')
-    limit = min(int(request.args.get('limit', 500)), 2000)
-    min_severity = request.args.get('min_severity')
-    
+        return error_response(f"Layer {layer_id!r} not found.", code="NOT_FOUND", status=404)
+
+    bbox_raw = request.args.get("bbox")
+    bbox, bbox_err = parse_bbox(bbox_raw)
+    if bbox_err:
+        return error_response(bbox_err)
+    limit, limit_err = parse_limit(request.args.get("limit"))
+    if limit_err:
+        return error_response(limit_err)
+    min_severity, sev_err = parse_severity(request.args.get("min_severity"))
+    if sev_err:
+        return error_response(sev_err)
+
+    # Manual cache so we can report provenance honestly (Phase 16).
+    key = _cache_key(layer_id, bbox_raw, limit, min_severity)
+    cached = cache.get(key)
+    if cached is not None:
+        data, cached_at = cached
+        return jsonify(success_response(data, cache_hit=True, cached_at=cached_at))
+
     service_fn = SERVICE_MAP.get(layer_id)
     try:
         if service_fn:
-            data = service_fn(bbox=bbox, limit=limit, min_severity=min_severity)
-        else:
-            data = generate_mock_layer_data(layer_id, bbox=bbox, limit=limit)
-    except Exception as e:
-        current_app.logger.error(f'Layer data fetch failed for {layer_id}: {e}')
-        data = generate_mock_layer_data(layer_id, bbox=bbox, limit=limit)
-    
-    return jsonify({
-        'success': True,
-        'data': data,
-        'meta': {
-            'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
-            'cache_hit': False,
-            'source': layer.source
-        }
-    })
+            data = service_fn(bbox=bbox_raw, limit=limit, min_severity=min_severity)
+        else:  # pragma: no cover — every known layer has a service
+            data = with_status(
+                generate_mock_layer_data(layer_id, bbox=bbox_raw, limit=limit),
+                SIMULATED,
+                layer.source,
+                "No live provider for this layer — showing simulated fallback data.",
+            )
+    except Exception as e:  # noqa: BLE001 — last-resort guard, still labelled
+        from flask import current_app
 
-@layers_bp.route('/layers/<layer_id>/heatmap', methods=['GET'])
+        current_app.logger.exception(f"Layer pipeline failed for {layer_id}: {e}")
+        data = with_status(
+            generate_mock_layer_data(layer_id, bbox=bbox_raw, limit=limit),
+            SIMULATED,
+            layer.source,
+            "Layer pipeline failed — showing simulated fallback data.",
+        )
+
+    fetched_at = (data.get("data_status") or {}).get("fetched_at")
+    cache.set(key, (data, fetched_at), timeout=ttl_for_layer(layer_id))
+    return jsonify(success_response(data, cache_hit=False))
+
+
+@layers_bp.route("/layers/<layer_id>/heatmap", methods=["GET"])
 def get_layer_heatmap(layer_id):
-    resolution = min(int(request.args.get('resolution', 256)), 512)
-    time_range = request.args.get('time_range', '24h')
-    
-    # Generate synthetic heatmap data
-    grid = []
-    for i in range(resolution * resolution // 2):
-        val = random.random()
-        grid.append(val)
-    
-    grid_bytes = struct.pack(f'{len(grid)}f', *grid)
-    grid_b64 = base64.b64encode(grid_bytes).decode('utf-8')
-    
     layer = get_layer(layer_id)
-    unit_map = {
-        'temperature': 'celsius',
-        'precipitation': 'mm',
-        'air_quality': 'AQI',
-        'clouds': 'percent'
-    }
-    
-    return jsonify({
-        'success': True,
-        'data': {
-            'layer_id': layer_id,
-            'resolution': resolution,
-            'grid': grid_b64,
-            'min_value': -40.5,
-            'max_value': 48.2,
-            'unit': unit_map.get(layer_id, 'value'),
-            'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
-        },
-        'meta': {'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}
-    })
+    if not layer:
+        return error_response(f"Layer {layer_id!r} not found.", code="NOT_FOUND", status=404)
+
+    resolution, res_err = parse_resolution(request.args.get("resolution"))
+    if res_err:
+        return error_response(res_err)
+    time_range, range_err = parse_time_range(request.args.get("time_range"))
+    if range_err:
+        return error_response(range_err)
+
+    key = f"heatmap:{layer_id}:res={resolution}:range={time_range}"
+    cached = cache.get(key)
+    if cached is not None:
+        data, cached_at = cached
+        return jsonify(success_response(data, cache_hit=True, cached_at=cached_at))
+
+    data = get_heatmap(layer_id, resolution=resolution, time_range=time_range)
+    fetched_at = (data.get("data_status") or {}).get("fetched_at")
+    cache.set(key, (data, fetched_at), timeout=3600)
+    return jsonify(success_response(data, cache_hit=False))

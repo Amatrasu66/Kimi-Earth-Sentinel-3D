@@ -94,6 +94,16 @@ LAYERS = [
         unit="%",
         color_scale=["#FFFFFF00", "#FFFFFF40", "#FFFFFF80", "#FFFFFFBF", "#FFFFFFFF"]
     ),
+    LayerMetadata(
+        id="wind",
+        name="Wind",
+        description="Global wind speed at 10m",
+        icon="layer-wind",
+        source="open_meteo",
+        refresh_interval=1800,
+        unit="km/h",
+        color_scale=["#E0F7FA", "#80DEEA", "#26C6DA", "#00838F", "#004D40"]
+    ),
 ]
 
 def get_layer(layer_id: str) -> Optional[LayerMetadata]:

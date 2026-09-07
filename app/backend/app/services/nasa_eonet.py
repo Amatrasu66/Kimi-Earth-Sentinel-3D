@@ -1,77 +1,107 @@
 import requests
-import time
 from flask import current_app
+
 from ..services.fallback import generate_mock_disasters
+from ..utils.provenance import LIVE, SIMULATED, utcnow_iso, with_status
+from ..utils.validation import is_valid_coordinate
+
+SOURCE = "NASA EONET"
+
+_SEVERITY_ORDER = ["low", "moderate", "high", "critical"]
+
+
+def _severity_for_categories(categories):
+    ids = {c.get("id") for c in categories}
+    if ids & {"severeStorms", "volcanoes"}:
+        return "high"
+    if ids & {"floods", "wildfires"}:
+        return "moderate"
+    return "low"
+
+
+def _meets_min_severity(severity, min_severity):
+    if not min_severity:
+        return True
+    if min_severity not in _SEVERITY_ORDER or severity not in _SEVERITY_ORDER:
+        return True
+    return _SEVERITY_ORDER.index(severity) >= _SEVERITY_ORDER.index(min_severity)
+
+
+def _fetch_from_provider(base_url, params, timeout):
+    """Provider call isolated from normalization (Phase 7)."""
+    resp = requests.get(f"{base_url}/events", params=params, timeout=timeout)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _normalize(data, limit, min_severity):
+    """Normalize an EONET payload. Raises on malformed data."""
+    points = []
+    for event in data.get("events", [])[:limit]:
+        categories = event.get("categories", [])
+        cat_title = categories[0].get("title", "Unknown") if categories else "Unknown"
+
+        geometries = event.get("geometries", [])
+        if not geometries:
+            continue
+        latest_geo = geometries[-1]
+        coords = latest_geo.get("coordinates") or []
+        if len(coords) < 2:
+            continue
+        # EONET geometries may be Point [lon, lat] — guard ordering.
+        lon, lat = coords[0], coords[1]
+        if not is_valid_coordinate(lat, lon):
+            continue
+
+        severity = _severity_for_categories(categories)
+        if not _meets_min_severity(severity, min_severity):
+            continue
+
+        points.append(
+            {
+                "id": f"eonet-{event.get('id', len(points))}",
+                "lat": lat,
+                "lon": lon,
+                "type": cat_title.lower().replace(" ", "_"),
+                "severity": severity,
+                "title": event.get("title", "Unknown Event"),
+                "timestamp": latest_geo.get("date") or utcnow_iso(),
+                "description": f"{cat_title} event reported by NASA EONET",
+                "sources": [s.get("id", "eonet") for s in event.get("sources", [])],
+                "categories": [c.get("title", "") for c in categories],
+            }
+        )
+    return {"layer_id": "disasters", "count": len(points), "points": points}
+
 
 def get_eonet_events(bbox=None, limit=500, min_severity=None):
-    """Fetch natural disaster events from NASA EONET."""
-    try:
-        base_url = current_app.config.get('NASA_EONET_URL', 'https://eonet.gsfc.nasa.gov/api/v3')
-        
-        params = {
-            'status': 'open',
-            'limit': limit
-        }
-        
-        if bbox:
-            params['bbox'] = bbox
-        
-        resp = requests.get(
-            f'{base_url}/events',
-            params=params,
-            timeout=current_app.config.get('REQUEST_TIMEOUT', 30)
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        
-        points = []
-        for event in data.get('events', [])[:limit]:
-            categories = event.get('categories', [])
-            cat_title = categories[0]['title'] if categories else 'Unknown'
-            
-            # Get the most recent geometry
-            geometries = event.get('geometries', [])
-            if not geometries:
-                continue
-            
-            latest_geo = geometries[-1]
-            coords = latest_geo['coordinates']
-            
-            severity = 'low'
-            if any(c['id'] in ['severeStorms', 'volcanoes'] for c in categories):
-                severity = 'high'
-            elif any(c['id'] in ['floods', 'wildfires'] for c in categories):
-                severity = 'moderate'
-            
-            if min_severity and severity != min_severity and severity not in _get_severity_or_above(min_severity):
-                continue
-            
-            points.append({
-                'id': f"eonet-{event['id']}",
-                'lat': coords[1] if len(coords) > 1 else coords[0],
-                'lon': coords[0] if len(coords) > 1 else coords[1],
-                'type': cat_title.lower().replace(' ', '_'),
-                'severity': severity,
-                'title': event.get('title', 'Unknown Event'),
-                'timestamp': latest_geo.get('date', time.strftime('%Y-%m-%dT%H:%M:%SZ')),
-                'description': f"{cat_title} event reported by NASA EONET",
-                'sources': [s.get('id', 'eonet') for s in event.get('sources', [])],
-                'categories': [c['title'] for c in categories]
-            })
-        
-        return {
-            'layer_id': 'disasters',
-            'count': len(points),
-            'points': points
-        }
-    
-    except Exception as e:
-        current_app.logger.error(f'NASA EONET API error: {e}')
-        return generate_mock_disasters(bbox=bbox, limit=limit)
+    """Fetch natural disaster events from NASA EONET (labels provenance)."""
+    timeout = current_app.config.get("REQUEST_TIMEOUT", 15)
+    base_url = current_app.config.get("NASA_EONET_URL", "https://eonet.gsfc.nasa.gov/api/v3")
 
-def _get_severity_or_above(severity):
-    order = ['low', 'moderate', 'high', 'critical']
-    if severity not in order:
-        return order
-    idx = order.index(severity)
-    return order[idx:]
+    params = {"status": "open", "limit": limit}
+    if bbox:
+        params["bbox"] = bbox
+
+    try:
+        data = _fetch_from_provider(base_url, params, timeout)
+    except requests.RequestException as e:
+        current_app.logger.warning(f"EONET provider unreachable, using fallback: {e}")
+        fallback = generate_mock_disasters(bbox=bbox, limit=limit)
+        return with_status(
+            fallback, SIMULATED, SOURCE, "NASA EONET unavailable — showing simulated fallback data."
+        )
+
+    try:
+        payload = _normalize(data, limit, min_severity)
+    except (KeyError, TypeError, ValueError) as e:
+        current_app.logger.error(f"EONET response normalization failed: {e}")
+        fallback = generate_mock_disasters(bbox=bbox, limit=limit)
+        return with_status(
+            fallback,
+            SIMULATED,
+            SOURCE,
+            "NASA EONET response malformed — showing simulated fallback data.",
+        )
+
+    return with_status(payload, LIVE, SOURCE, fetched_at=utcnow_iso())

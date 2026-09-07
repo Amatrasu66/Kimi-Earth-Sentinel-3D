@@ -3,7 +3,15 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { useTexture, Stars } from '@react-three/drei';
 import * as THREE from 'three';
 import { atmosphereVertexShader, atmosphereFragmentShader } from '@/shaders/atmosphere';
-import type { DataPoint } from '@/types';
+import {
+  filterValidPoints,
+  isValidCoordinate,
+  latLonToVector3 as geoLatLonToVector3,
+  latLonToVector3Into,
+  quaternionForLatLon,
+} from '@/lib/geo';
+import { SEVERITY_COLORS } from '@/types';
+import type { DataPoint, SeverityLevel } from '@/types';
 
 interface GlobeProps {
   activeLayer: string | null;
@@ -12,30 +20,25 @@ interface GlobeProps {
   onMarkerHover: (point: DataPoint | null) => void;
   rotationSpeed?: number;
   isRotating?: boolean;
+  /** Search fly-to target; `key` retriggers. Null = no flight. */
+  flyTo?: { lat: number; lon: number; key: number } | null;
 }
 
-function latLonToVector3(lat: number, lon: number, radius: number): THREE.Vector3 {
-  const phi = (90 - lat) * (Math.PI / 180);
-  const theta = (lon + 180) * (Math.PI / 180);
-  return new THREE.Vector3(
-    -radius * Math.sin(phi) * Math.cos(theta),
-    radius * Math.cos(phi),
-    radius * Math.sin(phi) * Math.sin(theta)
-  );
-}
+// Backwards-compatible named export (same signature as before).
+export const latLonToVector3 = geoLatLonToVector3;
 
 function Atmosphere({ radius = 5 }: { radius?: number }) {
-  const materialRef = useRef<THREE.ShaderMaterial>(null);
-
-  const uniforms = useMemo(() => ({
-    color: { value: new THREE.Color(0.3, 0.6, 1.0) }
-  }), []);
+  const uniforms = useMemo(
+    () => ({
+      color: { value: new THREE.Color(0.3, 0.6, 1.0) },
+    }),
+    [],
+  );
 
   return (
     <mesh>
-      <sphereGeometry args={[radius * 1.04, 64, 64]} />
+      <sphereGeometry args={[radius * 1.04, 32, 32]} />
       <shaderMaterial
-        ref={materialRef}
         vertexShader={atmosphereVertexShader}
         fragmentShader={atmosphereFragmentShader}
         uniforms={uniforms}
@@ -50,7 +53,7 @@ function Atmosphere({ radius = 5 }: { radius?: number }) {
 
 function EarthSphere() {
   const meshRef = useRef<THREE.Mesh>(null);
-  
+
   // Load textures from local paths
   const [dayMap, nightMap, normalMap, specularMap] = useTexture([
     './textures/earth-day.jpg',
@@ -75,16 +78,22 @@ function EarthSphere() {
     });
   }, [dayMap, normalMap, specularMap]);
 
+  useEffect(() => {
+    return () => {
+      earthMaterial.dispose();
+    };
+  }, [earthMaterial]);
+
   return (
     <group>
       {/* Main Earth sphere */}
       <mesh ref={meshRef} material={earthMaterial}>
-        <sphereGeometry args={[5, 64, 64]} />
+        <sphereGeometry args={[5, 48, 48]} />
       </mesh>
-      
+
       {/* Night lights overlay */}
       <mesh>
-        <sphereGeometry args={[5.002, 64, 64]} />
+        <sphereGeometry args={[5.002, 48, 48]} />
         <meshBasicMaterial
           map={nightMap}
           transparent
@@ -99,20 +108,19 @@ function EarthSphere() {
 
 function CloudLayer({ radius = 5, speed = 0.0008 }: { radius?: number; speed?: number }) {
   const cloudRef = useRef<THREE.Mesh>(null);
-  
-  const [cloudMap] = useTexture([
-    './textures/earth-clouds.png',
-  ]);
 
-  useFrame(() => {
+  const [cloudMap] = useTexture(['./textures/earth-clouds.png']);
+
+  // Frame-rate independent drift; no per-frame allocation.
+  useFrame((_, delta) => {
     if (cloudRef.current) {
-      cloudRef.current.rotation.y += speed;
+      cloudRef.current.rotation.y += speed * delta * 60;
     }
   });
 
   return (
     <mesh ref={cloudRef}>
-      <sphereGeometry args={[radius * 1.006, 64, 64]} />
+      <sphereGeometry args={[radius * 1.006, 48, 48]} />
       <meshPhongMaterial
         map={cloudMap}
         transparent
@@ -125,12 +133,19 @@ function CloudLayer({ radius = 5, speed = 0.0008 }: { radius?: number; speed?: n
   );
 }
 
-function MarkerSystem({ 
-  points, 
-  radius = 5, 
-  onMarkerClick, 
-  onMarkerHover 
-}: { 
+const MARKER_COLORS: Record<SeverityLevel, THREE.Color> = {
+  low: new THREE.Color(SEVERITY_COLORS.low),
+  moderate: new THREE.Color(SEVERITY_COLORS.moderate),
+  high: new THREE.Color(SEVERITY_COLORS.high),
+  critical: new THREE.Color(SEVERITY_COLORS.critical),
+};
+
+function MarkerSystem({
+  points,
+  radius = 5,
+  onMarkerClick,
+  onMarkerHover,
+}: {
   points: DataPoint[];
   radius?: number;
   onMarkerClick: (point: DataPoint) => void;
@@ -139,117 +154,146 @@ function MarkerSystem({
   const groupRef = useRef<THREE.Group>(null);
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const dummy = useMemo(() => new THREE.Object3D(), []);
+  const tmpColor = useMemo(() => new THREE.Color(), []);
+  const tmpVec = useMemo(() => new THREE.Vector3(), []);
   const raycaster = useMemo(() => new THREE.Raycaster(), []);
-  const mouse = useMemo(() => new THREE.Vector2(), []);
+  const ndc = useMemo(() => new THREE.Vector2(), []);
   const { camera, gl } = useThree();
-  
-  // Track which point corresponds to which instance
-  const pointMap = useMemo(() => points, [points]);
-  
-  // Create marker geometry and material
+
+  // Phase 5: ONE canonical valid-points array. Instance index N always
+  // maps to validPoints[N] for count, positions, raycast, hover, click.
+  const validPoints = useMemo(() => filterValidPoints(points), [points]);
+
+  // Latest callbacks via refs so canvas listeners subscribe exactly once.
+  const clickRef = useRef(onMarkerClick);
+  const hoverRef = useRef(onMarkerHover);
+  clickRef.current = onMarkerClick;
+  hoverRef.current = onMarkerHover;
+  const pointsRef = useRef(validPoints);
+  pointsRef.current = validPoints;
+
+  // Create marker geometry and material (disposed on unmount)
   const [geometry, material] = useMemo(() => {
     const geo = new THREE.ConeGeometry(0.04, 0.15, 6);
     geo.translate(0, 0.075, 0);
     geo.rotateX(Math.PI / 2);
-    
+
     const mat = new THREE.MeshBasicMaterial({
-      color: 0xFFC31F,
       transparent: true,
       opacity: 0.9,
     });
-    return [geo, mat];
+    return [geo, mat] as const;
   }, []);
 
-  // Position instances
   useEffect(() => {
-    if (!meshRef.current) return;
-    
-    const validPoints = pointMap.filter(p => 
-      typeof p.lat === 'number' && 
-      typeof p.lon === 'number' &&
-      !isNaN(p.lat) && 
-      !isNaN(p.lon)
-    );
-    
-    meshRef.current.count = validPoints.length;
-    
+    return () => {
+      geometry.dispose();
+      material.dispose();
+    };
+  }, [geometry, material]);
+
+  // Position instances + per-severity colors
+  useEffect(() => {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+
+    mesh.count = validPoints.length;
+
     validPoints.forEach((point, i) => {
-      const pos = latLonToVector3(point.lat, point.lon, radius * 1.01);
-      dummy.position.copy(pos);
+      latLonToVector3Into(tmpVec, point.lat, point.lon, radius * 1.01);
+      dummy.position.copy(tmpVec);
       dummy.lookAt(0, 0, 0);
       dummy.scale.setScalar(1);
       dummy.updateMatrix();
-      meshRef.current!.setMatrixAt(i, dummy.matrix);
+      mesh.setMatrixAt(i, dummy.matrix);
+      tmpColor.copy(MARKER_COLORS[point.severity as SeverityLevel] ?? MARKER_COLORS.low);
+      mesh.setColorAt(i, tmpColor);
     });
-    
-    meshRef.current.instanceMatrix.needsUpdate = true;
-  }, [pointMap, radius, dummy]);
 
-  // Raycasting for hover
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  }, [validPoints, radius, dummy, tmpColor, tmpVec]);
+
+  // Throttled raycasting: at most one pick per animation frame, stable
+  // subscriptions, drag-vs-click discrimination, cursor restore.
   useEffect(() => {
     const canvas = gl.domElement;
-    
-    const onMouseMove = (e: MouseEvent) => {
-      const rect = canvas.getBoundingClientRect();
-      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-      
-      raycaster.setFromCamera(mouse, camera);
-      
-      if (meshRef.current) {
-        const intersects = raycaster.intersectObject(meshRef.current);
-        if (intersects.length > 0) {
-          const instanceId = intersects[0].instanceId;
-          if (instanceId !== undefined && pointMap[instanceId]) {
-            canvas.style.cursor = 'pointer';
-            onMarkerHover(pointMap[instanceId]);
-            return;
-          }
-        }
-      }
-      canvas.style.cursor = 'grab';
-      onMarkerHover(null);
-    };
-    
-    const onClick = (e: MouseEvent) => {
-      const rect = canvas.getBoundingClientRect();
-      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-      
-      raycaster.setFromCamera(mouse, camera);
-      
-      if (meshRef.current) {
-        const intersects = raycaster.intersectObject(meshRef.current);
-        if (intersects.length > 0) {
-          const instanceId = intersects[0].instanceId;
-          if (instanceId !== undefined && pointMap[instanceId]) {
-            onMarkerClick(pointMap[instanceId]);
-          }
-        }
-      }
-    };
-    
-    canvas.addEventListener('mousemove', onMouseMove);
-    canvas.addEventListener('click', onClick);
-    
-    return () => {
-      canvas.removeEventListener('mousemove', onMouseMove);
-      canvas.removeEventListener('click', onClick);
-    };
-  }, [camera, gl, raycaster, mouse, pointMap, onMarkerClick, onMarkerHover]);
+    let raf = 0;
+    let pending: MouseEvent | null = null;
+    let downX = 0;
+    let downY = 0;
 
-  if (points.length === 0) return null;
+    const pick = (e: MouseEvent): DataPoint | null => {
+      const rect = canvas.getBoundingClientRect();
+      ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(ndc, camera);
+
+      const mesh = meshRef.current;
+      if (!mesh || pointsRef.current.length === 0) return null;
+      const intersects = raycaster.intersectObject(mesh);
+      if (intersects.length > 0) {
+        const instanceId = intersects[0].instanceId;
+        if (instanceId !== undefined) return pointsRef.current[instanceId] ?? null;
+      }
+      return null;
+    };
+
+    const flushHover = () => {
+      raf = 0;
+      if (!pending) return;
+      const hit = pick(pending);
+      pending = null;
+      canvas.style.cursor = hit ? 'pointer' : 'grab';
+      hoverRef.current(hit);
+    };
+
+    const onPointerMove = (e: MouseEvent) => {
+      pending = e;
+      if (raf === 0) raf = requestAnimationFrame(flushHover);
+    };
+
+    const onPointerDown = (e: MouseEvent) => {
+      downX = e.clientX;
+      downY = e.clientY;
+    };
+
+    const onClick = (e: MouseEvent) => {
+      // Ignore drags ending on a marker (OrbitControls rotate vs click).
+      if (Math.hypot(e.clientX - downX, e.clientY - downY) > 6) return;
+      const hit = pick(e);
+      if (hit) clickRef.current(hit);
+    };
+
+    canvas.addEventListener('pointermove', onPointerMove);
+    canvas.addEventListener('pointerdown', onPointerDown);
+    canvas.addEventListener('click', onClick);
+
+    return () => {
+      if (raf !== 0) cancelAnimationFrame(raf);
+      canvas.removeEventListener('pointermove', onPointerMove);
+      canvas.removeEventListener('pointerdown', onPointerDown);
+      canvas.removeEventListener('click', onClick);
+      canvas.style.cursor = '';
+      hoverRef.current(null);
+    };
+  }, [camera, gl, raycaster, ndc]);
+
+  if (validPoints.length === 0) return null;
 
   return (
     <group ref={groupRef}>
       <instancedMesh
         ref={meshRef}
-        args={[geometry, material, points.length]}
+        args={[geometry, material, Math.max(validPoints.length, 1)]}
         frustumCulled={false}
       />
     </group>
   );
 }
+
+const EASE_IN_OUT = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 
 export default function Globe({
   dataPoints,
@@ -257,41 +301,80 @@ export default function Globe({
   onMarkerHover,
   rotationSpeed = 0.0003,
   isRotating = true,
+  flyTo = null,
 }: GlobeProps) {
   const groupRef = useRef<THREE.Group>(null);
-  
-  // Rotation animation
-  useFrame(() => {
-    if (groupRef.current && isRotating) {
-      groupRef.current.rotation.y += rotationSpeed;
+  const flightRef = useRef<{
+    t: number;
+    duration: number;
+    from: THREE.Quaternion;
+    to: THREE.Quaternion;
+  } | null>(null);
+  const rotatingRef = useRef(isRotating);
+  rotatingRef.current = isRotating;
+  const { gl } = useThree();
+
+  // Start a fly-to flight when a new target arrives (Phase 4).
+  useEffect(() => {
+    if (!flyTo || !groupRef.current) return;
+    if (!isValidCoordinate(flyTo.lat, flyTo.lon)) return;
+    flightRef.current = {
+      t: 0,
+      duration: 1.4,
+      from: groupRef.current.quaternion.clone(),
+      to: quaternionForLatLon(flyTo.lat, flyTo.lon),
+    };
+  }, [flyTo]);
+
+  // Interruptible: any user drag on the canvas cancels the flight.
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const cancel = () => {
+      flightRef.current = null;
+    };
+    canvas.addEventListener('pointerdown', cancel);
+    canvas.addEventListener('wheel', cancel, { passive: true });
+    return () => {
+      canvas.removeEventListener('pointerdown', cancel);
+      canvas.removeEventListener('wheel', cancel);
+    };
+  }, [gl]);
+
+  // Rotation animation: slerp flight wins over auto-rotate; delta-based.
+  useFrame((_, rawDelta) => {
+    const group = groupRef.current;
+    if (!group) return;
+    const delta = Math.min(rawDelta, 0.1);
+    const flight = flightRef.current;
+    if (flight) {
+      flight.t += delta / flight.duration;
+      const k = EASE_IN_OUT(Math.min(flight.t, 1));
+      group.quaternion.slerpQuaternions(flight.from, flight.to, k);
+      if (flight.t >= 1) flightRef.current = null;
+    } else if (rotatingRef.current) {
+      group.rotation.y += rotationSpeed * delta * 60;
     }
   });
 
   return (
     <group ref={groupRef}>
       {/* Stars background */}
-      <Stars radius={100} depth={50} count={3000} factor={4} saturation={0} fade speed={1} />
-      
+      <Stars radius={100} depth={50} count={2500} factor={4} saturation={0} fade speed={1} />
+
       {/* Lighting */}
       <ambientLight intensity={0.1} />
-      <directionalLight
-        position={[10, 5, 10]}
-        intensity={1.5}
-        color="#ffffff"
-      />
-      <hemisphereLight
-        args={['#87CEEB', '#000000', 0.3]}
-      />
-      
+      <directionalLight position={[10, 5, 10]} intensity={1.5} color="#ffffff" />
+      <hemisphereLight args={['#87CEEB', '#000000', 0.3]} />
+
       {/* Earth */}
       <EarthSphere />
-      
+
       {/* Clouds */}
       <CloudLayer radius={5} speed={0.0008} />
-      
+
       {/* Atmosphere */}
       <Atmosphere radius={5} />
-      
+
       {/* Markers */}
       <MarkerSystem
         points={dataPoints}
@@ -302,5 +385,3 @@ export default function Globe({
     </group>
   );
 }
-
-export { latLonToVector3 };

@@ -1,6 +1,5 @@
-import { Suspense, useCallback, useRef } from 'react';
+import { Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
-import * as THREE from 'three';
 import Globe from './Globe';
 import type { DataPoint, LayerId } from '@/types';
 
@@ -10,6 +9,8 @@ interface GlobeSceneProps {
   onMarkerClick: (point: DataPoint) => void;
   onMarkerHover: (point: DataPoint | null) => void;
   isRotating?: boolean;
+  /** Search fly-to target; `key` retriggers. Null = no flight. */
+  flyTo?: { lat: number; lon: number; key: number } | null;
 }
 
 function LoadingFallback() {
@@ -21,31 +22,39 @@ function LoadingFallback() {
   );
 }
 
+// Lower-end / mobile fallback: cap pixel ratio and rely on the reduced
+// geometry budgets in Globe (48-seg spheres, 32-seg atmosphere).
+function getAdaptiveDpr(): [number, number] {
+  if (typeof window === 'undefined') return [1, 2];
+  const coarse =
+    window.matchMedia?.('(pointer: coarse)').matches || window.innerWidth < 768;
+  const max = Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2);
+  return [1, Math.max(1, max)];
+}
+
 export default function GlobeScene({
   activeLayer,
   dataPoints,
   onMarkerClick,
   onMarkerHover,
   isRotating = true,
+  flyTo = null,
 }: GlobeSceneProps) {
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-
-  const handleCreated = useCallback(({ gl, camera }: { gl: THREE.WebGLRenderer; camera: THREE.Camera }) => {
-    cameraRef.current = camera as THREE.PerspectiveCamera;
-    gl.setClearColor('#020202');
-    gl.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  }, []);
+  const dpr = getAdaptiveDpr();
 
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1 }}>
       <Canvas
         camera={{ position: [0, 0, 14], fov: 45, near: 0.1, far: 1000 }}
-        gl={{ 
-          antialias: true, 
+        dpr={dpr}
+        gl={{
+          antialias: true,
           alpha: false,
           powerPreference: 'high-performance',
         }}
-        onCreated={handleCreated}
+        onCreated={({ gl }) => {
+          gl.setClearColor('#020202');
+        }}
       >
         <Suspense fallback={<LoadingFallback />}>
           <Globe
@@ -55,9 +64,10 @@ export default function GlobeScene({
             onMarkerHover={onMarkerHover}
             isRotating={isRotating}
             rotationSpeed={0.0003}
+            flyTo={flyTo}
           />
         </Suspense>
-        
+
         <OrbitControlsWrapped />
       </Canvas>
     </div>
