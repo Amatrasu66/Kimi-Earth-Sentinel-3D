@@ -77,8 +77,11 @@ def get_air_quality_data(bbox=None, limit=500, min_severity=None):
         )
 
     try:
+        airnow_url = current_app.config.get(
+            "AIRNOW_API_URL", "https://www.airnowapi.org/aq/observation"
+        )
         items = _fetch_from_provider(
-            "https://www.airnowapi.org/aq/observation",
+            airnow_url,
             api_key,
             current_app.config.get("REQUEST_TIMEOUT", 15),
         )
@@ -93,7 +96,7 @@ def get_air_quality_data(bbox=None, limit=500, min_severity=None):
 
     try:
         payload = _normalize(items, limit)
-    except (KeyError, TypeError) as e:
+    except (KeyError, TypeError, AttributeError) as e:
         current_app.logger.error(f"AirNow response normalization failed: {e}")
         return with_status(
             _generate_mock_aqi(bbox, limit),

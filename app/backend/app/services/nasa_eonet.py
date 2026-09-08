@@ -94,7 +94,7 @@ def get_eonet_events(bbox=None, limit=500, min_severity=None):
 
     try:
         payload = _normalize(data, limit, min_severity)
-    except (KeyError, TypeError, ValueError) as e:
+    except (KeyError, TypeError, ValueError, AttributeError) as e:
         current_app.logger.error(f"EONET response normalization failed: {e}")
         fallback = generate_mock_disasters(bbox=bbox, limit=limit)
         return with_status(

@@ -86,7 +86,7 @@ def generate_mock_earthquakes(bbox=None, limit=500):
         'count': len(points),
         'points': points,
         'stats': {
-            'total_24h': len([p for p in points if (now - datetime.strptime(p['timestamp'], '%Y-%m-%dT%H:%M:%SZ')).days < 1]),
+            'total_24h': len([p for p in points if (now - datetime.strptime(p['timestamp'], '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)).days < 1]),
             'max_magnitude': round(max_mag, 1),
             'by_severity': severity_counts
         }

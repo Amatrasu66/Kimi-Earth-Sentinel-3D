@@ -74,8 +74,11 @@ def get_fire_data(bbox=None, limit=500, min_severity=None):
         )
 
     try:
+        firms_url = current_app.config.get(
+            "NASA_FIRMS_URL", "https://firms.modaps.eosdis.nasa.gov/api"
+        )
         csv_text = _fetch_from_provider(
-            "https://firms.modaps.eosdis.nasa.gov/api",
+            firms_url,
             api_key,
             current_app.config.get("REQUEST_TIMEOUT", 15),
         )
@@ -90,7 +93,7 @@ def get_fire_data(bbox=None, limit=500, min_severity=None):
 
     try:
         payload = _normalize(csv_text, limit)
-    except (ValueError, IndexError) as e:
+    except (ValueError, IndexError, AttributeError) as e:
         current_app.logger.error(f"FIRMS response normalization failed: {e}")
         return with_status(
             _generate_mock_fires(bbox, limit),

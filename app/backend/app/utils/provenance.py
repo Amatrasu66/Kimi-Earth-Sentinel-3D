@@ -45,9 +45,10 @@ def with_status(payload, status, source, message=None, fetched_at=None):
     return payload
 
 
-def success_response(data, cache_hit=False, cached_at=None):
+def success_response(data, cache_hit=False, cached_at=None, stale=False):
     """Standard ``{success, data, meta}`` envelope (existing API style)."""
     status = (data.get("data_status") or {}) if isinstance(data, dict) else {}
+    cached_at = cached_at if cached_at is not None else status.get("fetched_at")
     return {
         "success": True,
         "data": data,
@@ -55,6 +56,7 @@ def success_response(data, cache_hit=False, cached_at=None):
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "cache_hit": cache_hit,
             "cached_at": cached_at,
+            "stale": stale,
             "source": status.get("source"),
             "data_status": status.get("status"),
         },

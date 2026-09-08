@@ -1,5 +1,5 @@
 import time
-from flask import Blueprint, jsonify, redirect
+from flask import Blueprint, current_app, jsonify, redirect
 
 from ..utils.provenance import success_response
 from ..utils.validation import error_response
@@ -48,9 +48,12 @@ def get_gibs_tile(layer, z, x, y):
         return error_response(f"Imagery layer {layer!r} not found.", code="NOT_FOUND", status=404)
     if not (0 <= z <= 8 and x >= 0 and y >= 0):
         return error_response("Invalid tile coordinates.")
-    # Proxy to NASA GIBS with redirect
+    # Proxy to NASA GIBS with redirect (base URL from central config).
+    gibs_base = current_app.config.get(
+        "NASA_GIBS_URL", "https://gibs.earthdata.nasa.gov"
+    ).rstrip("/")
     gibs_url = (
-        "https://gibs.earthdata.nasa.gov/wmts/epsg4326/best/"
+        f"{gibs_base}/wmts/epsg4326/best/"
         f"{layer}/default/{time.strftime('%Y-%m-%d')}/250m/{z}/{y}/{x}.jpeg"
     )
     return redirect(gibs_url, code=302)

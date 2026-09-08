@@ -32,27 +32,60 @@ interface ApiResponse<T> {
 
 export type { ApiResponse };
 
-async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
+interface FetchOptions extends RequestInit {
+  /** Per-request timeout override (ms). Defaults to REQUEST_TIMEOUT_MS. */
+  timeoutMs?: number;
+}
+
+/** Extra per-call options accepted by api methods (cancellation/timeout). */
+export interface RequestOptions {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
+
+async function fetchApi<T>(path: string, options?: FetchOptions): Promise<T> {
+  const { timeoutMs = REQUEST_TIMEOUT_MS, signal: externalSignal, ...init } = options ?? {};
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+
+  // Combine the caller-provided signal (unmount / stale request) with the
+  // internal timeout so either one cancels the fetch.
+  const onExternalAbort = () => controller.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort();
+    } else {
+      externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+    }
+  }
   let response: Response;
   try {
     response = await fetch(`${API_BASE}${path}`, {
-      ...options,
+      ...init,
       signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
-        ...options?.headers,
+        ...init.headers,
       },
     });
   } catch (err) {
-    throw new Error(
-      err instanceof DOMException && err.name === 'AbortError'
-        ? 'Request timed out — the API did not respond in time.'
-        : 'Network error — is the API reachable?',
-    );
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      const aborted = new Error(
+        timedOut
+          ? 'Request timed out — the API did not respond in time.'
+          : 'Request aborted.',
+      );
+      aborted.name = 'AbortError';
+      throw aborted;
+    }
+    throw new Error('Network error — is the API reachable?');
   } finally {
-    clearTimeout(timeout);
+    clearTimeout(timer);
+    externalSignal?.removeEventListener('abort', onExternalAbort);
   }
 
   let result: ApiResponse<T>;
@@ -71,15 +104,23 @@ async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const api = {
   // Layers
-  getLayers: () => fetchApi<{ layers: import('@/types').LayerMetadata[] }>('/layers'),
+  getLayers: (opts?: RequestOptions) =>
+    fetchApi<{ layers: import('@/types').LayerMetadata[] }>('/layers', opts),
 
-  getLayerData: (layerId: string, params?: { bbox?: string; limit?: number; min_severity?: string }) => {
+  getLayerData: (
+    layerId: string,
+    params?: { bbox?: string; limit?: number; min_severity?: string },
+    opts?: RequestOptions,
+  ) => {
     const query = new URLSearchParams();
     if (params?.bbox) query.set('bbox', params.bbox);
     if (params?.limit) query.set('limit', params.limit.toString());
     if (params?.min_severity) query.set('min_severity', params.min_severity);
     const qs = query.toString();
-    return fetchApi<import('@/types').LayerData>(`/layers/${layerId}/data${qs ? `?${qs}` : ''}`);
+    return fetchApi<import('@/types').LayerData>(
+      `/layers/${layerId}/data${qs ? `?${qs}` : ''}`,
+      opts,
+    );
   },
 
   getLayerHeatmap: (layerId: string, params?: { resolution?: number; time_range?: string }) => {
@@ -91,22 +132,23 @@ export const api = {
   },
 
   // Events
-  getEvent: (eventId: string) =>
-    fetchApi<import('@/types').EventDetail>(`/events/${encodeURIComponent(eventId)}`),
+  getEvent: (eventId: string, opts?: RequestOptions) =>
+    fetchApi<import('@/types').EventDetail>(`/events/${encodeURIComponent(eventId)}`, opts),
 
   // Search
-  search: (query: string, type?: string, limit?: number) => {
+  search: (query: string, type?: string, limit?: number, opts?: RequestOptions) => {
     const params = new URLSearchParams();
     params.set('q', query);
     if (type) params.set('type', type);
     if (limit) params.set('limit', limit.toString());
     return fetchApi<{ query: string; results: import('@/types').SearchResult[] }>(
       `/search?${params.toString()}`,
+      opts,
     );
   },
 
   // Stats
-  getStats: () => fetchApi<import('@/types').GlobalStats>('/stats'),
+  getStats: (opts?: RequestOptions) => fetchApi<import('@/types').GlobalStats>('/stats', opts),
 
   getHistorical: (metric: string, period?: string, aggregation?: string) => {
     const params = new URLSearchParams();

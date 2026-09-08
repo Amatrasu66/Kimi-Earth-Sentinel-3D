@@ -16,10 +16,10 @@ services:
       - key: CORS_ORIGINS
         # Set to your Vercel frontend origin(s), comma-separated.
         value: https://kimi-earth-sentinel-3d.vercel.app
-      - key: CACHE_TYPE
-        value: simple
       - key: REQUEST_TIMEOUT
         value: '15'
+      - key: SCHEDULER_ENABLED
+        value: 'true'
       - key: AIRNOW_API_KEY
         sync: false
       - key: NASA_FIRMS_API_KEY

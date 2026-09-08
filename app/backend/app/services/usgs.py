@@ -1,5 +1,5 @@
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import requests
 from flask import current_app
@@ -86,7 +86,7 @@ def get_earthquake_data(bbox=None, limit=500, min_severity=None):
     """Fetch earthquake data from USGS API (labels provenance)."""
     timeout = current_app.config.get("REQUEST_TIMEOUT", 15)
     base_url = current_app.config.get("USGS_API_URL", "https://earthquake.usgs.gov")
-    end_time = datetime.utcnow()
+    end_time = datetime.now(timezone.utc)
     start_time = end_time - timedelta(days=30)
 
     params = {
@@ -120,7 +120,7 @@ def get_earthquake_data(bbox=None, limit=500, min_severity=None):
 
     try:
         payload = _normalize(data, limit)
-    except (KeyError, TypeError, ValueError) as e:
+    except (KeyError, TypeError, ValueError, AttributeError) as e:
         current_app.logger.error(f"USGS response normalization failed: {e}")
         fallback = generate_mock_earthquakes(bbox=bbox, limit=limit)
         return with_status(

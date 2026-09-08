@@ -9,6 +9,12 @@ def _csv(name, default):
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
+def _as_bool(raw, default=True):
+    if raw is None:
+        return default
+    return str(raw).strip().lower() in ("1", "true", "yes", "on")
+
+
 class Config:
     FLASK_ENV = os.environ.get("FLASK_ENV", "production")
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key-change-in-production")
@@ -16,20 +22,22 @@ class Config:
     # CORS — explicit allow-list (Phase 17). Development default covers Vite.
     CORS_ORIGINS = _csv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173")
 
-    # Cache
-    CACHE_TYPE = os.environ.get("CACHE_TYPE", "simple")
+    # Cache (Phase 5): process-local in-memory cache. CACHE_DEFAULT_TIMEOUT
+    # is the fallback TTL; per-layer TTLs live in utils/provenance.py.
+    # No database is required (see README: architecture).
     CACHE_DEFAULT_TIMEOUT = int(os.environ.get("CACHE_DEFAULT_TIMEOUT", 300))
-    REDIS_URL = os.environ.get("REDIS_URL", None)
 
     # API URLs
     USGS_API_URL = os.environ.get("USGS_API_URL", "https://earthquake.usgs.gov")
     NASA_EONET_URL = os.environ.get("NASA_EONET_URL", "https://eonet.gsfc.nasa.gov/api/v3")
     NASA_GIBS_URL = os.environ.get("NASA_GIBS_URL", "https://gibs.earthdata.nasa.gov")
-    NOAA_API_URL = os.environ.get("NOAA_API_URL", "https://api.weather.gov")
     OPEN_METEO_URL = os.environ.get("OPEN_METEO_URL", "https://api.open-meteo.com/v1")
-    AIRNOW_API_URL = "https://www.airnowapi.org/aq"
-    NASA_FIRMS_URL = "https://firms.modaps.eosdis.nasa.gov/api"
-    GDACS_URL = os.environ.get("GDACS_URL", "https://www.gdacs.org")
+    AIRNOW_API_URL = os.environ.get(
+        "AIRNOW_API_URL", "https://www.airnowapi.org/aq/observation"
+    )
+    NASA_FIRMS_URL = os.environ.get(
+        "NASA_FIRMS_URL", "https://firms.modaps.eosdis.nasa.gov/api"
+    )
 
     # API Keys (server-side only — never sent to the frontend)
     AIRNOW_API_KEY = os.environ.get("AIRNOW_API_KEY", None)
@@ -42,5 +50,6 @@ class Config:
     # Example: HEATMAP_PROVIDERS["temperature"] = my_gridded_provider
     HEATMAP_PROVIDERS = {}
 
-    # Scheduler
-    SCHEDULER_API_ENABLED = True
+    # In-process cache-warming scheduler (Phase 6). No workers involved;
+    # set SCHEDULER_ENABLED=false to disable.
+    SCHEDULER_ENABLED = _as_bool(os.environ.get("SCHEDULER_ENABLED"), True)

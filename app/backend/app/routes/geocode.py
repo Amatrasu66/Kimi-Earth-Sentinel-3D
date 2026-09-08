@@ -4,7 +4,7 @@ from flask import Blueprint, jsonify, request
 
 from ..services.fallback import reverse_geocode_mock
 from ..utils.provenance import SIMULATED, success_response, with_status
-from ..utils.validation import parse_lat_lon
+from ..utils.validation import error_response, parse_lat_lon
 
 geocode_bp = Blueprint("geocode", __name__)
 
@@ -13,7 +13,7 @@ geocode_bp = Blueprint("geocode", __name__)
 def reverse_geocode():
     (coords, err) = parse_lat_lon(request.args.get("lat"), request.args.get("lon"))
     if err:
-        return jsonify({"success": False, "error": {"code": "INVALID_PARAMS", "message": err}}), 400
+        return error_response(err)
 
     lat, lon = coords
     # NOTE: coarse region lookup only — labelled simulated.
@@ -30,7 +30,7 @@ def reverse_geocode():
 def get_timezone():
     (coords, err) = parse_lat_lon(request.args.get("lat"), request.args.get("lon"))
     if err:
-        return jsonify({"success": False, "error": {"code": "INVALID_PARAMS", "message": err}}), 400
+        return error_response(err)
 
     _, lon = coords
 

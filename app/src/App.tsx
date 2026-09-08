@@ -7,6 +7,7 @@ import BottomBar from '@/components/panels/BottomBar';
 import SettingsModal from '@/components/panels/SettingsModal';
 import Tooltip from '@/components/overlays/Tooltip';
 import { useLayers, useLayerData } from '@/hooks/useLayers';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { api } from '@/services/api';
 import { isValidCoordinate } from '@/lib/geo';
 import type { DataPoint, LayerId, EventDetail } from '@/types';
@@ -158,45 +159,17 @@ function App() {
   }, []);
 
   // Keyboard shortcuts (ignored while typing in inputs)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      const typing =
-        target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
-      if (typing) {
-        if (e.key === 'Escape') (target as HTMLElement).blur();
-        return;
-      }
-
-      // Number keys 1-8 for layers
-      if (e.key >= '1' && e.key <= '8') {
-        const idx = parseInt(e.key) - 1;
-        if (SHORTCUT_LAYERS[idx]) {
-          handleLayerToggle(SHORTCUT_LAYERS[idx]);
-        }
-      }
-
-      // ESC to close
-      if (e.key === 'Escape') {
-        if (selectedEvent) {
-          handleBackToLayer();
-        } else if (activeLayer) {
-          handleClosePanel();
-        } else if (isSettingsOpen) {
-          setIsSettingsOpen(false);
-        }
-      }
-
-      // Space to pause rotation
-      if (e.key === ' ') {
-        e.preventDefault();
-        setIsRotating((prev) => !prev);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeLayer, selectedEvent, isSettingsOpen, handleLayerToggle, handleBackToLayer, handleClosePanel]);
+  useKeyboardShortcuts({
+    shortcutLayers: SHORTCUT_LAYERS,
+    toggleLayer: handleLayerToggle,
+    backToLayer: handleBackToLayer,
+    closePanel: handleClosePanel,
+    closeSettings: () => setIsSettingsOpen(false),
+    toggleRotation: () => setIsRotating((prev) => !prev),
+    hasSelection: selectedEvent !== null,
+    hasActiveLayer: activeLayer !== null,
+    isSettingsOpen,
+  });
 
   return (
     <div className="w-screen h-screen overflow-hidden" style={{ background: '#020202' }}>

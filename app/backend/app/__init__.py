@@ -2,25 +2,10 @@ import os
 import structlog
 from flask import Flask, jsonify
 from flask_cors import CORS
-from .cache import cache
+from .cache_service import InMemoryCache
 from .config import Config
 
 logger = structlog.get_logger()
-
-
-# Flask-Caching 2.3 accepts short names ("simple"); >=2.4 expects backend
-# paths ("SimpleCache"). Normalize so both work.
-_LEGACY_CACHE_TYPES = {
-    "simple": "SimpleCache",
-    "null": "NullCache",
-    "redis": "RedisCache",
-    "filesystem": "FileSystemCache",
-    "memcached": "MemcachedCache",
-}
-
-
-def _cache_type(raw):
-    return _LEGACY_CACHE_TYPES.get(str(raw).lower(), raw)
 
 
 def _is_production(app):
@@ -46,14 +31,10 @@ def create_app(config_class=Config):
         },
     )
 
-    # Initialize cache
-    cache.init_app(
-        app,
-        config={
-            "CACHE_TYPE": _cache_type(app.config.get("CACHE_TYPE", "SimpleCache")),
-            "CACHE_DEFAULT_TIMEOUT": app.config.get("CACHE_DEFAULT_TIMEOUT", 300),
-            "CACHE_REDIS_URL": app.config.get("REDIS_URL", None),
-        },
+    # Process-local cache (Phase 5). No database is required: the app
+    # visualizes provider data instead of owning a persistent dataset.
+    app.extensions["cache_service"] = InMemoryCache(
+        default_timeout=app.config.get("CACHE_DEFAULT_TIMEOUT", 300)
     )
 
     # Register blueprints (versioned API)
@@ -111,13 +92,15 @@ def create_app(config_class=Config):
             500,
         )
 
-    # Start background scheduler (skipped under tests via DISABLE_SCHEDULER=1)
-    if os.environ.get("DISABLE_SCHEDULER") != "1" and (
-        not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true"
-    ):
+    # Start background scheduler (skipped under tests via DISABLE_SCHEDULER=1
+    # or SCHEDULER_ENABLED=false). In-process cache warming only — no workers.
+    scheduler_enabled = os.environ.get("DISABLE_SCHEDULER") != "1" and app.config.get(
+        "SCHEDULER_ENABLED", True
+    )
+    if scheduler_enabled and (not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true"):
         from .scheduler.jobs import start_scheduler
 
-        start_scheduler()
+        start_scheduler(app)
 
     @app.route("/")
     def index():

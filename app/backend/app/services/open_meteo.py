@@ -68,20 +68,39 @@ def _generate_weather_grid(bbox=None):
     return points
 
 
-def _fetch_point(base_url, lat, lon, field):
+def _fetch_batch(base_url, points, field, timeout):
+    """Fetch one chunk of grid points in a single provider request.
+
+    Open-Meteo accepts comma-separated ``latitude``/``longitude`` arrays
+    and returns one result object per location, in request order. This
+    turns up to ``limit`` serial requests into a handful of batched ones.
+    """
+    latitudes = ",".join(f"{p['lat']:.4f}" for p in points)
+    longitudes = ",".join(f"{p['lon']:.4f}" for p in points)
     resp = requests.get(
         f"{base_url}/forecast",
         params={
-            "latitude": lat,
-            "longitude": lon,
+            "latitude": latitudes,
+            "longitude": longitudes,
             "current": field,
             "temperature_unit": "celsius",
             "windspeed_unit": "kmh",
         },
-        timeout=10,
+        timeout=timeout,
     )
     resp.raise_for_status()
-    return resp.json()
+    data = resp.json()
+    # Single location → object; multiple → array. Normalize to a list.
+    if isinstance(data, dict):
+        return [data]
+    if not isinstance(data, list):
+        raise ValueError("Unexpected Open-Meteo response shape")
+    return data
+
+
+def _chunks(items, size):
+    for i in range(0, len(items), size):
+        yield items[i : i + size]
 
 
 def get_weather_data(metric="temperature", bbox=None, limit=500, min_severity=None, layer_id=None):
@@ -93,6 +112,7 @@ def get_weather_data(metric="temperature", bbox=None, limit=500, min_severity=No
     layer = layer_id or metric
     field = METRIC_FIELDS.get(metric, "temperature_2m")
     base_url = current_app.config.get("OPEN_METEO_URL", "https://api.open-meteo.com/v1")
+    timeout = current_app.config.get("REQUEST_TIMEOUT", 15)
 
     try:
         grid_points = _generate_weather_grid(bbox)
@@ -105,28 +125,37 @@ def get_weather_data(metric="temperature", bbox=None, limit=500, min_severity=No
             "Invalid bounding box — showing simulated fallback data.",
         )
 
+    # Bounded batching: at most BATCH_SIZE locations per upstream request,
+    # chunks fetched serially to stay well under provider rate limits.
+    BATCH_SIZE = 50
     points = []
     failures = 0
-    for pt in grid_points[: min(limit, 200)]:
+    for chunk in _chunks(grid_points[: min(limit, 200)], BATCH_SIZE):
         try:
-            data = _fetch_point(base_url, pt["lat"], pt["lon"], field)
-            current = data.get("current", {})
-            val = current.get(field, 0)
-            points.append(
-                {
-                    "id": f"wx-{pt['lat']:.2f}-{pt['lon']:.2f}",
-                    "lat": pt["lat"],
-                    "lon": pt["lon"],
-                    "value": round(val, 1),
-                    "severity": _severity_for_value(metric, val),
-                    "timestamp": current.get("time", utcnow_iso()),
-                    "unit": _get_unit(metric),
-                }
-            )
+            results = _fetch_batch(base_url, chunk, field, timeout)
         except (requests.RequestException, ValueError, KeyError) as e:
-            failures += 1
-            current_app.logger.debug(f"Open-Meteo point fetch failed: {e}")
+            failures += len(chunk)
+            current_app.logger.debug(f"Open-Meteo batch fetch failed: {e}")
             continue
+        for pt, result in zip(chunk, results):
+            try:
+                current = (result or {}).get("current", {})
+                val = current.get(field, 0)
+                points.append(
+                    {
+                        "id": f"wx-{pt['lat']:.2f}-{pt['lon']:.2f}",
+                        "lat": pt["lat"],
+                        "lon": pt["lon"],
+                        "value": round(val, 1),
+                        "severity": _severity_for_value(metric, val),
+                        "timestamp": current.get("time", utcnow_iso()),
+                        "unit": _get_unit(metric),
+                    }
+                )
+            except (ValueError, KeyError, TypeError, AttributeError) as e:
+                failures += 1
+                current_app.logger.debug(f"Open-Meteo point parse failed: {e}")
+                continue
 
     if not points:
         current_app.logger.warning("Open-Meteo provider unreachable, using fallback")
