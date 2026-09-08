@@ -123,12 +123,19 @@ export const api = {
     );
   },
 
-  getLayerHeatmap: (layerId: string, params?: { resolution?: number; time_range?: string }) => {
+  getLayerHeatmap: (
+    layerId: string,
+    params?: { resolution?: number; time_range?: string },
+    opts?: RequestOptions,
+  ) => {
     const query = new URLSearchParams();
     if (params?.resolution) query.set('resolution', params.resolution.toString());
     if (params?.time_range) query.set('time_range', params.time_range);
     const qs = query.toString();
-    return fetchApi<import('@/types').HeatmapData>(`/layers/${layerId}/heatmap${qs ? `?${qs}` : ''}`);
+    return fetchApi<import('@/types').HeatmapData>(
+      `/layers/${layerId}/heatmap${qs ? `?${qs}` : ''}`,
+      opts,
+    );
   },
 
   // Events
@@ -150,7 +157,7 @@ export const api = {
   // Stats
   getStats: (opts?: RequestOptions) => fetchApi<import('@/types').GlobalStats>('/stats', opts),
 
-  getHistorical: (metric: string, period?: string, aggregation?: string) => {
+  getHistorical: (metric: string, period?: string, aggregation?: string, opts?: RequestOptions) => {
     const params = new URLSearchParams();
     params.set('metric', metric);
     if (period) params.set('period', period);
@@ -160,23 +167,25 @@ export const api = {
       period: string;
       aggregation: string;
       values: Array<{ date: string; [key: string]: number | string }>;
-    }>(`/stats/historical?${params.toString()}`);
+    }>(`/stats/historical?${params.toString()}`, opts);
   },
 
   // Health
-  getHealth: () =>
-    fetchApi<{ status: string; service: string; version: string; timestamp: string }>('/health'),
+  getHealth: (opts?: RequestOptions) =>
+    fetchApi<{ status: string; service: string; version: string; timestamp: string }>('/health', opts),
 
   // Geocode
-  reverseGeocode: (lat: number, lon: number) => {
+  reverseGeocode: (lat: number, lon: number, opts?: RequestOptions) => {
     return fetchApi<{ name: string; country: string; region: string; timezone: string }>(
       `/geocode/reverse?lat=${lat}&lon=${lon}`,
+      opts,
     );
   },
 
   // GIBS Imagery
-  getGibsCapabilities: () =>
+  getGibsCapabilities: (opts?: RequestOptions) =>
     fetchApi<{ layers: Array<{ id: string; name: string; projection: string; format: string }> }>(
       '/imagery/gibs/capabilities',
+      opts,
     ),
 };

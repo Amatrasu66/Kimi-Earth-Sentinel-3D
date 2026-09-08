@@ -58,8 +58,9 @@ Frontend:
 
 Backend:
 
-- Python, Flask, Flask-CORS, Flask-Caching, Gunicorn
-- requests, APScheduler (cache-warming schedule), structlog, python-dotenv
+- Python, Flask, Flask-CORS, Gunicorn
+- requests, APScheduler (in-process cache warming), structlog, python-dotenv
+- In-memory `CacheService` (process-local, Redis-swappable interface — no Redis running)
 - pytest (dev)
 
 ## Data Sources
@@ -108,12 +109,12 @@ Kimi-Earth-Sentinel-3D/
         ├── .env.example
         ├── app/
         │   ├── __init__.py      # App factory: CORS allow-list, JSON errors, /api/health
-        │   ├── config.py
-        │   ├── cache.py         # Shared Flask-Caching instance
+        │   ├── config.py          # Central config (URLs/keys/timeouts from env)
+        │   ├── cache_service.py   # CacheService interface + InMemoryCache (process-local)
         │   ├── routes/          # layers, events, search, stats, geocode, imagery, health
-        │   ├── services/        # usgs, nasa_eonet, nasa_firms, open_meteo, airnow, heatmap, fallback
+        │   ├── services/        # usgs, nasa_eonet, nasa_firms, open_meteo, airnow, heatmap, fallback, imagery, geocode
         │   ├── utils/           # validation (400s, never 500s) + provenance (data_status)
-        │   └── scheduler/jobs.py
+        │   └── scheduler/jobs.py  # In-process cache warming (no workers)
         └── tests/               # pytest: contract + unit tests
 ```
 
@@ -162,11 +163,12 @@ Backend (`app/backend/.env`):
 | `SECRET_KEY` | Yes (prod) | dev placeholder | Flask secret; warning logged if default in prod |
 | `PORT` / `FLASK_PORT` | No | `5001` | Listen port (`PORT` wins; Render injects it) |
 | `CORS_ORIGINS` | Yes (prod) | `http://localhost:3000,http://localhost:5173` | Allowed browser origins, comma-separated |
-| `CACHE_TYPE` | No | `simple` | `simple` or `redis` |
-| `REDIS_URL` | If redis | — | Redis URL for cache backend |
+| `CACHE_DEFAULT_TIMEOUT` | No | `300` | Fallback cache TTL (s); per-layer TTLs in code |
+| `USGS_API_URL` / `NASA_EONET_URL` / `NASA_FIRMS_URL` / `NASA_GIBS_URL` / `OPEN_METEO_URL` / `AIRNOW_API_URL` | No | provider defaults | Upstream base URLs (override for tests/proxies) |
 | `AIRNOW_API_KEY` | For live AQI | — | Server-side only; air quality is simulated without it |
 | `NASA_FIRMS_API_KEY` | For live fires | — | Server-side only; wildfires are simulated without it |
 | `REQUEST_TIMEOUT` | No | `15` | Upstream HTTP timeout (seconds) |
+| `SCHEDULER_ENABLED` | No | `true` | In-process cache warming toggle (`false` disables) |
 
 Never commit `.env` files or keys; both are git-ignored with `.env.example` templates provided.
 
@@ -188,6 +190,46 @@ Base URL `/api/v1` (plus unversioned `GET /api/health` for deployment checks). A
 | `GET /api/v1/geocode/reverse?lat=&lon=` | Coarse region lookup (simulated, labelled) |
 | `GET /api/v1/imagery/gibs/capabilities` | NASA GIBS layer catalogue |
 | `GET /api/v1/imagery/gibs/tile/<layer>/<z>/<x>/<y>` | Redirect to NASA GIBS tile (allow-listed layers only) |
+
+## Architecture
+
+High-level request path:
+
+```
+Vercel
+  ↓ HTTPS
+React + Three.js frontend (app/src)
+  ↓ JSON (/api/v1/*)
+Render / Flask API (app/backend/app)
+  ↓ dispatch
+Provider adapters (services/usgs, nasa_eonet, nasa_firms, open_meteo, airnow)
+  ↓ HTTPS
+External environmental APIs (USGS, NASA EONET/FIRMS/GIBS, Open-Meteo, AirNow)
+```
+
+- **Routes** validate HTTP input and render JSON — no provider logic.
+- **Application service** (`services/layer_service.py`) owns dispatch, caching, and stale-fallback semantics.
+- **Provider adapters** fetch from one upstream API and normalize to the canonical payload — no Flask `request` objects, no cache access.
+- **Frontend** talks to the backend only through the centralized client (`src/services/api.ts`); components never construct backend URLs.
+
+## Current caching model
+
+In-memory, process-local:
+
+- `CacheService` interface → `InMemoryCache` implementation (`app/backend/app/cache_service.py`).
+- Per-layer TTLs (`utils/provenance.py`); `SIMULATED`/`UNAVAILABLE` payloads cached only briefly (`FALLBACK_TTL = 60s`) so recovery is fast.
+- Expired `LIVE` entries are served once more as `STALE` (original `fetched_at` preserved) when a refresh fails.
+- An in-process APScheduler warms the default view of each layer at its TTL — no workers, no queues.
+
+**No database is currently required.** The application retrieves environmental data from external providers and visualizes it rather than maintaining a persistent user-owned dataset, so a short-lived process-local cache is sufficient.
+
+Future infrastructure, only if needed:
+
+- **Redis** — shared cache if traffic or multi-instance deployment requires it (implement `CacheService` on Redis; no route/service rewrite).
+- **PostgreSQL/PostGIS** — persistent historical/geospatial data if required.
+- **Worker** — background ingestion if required.
+
+None of the above are current dependencies.
 
 ## Keyboard Shortcuts
 

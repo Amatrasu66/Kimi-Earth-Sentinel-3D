@@ -84,8 +84,8 @@ def _normalize(data, limit):
 
 def get_earthquake_data(bbox=None, limit=500, min_severity=None):
     """Fetch earthquake data from USGS API (labels provenance)."""
-    timeout = current_app.config.get("REQUEST_TIMEOUT", 15)
-    base_url = current_app.config.get("USGS_API_URL", "https://earthquake.usgs.gov")
+    timeout = current_app.config["REQUEST_TIMEOUT"]
+    base_url = current_app.config["USGS_API_URL"]
     end_time = datetime.now(timezone.utc)
     start_time = end_time - timedelta(days=30)
 

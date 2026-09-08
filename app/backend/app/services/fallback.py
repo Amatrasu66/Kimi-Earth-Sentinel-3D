@@ -165,7 +165,7 @@ def generate_mock_disasters(bbox=None, limit=500):
 
 # ===== Generic Mock Data =====
 
-def generate_mock_layer_data(layer_id, bbox=None, limit=500):
+def generate_mock_layer_data(layer_id, bbox=None, limit=500, min_severity=None):
     """Generate mock data for any layer."""
     if layer_id == 'earthquakes':
         return generate_mock_earthquakes(bbox, limit)
@@ -173,13 +173,15 @@ def generate_mock_layer_data(layer_id, bbox=None, limit=500):
         return generate_mock_disasters(bbox, limit)
     elif layer_id == 'wildfires':
         from .nasa_firms import _generate_mock_fires
-        return _generate_mock_fires(bbox, limit)
-    elif layer_id in ['temperature', 'precipitation', 'clouds']:
+        return _generate_mock_fires(bbox, limit, min_severity)
+    elif layer_id in ['temperature', 'precipitation', 'clouds', 'wind']:
         from .open_meteo import _generate_mock_weather
-        return _generate_mock_weather(layer_id, bbox, limit)
+        # Open-Meteo variable names differ from public layer ids.
+        metric = 'cloudcover' if layer_id == 'clouds' else layer_id
+        return _generate_mock_weather(metric, bbox, limit, layer_id, min_severity)
     elif layer_id == 'air_quality':
         from .airnow import _generate_mock_aqi
-        return _generate_mock_aqi(bbox, limit)
+        return _generate_mock_aqi(bbox, limit, min_severity)
     else:
         return {
             'layer_id': layer_id,

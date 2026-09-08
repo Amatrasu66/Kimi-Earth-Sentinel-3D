@@ -11,6 +11,8 @@ events_bp = Blueprint("events", __name__)
 def get_event(event_id):
     if not event_id or not event_id.strip():
         return error_response("event_id must not be empty.")
+    if len(event_id) > 128:
+        return error_response("event_id must be at most 128 characters.")
     # NOTE: event detail is currently served from the local fallback
     # generator (no upstream single-event endpoint is wired up). It is
     # always labelled SIMULATED so it is never mistaken for live data.

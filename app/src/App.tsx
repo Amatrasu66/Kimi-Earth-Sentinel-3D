@@ -46,7 +46,14 @@ function App() {
     refetch,
   } = useLayerData(activeLayer, { limit: 500 });
   const eventRequestId = useRef(0);
+  const eventAbortRef = useRef<AbortController | null>(null);
   const flyToKey = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      eventAbortRef.current?.abort();
+    };
+  }, []);
 
   const activeLayerMeta = layers.find((l) => l.id === activeLayer) || null;
 
@@ -60,33 +67,39 @@ function App() {
   }, [layerData]);
 
   // Handle layer toggle
-  const handleLayerToggle = useCallback((layerId: LayerId) => {
-    setActiveLayer((prev) => {
-      const next = prev === layerId ? null : layerId;
+  const handleLayerToggle = useCallback(
+    (layerId: LayerId) => {
+      const next = activeLayer === layerId ? null : layerId;
+      setActiveLayer(next);
       if (next === null) {
         setAllDataPoints([]);
         setSelectedEvent(null);
         setEventDetail(null);
       }
-      return next;
-    });
-  }, []);
+    },
+    [activeLayer],
+  );
 
   // Handle marker click — race-safe: a slower response for event A can
   // never overwrite the details of a newer selection B (Phase 15).
+  // In-flight detail fetches are aborted so rapid clicks don't pile up.
   const handleMarkerClick = useCallback(
     async (point: DataPoint) => {
       const id = ++eventRequestId.current;
+      eventAbortRef.current?.abort();
+      const controller = new AbortController();
+      eventAbortRef.current = controller;
       setSelectedEvent(point);
       setEventDetail(null);
       setEventDetailLoading(true);
 
       try {
-        const detail = await api.getEvent(point.id);
-        if (eventRequestId.current !== id) return;
+        const detail = await api.getEvent(point.id, { signal: controller.signal });
+        if (eventRequestId.current !== id || controller.signal.aborted) return;
         setEventDetail(detail);
-      } catch {
-        if (eventRequestId.current !== id) return;
+      } catch (err) {
+        if (eventRequestId.current !== id || controller.signal.aborted) return;
+        if (err instanceof Error && err.name === 'AbortError') return;
         // If API fails, create detail from point data
         setEventDetail({
           id: point.id,
@@ -143,6 +156,7 @@ function App() {
   // Handle close data panel
   const handleClosePanel = useCallback(() => {
     eventRequestId.current += 1; // invalidate any in-flight detail fetch
+    eventAbortRef.current?.abort();
     setActiveLayer(null);
     setSelectedEvent(null);
     setEventDetail(null);
@@ -153,6 +167,7 @@ function App() {
   // Handle back to layer view
   const handleBackToLayer = useCallback(() => {
     eventRequestId.current += 1;
+    eventAbortRef.current?.abort();
     setSelectedEvent(null);
     setEventDetail(null);
     setEventDetailLoading(false);

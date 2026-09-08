@@ -121,7 +121,9 @@ def get_layer_payload(layer_id, bbox=None, limit=500, min_severity=None):
         service_fn = SERVICE_MAP.get(layer_id)
         if service_fn is None:
             return with_status(
-                generate_mock_layer_data(layer_id, bbox=bbox, limit=limit),
+                generate_mock_layer_data(
+                    layer_id, bbox=bbox, limit=limit, min_severity=min_severity
+                ),
                 SIMULATED,
                 source,
                 "No live provider for this layer — showing simulated fallback data.",

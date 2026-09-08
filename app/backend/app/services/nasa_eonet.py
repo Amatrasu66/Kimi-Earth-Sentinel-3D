@@ -76,8 +76,8 @@ def _normalize(data, limit, min_severity):
 
 def get_eonet_events(bbox=None, limit=500, min_severity=None):
     """Fetch natural disaster events from NASA EONET (labels provenance)."""
-    timeout = current_app.config.get("REQUEST_TIMEOUT", 15)
-    base_url = current_app.config.get("NASA_EONET_URL", "https://eonet.gsfc.nasa.gov/api/v3")
+    timeout = current_app.config["REQUEST_TIMEOUT"]
+    base_url = current_app.config["NASA_EONET_URL"]
 
     params = {"status": "open", "limit": limit}
     if bbox:

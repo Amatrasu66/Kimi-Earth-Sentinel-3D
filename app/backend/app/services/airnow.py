@@ -1,5 +1,4 @@
 import random
-import time
 
 import requests
 from flask import current_app
@@ -8,6 +7,8 @@ from ..utils.provenance import LIVE, SIMULATED, utcnow_iso, with_status
 from ..utils.validation import is_valid_coordinate
 
 SOURCE = "AirNow"
+
+_SEVERITY_ORDER = ["low", "moderate", "high", "critical"]
 
 
 def _severity_for_aqi(aqi):
@@ -18,6 +19,14 @@ def _severity_for_aqi(aqi):
     if aqi > 150:
         return "moderate"
     return "low"
+
+
+def _meets_min_severity(severity, min_severity):
+    if not min_severity:
+        return True
+    if min_severity not in _SEVERITY_ORDER or severity not in _SEVERITY_ORDER:
+        return True
+    return _SEVERITY_ORDER.index(severity) >= _SEVERITY_ORDER.index(min_severity)
 
 
 def _fetch_from_provider(base_url, api_key, timeout):
@@ -42,22 +51,27 @@ def _fetch_from_provider(base_url, api_key, timeout):
     return data
 
 
-def _normalize(items, limit):
+def _normalize(items, limit, min_severity=None):
     points = []
-    for item in items[:limit]:
+    for item in items:
+        if len(points) >= limit:
+            break
         lat = item.get("Latitude", 39.0)
         lon = item.get("Longitude", -98.5)
         if not is_valid_coordinate(lat, lon):
             continue
         aqi = item.get("AQI", 0)
+        severity = _severity_for_aqi(aqi)
+        if not _meets_min_severity(severity, min_severity):
+            continue
         points.append(
             {
                 "id": f"aqi-{lat}-{lon}",
                 "lat": lat,
                 "lon": lon,
                 "value": aqi,
-                "severity": _severity_for_aqi(aqi),
-                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "severity": severity,
+                "timestamp": utcnow_iso(),
                 "location": item.get("ReportingArea", "Unknown"),
                 "parameter": item.get("ParameterName", "PM2.5"),
             }
@@ -66,40 +80,43 @@ def _normalize(items, limit):
 
 
 def get_air_quality_data(bbox=None, limit=500, min_severity=None):
-    """Fetch air quality data from AirNow API (labels provenance)."""
+    """Fetch air quality data from AirNow API (labels provenance).
+
+    AirNow is US-only with a fixed central-US query point; ``bbox`` cannot
+    be honoured upstream and is documented rather than silently ignored
+    (see README data sources). ``min_severity`` is applied post-fetch.
+    """
     api_key = current_app.config.get("AIRNOW_API_KEY")
     if not api_key:
         return with_status(
-            _generate_mock_aqi(bbox, limit),
+            _generate_mock_aqi(bbox, limit, min_severity),
             SIMULATED,
             SOURCE,
             "No AirNow API key configured — showing simulated fallback data.",
         )
 
     try:
-        airnow_url = current_app.config.get(
-            "AIRNOW_API_URL", "https://www.airnowapi.org/aq/observation"
-        )
+        airnow_url = current_app.config["AIRNOW_API_URL"]
         items = _fetch_from_provider(
             airnow_url,
             api_key,
-            current_app.config.get("REQUEST_TIMEOUT", 15),
+            current_app.config["REQUEST_TIMEOUT"],
         )
     except (requests.RequestException, ValueError) as e:
         current_app.logger.warning(f"AirNow provider unreachable, using fallback: {e}")
         return with_status(
-            _generate_mock_aqi(bbox, limit),
+            _generate_mock_aqi(bbox, limit, min_severity),
             SIMULATED,
             SOURCE,
             "AirNow unavailable — showing simulated fallback data.",
         )
 
     try:
-        payload = _normalize(items, limit)
+        payload = _normalize(items, limit, min_severity=min_severity)
     except (KeyError, TypeError, AttributeError) as e:
         current_app.logger.error(f"AirNow response normalization failed: {e}")
         return with_status(
-            _generate_mock_aqi(bbox, limit),
+            _generate_mock_aqi(bbox, limit, min_severity),
             SIMULATED,
             SOURCE,
             "AirNow response malformed — showing simulated fallback data.",
@@ -108,7 +125,7 @@ def get_air_quality_data(bbox=None, limit=500, min_severity=None):
     return with_status(payload, LIVE, SOURCE, fetched_at=utcnow_iso())
 
 
-def _generate_mock_aqi(bbox=None, limit=500):
+def _generate_mock_aqi(bbox=None, limit=500, min_severity=None):
     """Generate mock AQI data for global coverage."""
     cities = [
         {"name": "Beijing", "lat": 39.9042, "lon": 116.4074, "aqi": 165},
@@ -135,8 +152,13 @@ def _generate_mock_aqi(bbox=None, limit=500):
 
     random.seed(42)
     points = []
-    for city in cities[:limit]:
+    for city in cities:
+        if len(points) >= limit:
+            break
         aqi = max(0, min(500, city["aqi"] + random.randint(-20, 20)))
+        severity = _severity_for_aqi(aqi)
+        if not _meets_min_severity(severity, min_severity):
+            continue
 
         points.append(
             {
@@ -144,8 +166,8 @@ def _generate_mock_aqi(bbox=None, limit=500):
                 "lat": city["lat"],
                 "lon": city["lon"],
                 "value": aqi,
-                "severity": _severity_for_aqi(aqi),
-                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "severity": severity,
+                "timestamp": utcnow_iso(),
                 "location": city["name"],
                 "parameter": "PM2.5",
             }

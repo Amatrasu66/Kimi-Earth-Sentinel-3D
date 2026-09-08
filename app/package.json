@@ -4,6 +4,9 @@
   "version": "1.0.0",
   "description": "Interactive 3D Earth environmental intelligence dashboard (React + Vite + Three.js frontend, Flask API backend)",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

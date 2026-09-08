@@ -8,21 +8,21 @@ export function useLayers() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
     api
-      .getLayers()
+      .getLayers({ signal: controller.signal })
       .then((data) => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         setLayers(data.layers);
         setLoading(false);
       })
       .catch((err: unknown) => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         setError(err instanceof Error ? err.message : 'Failed to load layers.');
         setLoading(false);
       });
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, []);
 
@@ -45,6 +45,7 @@ export function useLayerData(layerId: LayerId | null, options?: UseLayerDataOpti
   const limit = options?.limit;
   const minSeverity = options?.min_severity;
   const requestId = useRef(0);
+  const inflightRef = useRef<AbortController | null>(null);
 
   // fetchData runs outside the effect body (useEffectEvent) so the effect
   // itself never calls setState synchronously — it only signals the fetch.
@@ -59,15 +60,23 @@ export function useLayerData(layerId: LayerId | null, options?: UseLayerDataOpti
     setLoading(true);
     setError(null);
 
+    const controller = new AbortController();
+    inflightRef.current?.abort();
+    inflightRef.current = controller;
+
     api
-      .getLayerData(layerId, { limit, min_severity: minSeverity })
+      .getLayerData(
+        layerId,
+        { limit, min_severity: minSeverity },
+        { signal: controller.signal },
+      )
       .then((layerData) => {
-        if (requestId.current !== id) return; // stale response guard
+        if (requestId.current !== id || controller.signal.aborted) return;
         setRawData(layerData);
         setLoading(false);
       })
       .catch((err: unknown) => {
-        if (requestId.current !== id) return;
+        if (requestId.current !== id || controller.signal.aborted) return;
         setError(err instanceof Error ? err.message : 'Failed to load layer data.');
         setLoading(false);
       });
@@ -75,6 +84,9 @@ export function useLayerData(layerId: LayerId | null, options?: UseLayerDataOpti
 
   useEffect(() => {
     fetchData();
+    return () => {
+      inflightRef.current?.abort();
+    };
   }, [layerId, limit, minSeverity, nonce]);
 
   // When no layer is selected there is nothing to show. Derived (not

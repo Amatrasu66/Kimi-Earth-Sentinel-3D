@@ -17,6 +17,8 @@ interface SettingSection {
     type: 'toggle' | 'slider';
     value: boolean | number;
     onChange: (val: boolean | number) => void;
+    disabled?: boolean;
+    comingSoon?: boolean;
   }>;
 }
 
@@ -54,17 +56,21 @@ export default function SettingsModal({ isOpen, onClose, isRotating, onToggleRot
         },
         {
           label: 'Atmosphere',
-          description: 'Atmospheric glow intensity',
+          description: 'Atmospheric glow intensity — coming soon',
           type: 'slider',
           value: atmosphereIntensity,
           onChange: (val) => setAtmosphereIntensity(val as number),
+          disabled: true,
+          comingSoon: true,
         },
         {
           label: 'Cloud Opacity',
-          description: 'Cloud layer transparency',
+          description: 'Cloud layer transparency — coming soon',
           type: 'slider',
           value: cloudOpacity,
           onChange: (val) => setCloudOpacity(val as number),
+          disabled: true,
+          comingSoon: true,
         },
       ],
     },
@@ -74,17 +80,21 @@ export default function SettingsModal({ isOpen, onClose, isRotating, onToggleRot
       settings: [
         {
           label: 'Starfield',
-          description: 'Show background stars',
+          description: 'Show background stars — coming soon',
           type: 'toggle',
           value: showStars,
           onChange: () => setShowStars(!showStars),
+          disabled: true,
+          comingSoon: true,
         },
         {
           label: 'Marker Density',
-          description: 'Number of visible markers',
+          description: 'Number of visible markers — coming soon',
           type: 'slider',
           value: markerDensity,
           onChange: (val) => setMarkerDensity(val as number),
+          disabled: true,
+          comingSoon: true,
         },
       ],
     },
@@ -94,10 +104,12 @@ export default function SettingsModal({ isOpen, onClose, isRotating, onToggleRot
       settings: [
         {
           label: 'Auto-refresh',
-          description: 'Refresh data automatically',
+          description: 'Refresh data automatically — coming soon',
           type: 'toggle',
           value: true,
           onChange: () => {},
+          disabled: true,
+          comingSoon: true,
         },
       ],
     },
@@ -156,17 +168,30 @@ export default function SettingsModal({ isOpen, onClose, isRotating, onToggleRot
                   <div 
                     key={setting.label}
                     className="flex items-center justify-between p-3 rounded-xl"
-                    style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.04)' }}
+                    style={{
+                      background: 'rgba(255,255,255,0.03)',
+                      border: '1px solid rgba(255,255,255,0.04)',
+                      opacity: setting.disabled ? 0.55 : 1,
+                    }}
                   >
                     <div>
-                      <div className="text-white text-sm">{setting.label}</div>
+                      <div className="text-white text-sm">
+                        {setting.label}
+                        {setting.comingSoon && (
+                          <span className="ml-2 text-[10px] uppercase tracking-wide text-white/40 border border-white/10 rounded px-1.5 py-0.5">
+                            Soon
+                          </span>
+                        )}
+                      </div>
                       <div className="text-white/30 text-xs">{setting.description}</div>
                     </div>
                     
                     {setting.type === 'toggle' ? (
                       <button
                         onClick={() => setting.onChange(!setting.value)}
-                        className="relative w-10 h-6 rounded-full transition-colors"
+                        disabled={setting.disabled}
+                        aria-disabled={setting.disabled}
+                        className="relative w-10 h-6 rounded-full transition-colors disabled:cursor-not-allowed"
                         style={{
                           background: setting.value ? '#FFC31F' : 'rgba(255,255,255,0.1)',
                         }}
@@ -187,8 +212,9 @@ export default function SettingsModal({ isOpen, onClose, isRotating, onToggleRot
                           max={typeof setting.value === 'number' && setting.label === 'Marker Density' ? 200 : 1}
                           step={0.01}
                           value={setting.value as number}
+                          disabled={setting.disabled}
                           onChange={(e) => setting.onChange(parseFloat(e.target.value))}
-                          className="w-24 accent-[#FFC31F]"
+                          className="w-24 accent-[#FFC31F] disabled:cursor-not-allowed"
                         />
                         <span className="text-white/40 text-xs w-10 text-right">
                           {typeof setting.value === 'number' 

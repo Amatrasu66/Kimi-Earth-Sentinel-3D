@@ -1,5 +1,4 @@
 import random
-import time
 
 import requests
 from flask import current_app
@@ -7,6 +6,10 @@ from flask import current_app
 from ..utils.provenance import LIVE, SIMULATED, utcnow_iso, with_status
 
 SOURCE = "Open-Meteo"
+
+# Validation allows limit up to 2000, but a single layer fetch is bounded
+# here to keep upstream request counts small (batched, serial).
+MAX_FETCH_POINTS = 200
 
 METRIC_FIELDS = {
     "temperature": "temperature_2m",
@@ -49,6 +52,17 @@ def _severity_for_value(metric, val):
         if val > 60:
             return "moderate"
     return "low"
+
+
+_SEVERITY_ORDER = ["low", "moderate", "high", "critical"]
+
+
+def _meets_min_severity(severity, min_severity):
+    if not min_severity:
+        return True
+    if min_severity not in _SEVERITY_ORDER or severity not in _SEVERITY_ORDER:
+        return True
+    return _SEVERITY_ORDER.index(severity) >= _SEVERITY_ORDER.index(min_severity)
 
 
 def _generate_weather_grid(bbox=None):
@@ -111,15 +125,15 @@ def get_weather_data(metric="temperature", bbox=None, limit=500, min_severity=No
     """
     layer = layer_id or metric
     field = METRIC_FIELDS.get(metric, "temperature_2m")
-    base_url = current_app.config.get("OPEN_METEO_URL", "https://api.open-meteo.com/v1")
-    timeout = current_app.config.get("REQUEST_TIMEOUT", 15)
+    base_url = current_app.config["OPEN_METEO_URL"]
+    timeout = current_app.config["REQUEST_TIMEOUT"]
 
     try:
         grid_points = _generate_weather_grid(bbox)
     except (ValueError, IndexError, ZeroDivisionError) as e:
         current_app.logger.error(f"Open-Meteo grid generation failed: {e}")
         return with_status(
-            _generate_mock_weather(metric, None, limit, layer),
+            _generate_mock_weather(metric, None, limit, layer, min_severity),
             SIMULATED,
             SOURCE,
             "Invalid bounding box — showing simulated fallback data.",
@@ -130,7 +144,8 @@ def get_weather_data(metric="temperature", bbox=None, limit=500, min_severity=No
     BATCH_SIZE = 50
     points = []
     failures = 0
-    for chunk in _chunks(grid_points[: min(limit, 200)], BATCH_SIZE):
+    truncated = len(grid_points) > MAX_FETCH_POINTS
+    for chunk in _chunks(grid_points[: min(limit, MAX_FETCH_POINTS)], BATCH_SIZE):
         try:
             results = _fetch_batch(base_url, chunk, field, timeout)
         except (requests.RequestException, ValueError, KeyError) as e:
@@ -141,13 +156,16 @@ def get_weather_data(metric="temperature", bbox=None, limit=500, min_severity=No
             try:
                 current = (result or {}).get("current", {})
                 val = current.get(field, 0)
+                severity = _severity_for_value(metric, val)
+                if not _meets_min_severity(severity, min_severity):
+                    continue
                 points.append(
                     {
                         "id": f"wx-{pt['lat']:.2f}-{pt['lon']:.2f}",
                         "lat": pt["lat"],
                         "lon": pt["lon"],
                         "value": round(val, 1),
-                        "severity": _severity_for_value(metric, val),
+                        "severity": severity,
                         "timestamp": current.get("time", utcnow_iso()),
                         "unit": _get_unit(metric),
                     }
@@ -160,7 +178,7 @@ def get_weather_data(metric="temperature", bbox=None, limit=500, min_severity=No
     if not points:
         current_app.logger.warning("Open-Meteo provider unreachable, using fallback")
         return with_status(
-            _generate_mock_weather(metric, bbox, limit, layer),
+            _generate_mock_weather(metric, bbox, limit, layer, min_severity),
             SIMULATED,
             SOURCE,
             "Open-Meteo unavailable — showing simulated fallback data.",
@@ -172,17 +190,26 @@ def get_weather_data(metric="temperature", bbox=None, limit=500, min_severity=No
         "points": points,
         "unit": _get_unit(metric),
     }
+    warnings = []
     if failures:
-        payload["warnings"] = [f"{failures} grid points could not be fetched."]
+        warnings.append(f"{failures} grid points could not be fetched.")
+    if truncated or limit > MAX_FETCH_POINTS:
+        warnings.append(
+            f"Results bounded to {MAX_FETCH_POINTS} grid points per request."
+        )
+    if warnings:
+        payload["warnings"] = warnings
     return with_status(payload, LIVE, SOURCE, fetched_at=utcnow_iso())
 
 
-def _generate_mock_weather(metric, bbox, limit, layer_id=None):
+def _generate_mock_weather(metric, bbox, limit, layer_id=None, min_severity=None):
     points = []
     grid = _generate_weather_grid(bbox)
     random.seed(42)
 
-    for pt in grid[:limit]:
+    for pt in grid:
+        if len(points) >= limit:
+            break
         if metric == "temperature":
             val = random.uniform(-30, 45)
         elif metric == "precipitation":
@@ -192,14 +219,18 @@ def _generate_mock_weather(metric, bbox, limit, layer_id=None):
         else:
             val = random.uniform(0, 100)
 
+        severity = _severity_for_value(metric, val)
+        if not _meets_min_severity(severity, min_severity):
+            continue
+
         points.append(
             {
                 "id": f"wx-{pt['lat']:.2f}-{pt['lon']:.2f}",
                 "lat": pt["lat"],
                 "lon": pt["lon"],
                 "value": round(val, 1),
-                "severity": _severity_for_value(metric, val),
-                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "severity": severity,
+                "timestamp": utcnow_iso(),
                 "unit": _get_unit(metric),
             }
         )
