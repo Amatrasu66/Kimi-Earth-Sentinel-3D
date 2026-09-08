@@ -1,7 +1,7 @@
 import random
 import time
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # ===== Earthquake Mock Data =====
 
@@ -31,7 +31,7 @@ def generate_mock_earthquakes(bbox=None, limit=500):
     severity_counts = {'low': 0, 'moderate': 0, 'high': 0, 'critical': 0}
     max_mag = 0
     
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     
     for _ in range(min(limit, 500)):
         region = random.choice(seismic_regions)
@@ -121,7 +121,7 @@ def generate_mock_disasters(bbox=None, limit=500):
     
     random.seed(42)
     points = []
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     
     for _ in range(min(limit, 200)):
         dtype, label, weight = random.choices(
@@ -209,7 +209,7 @@ def get_mock_event_detail(event_id):
             'lon': round(random.uniform(-180, 180), 4),
             'magnitude': mag,
             'depth': round(random.uniform(5, 300), 1),
-            'timestamp': (datetime.utcnow() - timedelta(hours=random.uniform(1, 72))).strftime('%Y-%m-%dT%H:%M:%SZ'),
+            'timestamp': (datetime.now(timezone.utc) - timedelta(hours=random.uniform(1, 72))).strftime('%Y-%m-%dT%H:%M:%SZ'),
             'description': f'Earthquake of magnitude {mag} detected at a depth of {random.uniform(5, 300):.0f}km. Shaking was felt across a wide area.',
             'severity': severity,
             'source': {'name': 'USGS', 'url': f'https://earthquake.usgs.gov/earthquakes/eventpage/{event_id}'},
@@ -220,7 +220,7 @@ def get_mock_event_detail(event_id):
             },
             'related_events': [
                 {'id': f'{event_id}-aftershock-1', 'title': f'M{round(mag-1.5, 1)} Aftershock', 
-                 'timestamp': (datetime.utcnow() - timedelta(hours=random.uniform(0.5, 24))).strftime('%Y-%m-%dT%H:%M:%SZ')}
+                 'timestamp': (datetime.now(timezone.utc) - timedelta(hours=random.uniform(0.5, 24))).strftime('%Y-%m-%dT%H:%M:%SZ')}
             ],
             'geometry': {'type': 'Point', 'coordinates': [round(random.uniform(-180, 180), 4), round(random.uniform(-60, 70), 4), round(random.uniform(5, 300), 1)]}
         }
@@ -246,7 +246,7 @@ def get_mock_event_detail(event_id):
             'title': f'{event_type.title()} Event',
             'lat': round(random.uniform(-60, 70), 4),
             'lon': round(random.uniform(-180, 180), 4),
-            'timestamp': (datetime.utcnow() - timedelta(hours=random.uniform(1, 168))).strftime('%Y-%m-%dT%H:%M:%SZ'),
+            'timestamp': (datetime.now(timezone.utc) - timedelta(hours=random.uniform(1, 168))).strftime('%Y-%m-%dT%H:%M:%SZ'),
             'description': descriptions.get(event_type, 'Natural disaster event detected.'),
             'severity': severity,
             'source': {'name': 'NASA EONET', 'url': f'https://eonet.gsfc.nasa.gov/api/v3/events/{event_id}'},
@@ -311,7 +311,7 @@ def search_mock_data(query, search_type='all', limit=20):
                 'name': 'M5.2 Earthquake',
                 'lat': 35.6762,
                 'lon': 139.6503,
-                'timestamp': (datetime.utcnow() - timedelta(hours=12)).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                'timestamp': (datetime.now(timezone.utc) - timedelta(hours=12)).strftime('%Y-%m-%dT%H:%M:%SZ'),
                 'snippet': '35km ESE of Tokyo, depth 45km'
             })
         if 'fire' in query or 'wild' in query:
@@ -322,7 +322,7 @@ def search_mock_data(query, search_type='all', limit=20):
                 'name': 'Wildfire - California',
                 'lat': 37.7749,
                 'lon': -122.4194,
-                'timestamp': (datetime.utcnow() - timedelta(hours=48)).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                'timestamp': (datetime.now(timezone.utc) - timedelta(hours=48)).strftime('%Y-%m-%dT%H:%M:%SZ'),
                 'snippet': 'Active fire, 5,000 acres burned'
             })
         if 'flood' in query:
@@ -333,7 +333,7 @@ def search_mock_data(query, search_type='all', limit=20):
                 'name': 'Severe Flooding',
                 'lat': -6.2088,
                 'lon': 106.8456,
-                'timestamp': (datetime.utcnow() - timedelta(hours=72)).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                'timestamp': (datetime.now(timezone.utc) - timedelta(hours=72)).strftime('%Y-%m-%dT%H:%M:%SZ'),
                 'snippet': 'Jakarta region, 50,000 affected'
             })
     
@@ -385,7 +385,7 @@ def get_mock_stats():
                 'top_threat': random.choice(['cyclone', 'bushfire', 'earthquake'])
             }
         },
-        'timestamp': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+        'timestamp': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     }
 
 def get_mock_historical_data(metric, period, aggregation):
@@ -395,7 +395,7 @@ def get_mock_historical_data(metric, period, aggregation):
     days = {'7d': 7, '30d': 30, '1y': 365}.get(period, 30)
     values = []
     
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     for i in range(days):
         date = now - timedelta(days=days - i - 1)
         

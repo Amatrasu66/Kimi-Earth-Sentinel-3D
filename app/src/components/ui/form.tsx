@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- shadcn primitive: intentional variant/helper + component exports */
 "use client"
 
 import * as React from "react"

@@ -6,7 +6,6 @@ import { atmosphereVertexShader, atmosphereFragmentShader } from '@/shaders/atmo
 import {
   filterValidPoints,
   isValidCoordinate,
-  latLonToVector3 as geoLatLonToVector3,
   latLonToVector3Into,
   quaternionForLatLon,
 } from '@/lib/geo';
@@ -23,9 +22,6 @@ interface GlobeProps {
   /** Search fly-to target; `key` retriggers. Null = no flight. */
   flyTo?: { lat: number; lon: number; key: number } | null;
 }
-
-// Backwards-compatible named export (same signature as before).
-export const latLonToVector3 = geoLatLonToVector3;
 
 function Atmosphere({ radius = 5 }: { radius?: number }) {
   const uniforms = useMemo(
@@ -62,9 +58,13 @@ function EarthSphere() {
     './textures/earth-water.png',
   ]);
 
-  // Set texture encoding
+  // Set texture encoding. Mutating the loaded THREE.Texture objects is the
+  // documented three.js setup step (not React state), so the hook-mutation
+  // lint rule is intentionally bypassed here.
   useEffect(() => {
+    /* eslint-disable-next-line react-hooks/immutability */
     if (dayMap) dayMap.colorSpace = THREE.SRGBColorSpace;
+    /* eslint-disable-next-line react-hooks/immutability */
     if (nightMap) nightMap.colorSpace = THREE.SRGBColorSpace;
   }, [dayMap, nightMap]);
 
@@ -164,13 +164,16 @@ function MarkerSystem({
   // maps to validPoints[N] for count, positions, raycast, hover, click.
   const validPoints = useMemo(() => filterValidPoints(points), [points]);
 
-  // Latest callbacks via refs so canvas listeners subscribe exactly once.
+  // Latest callbacks/points via refs so canvas listeners subscribe exactly
+  // once. Synced in an effect (never during render).
   const clickRef = useRef(onMarkerClick);
   const hoverRef = useRef(onMarkerHover);
-  clickRef.current = onMarkerClick;
-  hoverRef.current = onMarkerHover;
   const pointsRef = useRef(validPoints);
-  pointsRef.current = validPoints;
+  useEffect(() => {
+    clickRef.current = onMarkerClick;
+    hoverRef.current = onMarkerHover;
+    pointsRef.current = validPoints;
+  });
 
   // Create marker geometry and material (disposed on unmount)
   const [geometry, material] = useMemo(() => {
@@ -310,8 +313,6 @@ export default function Globe({
     from: THREE.Quaternion;
     to: THREE.Quaternion;
   } | null>(null);
-  const rotatingRef = useRef(isRotating);
-  rotatingRef.current = isRotating;
   const { gl } = useThree();
 
   // Start a fly-to flight when a new target arrives (Phase 4).
@@ -341,6 +342,8 @@ export default function Globe({
   }, [gl]);
 
   // Rotation animation: slerp flight wins over auto-rotate; delta-based.
+  // useFrame re-subscribes on each render, so reading `isRotating` from the
+  // closure is correct without a ref.
   useFrame((_, rawDelta) => {
     const group = groupRef.current;
     if (!group) return;
@@ -351,7 +354,7 @@ export default function Globe({
       const k = EASE_IN_OUT(Math.min(flight.t, 1));
       group.quaternion.slerpQuaternions(flight.from, flight.to, k);
       if (flight.t >= 1) flightRef.current = null;
-    } else if (rotatingRef.current) {
+    } else if (isRotating) {
       group.rotation.y += rotationSpeed * delta * 60;
     }
   });

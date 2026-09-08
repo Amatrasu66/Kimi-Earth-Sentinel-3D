@@ -1,5 +1,5 @@
 import { X, RotateCw, Zap, Eye, Database } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -25,6 +25,18 @@ export default function SettingsModal({ isOpen, onClose, isRotating, onToggleRot
   const [markerDensity, setMarkerDensity] = useState(100);
   const [atmosphereIntensity, setAtmosphereIntensity] = useState(1.0);
   const [showStars, setShowStars] = useState(true);
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  // Focus management + Escape to close while the dialog is open.
+  useEffect(() => {
+    if (!isOpen) return;
+    closeRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -95,9 +107,12 @@ export default function SettingsModal({ isOpen, onClose, isRotating, onToggleRot
     <div className="fixed inset-0 z-[200] flex items-center justify-center" onClick={onClose}>
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-      
+
       {/* Modal */}
-      <div 
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Settings"
         className="relative rounded-2xl overflow-hidden"
         style={{ 
           width: 480,
@@ -117,9 +132,11 @@ export default function SettingsModal({ isOpen, onClose, isRotating, onToggleRot
             <Zap className="w-5 h-5 text-[#FFC31F]" />
             <h2 className="text-white font-medium" style={{ fontFamily: 'Instrument Sans, sans-serif' }}>Settings</h2>
           </div>
-          <button 
+          <button
+            ref={closeRef}
             onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 transition-colors"
+            aria-label="Close settings"
+            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 transition-colors focus-visible:outline-2 focus-visible:outline-[#FFC31F]"
           >
             <X className="w-5 h-5 text-white/60" />
           </button>

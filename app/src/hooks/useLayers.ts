@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useEffectEvent, useRef } from 'react';
 import { api } from '@/services/api';
 import type { DataStatus, LayerMetadata, LayerData, LayerId } from '@/types';
 
@@ -35,7 +35,7 @@ interface UseLayerDataOptions {
 }
 
 export function useLayerData(layerId: LayerId | null, options?: UseLayerDataOptions) {
-  const [data, setData] = useState<LayerData | null>(null);
+  const [rawData, setRawData] = useState<LayerData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,7 +46,13 @@ export function useLayerData(layerId: LayerId | null, options?: UseLayerDataOpti
   const minSeverity = options?.min_severity;
   const requestId = useRef(0);
 
-  const fetchData = useCallback(() => {
+  // fetchData runs outside the effect body (useEffectEvent) so the effect
+  // itself never calls setState synchronously — it only signals the fetch.
+  // Manual refreshes bump `nonce`, which re-runs the same effect.
+  const [nonce, setNonce] = useState(0);
+  const refetch = useCallback(() => setNonce((n) => n + 1), []);
+
+  const fetchData = useEffectEvent(() => {
     if (!layerId) return;
     const id = ++requestId.current;
 
@@ -57,7 +63,7 @@ export function useLayerData(layerId: LayerId | null, options?: UseLayerDataOpti
       .getLayerData(layerId, { limit, min_severity: minSeverity })
       .then((layerData) => {
         if (requestId.current !== id) return; // stale response guard
-        setData(layerData);
+        setRawData(layerData);
         setLoading(false);
       })
       .catch((err: unknown) => {
@@ -65,19 +71,17 @@ export function useLayerData(layerId: LayerId | null, options?: UseLayerDataOpti
         setError(err instanceof Error ? err.message : 'Failed to load layer data.');
         setLoading(false);
       });
-  }, [layerId, limit, minSeverity]);
+  });
 
   useEffect(() => {
-    if (!layerId) {
-      setData(null);
-      setError(null);
-      setLoading(false);
-      return;
-    }
     fetchData();
-  }, [fetchData, layerId]);
+  }, [layerId, limit, minSeverity, nonce]);
 
+  // When no layer is selected there is nothing to show. Derived (not
+  // stored) so no cascading setState-in-effect is needed; switching layers
+  // keeps the previous payload visible until the new one arrives.
+  const data = layerId ? rawData : null;
   const dataStatus: DataStatus | null = data?.data_status ?? null;
 
-  return { data, loading, error, dataStatus, refetch: fetchData };
+  return { data, loading: layerId ? loading : false, error, dataStatus, refetch };
 }

@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- shadcn primitive: intentional variant/helper + component exports */
 "use client"
 
 import * as React from "react"
@@ -606,8 +607,10 @@ function SidebarMenuSkeleton({
 }: React.ComponentProps<"div"> & {
   showIcon?: boolean
 }) {
-  // Random width between 50 to 90%.
+  // Random width between 50 to 90%. Stable per mount via useMemo; the
+  // purity rule is bypassed — this is placeholder shimmer, not app state.
   const width = React.useMemo(() => {
+    // eslint-disable-next-line react-hooks/purity
     return `${Math.floor(Math.random() * 40) + 50}%`
   }, [])
 

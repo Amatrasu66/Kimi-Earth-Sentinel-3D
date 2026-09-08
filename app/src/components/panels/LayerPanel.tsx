@@ -4,6 +4,8 @@ import type { LayerId } from '@/types';
 interface LayerPanelProps {
   activeLayer: LayerId | null;
   onLayerToggle: (layerId: LayerId) => void;
+  /** Keyboard shortcut order — index i maps to number key i+1. */
+  shortcutLayers?: LayerId[];
 }
 
 const LAYER_CONFIG: Array<{
@@ -21,56 +23,59 @@ const LAYER_CONFIG: Array<{
   { id: 'wildfires', icon: <Flame className="w-5 h-5" />, label: 'Wildfires' },
 ];
 
-export default function LayerPanel({ activeLayer, onLayerToggle }: LayerPanelProps) {
+export default function LayerPanel({ activeLayer, onLayerToggle, shortcutLayers = [] }: LayerPanelProps) {
   return (
-    <div 
+    <div
+      role="toolbar"
+      aria-label="Environmental layers"
       className="fixed left-4 z-50 flex flex-col gap-2 rounded-2xl p-2"
-      style={{ 
+      style={{
         top: '50%',
         transform: 'translateY(-50%)',
-        background: 'rgba(15, 15, 20, 0.7)', 
+        background: 'rgba(15, 15, 20, 0.7)',
         backdropFilter: 'blur(20px)',
         border: '1px solid rgba(255,255,255,0.1)',
       }}
     >
       {LAYER_CONFIG.map((layer) => {
         const isActive = activeLayer === layer.id;
+        const shortcutIdx = shortcutLayers.indexOf(layer.id);
+        const hint = shortcutIdx >= 0 ? ` (press ${shortcutIdx + 1})` : '';
         return (
           <button
             key={layer.id}
             onClick={() => onLayerToggle(layer.id)}
-            className="relative w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 group"
+            className="relative w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 group focus-visible:outline-2 focus-visible:outline-[#FFC31F]"
             style={{
               background: isActive ? 'rgba(255,195,31,0.15)' : 'transparent',
               border: isActive ? '2px solid #FFC31F' : '2px solid transparent',
               boxShadow: isActive ? '0 0 12px rgba(255,195,31,0.3)' : 'none',
             }}
-            title={layer.label}
-            aria-label={`Toggle ${layer.label} layer`}
+            title={`${layer.label}${hint}`}
+            aria-label={`Toggle ${layer.label} layer${hint}`}
+            aria-pressed={isActive}
           >
-            <div 
-              className="transition-colors duration-200"
-              style={{ color: isActive ? '#FFC31F' : 'rgba(255,255,255,0.5)' }}
-            >
+            <div className="transition-colors duration-200" style={{ color: isActive ? '#FFC31F' : 'rgba(255,255,255,0.5)' }}>
               {layer.icon}
             </div>
-            
+
             {/* Hover glow */}
-            <div 
+            <div
               className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"
               style={{ background: 'rgba(255,255,255,0.05)' }}
             />
-            
+
             {/* Tooltip */}
-            <div 
+            <div
               className="absolute left-full ml-3 px-2 py-1 rounded-md text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
-              style={{ 
-                background: 'rgba(15, 15, 20, 0.9)', 
+              style={{
+                background: 'rgba(15, 15, 20, 0.9)',
                 color: '#fff',
                 border: '1px solid rgba(255,255,255,0.1)',
               }}
             >
               {layer.label}
+              {shortcutIdx >= 0 && <span className="text-white/40 ml-1">({shortcutIdx + 1})</span>}
             </div>
           </button>
         );

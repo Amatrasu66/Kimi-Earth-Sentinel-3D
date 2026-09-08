@@ -1,0 +1,26 @@
+# Render deployment (backend). Frontend deploys separately on Vercel
+# with Root Directory = `app` (see README → Deployment).
+services:
+  - type: web
+    name: kimi-earth-sentinel-api
+    runtime: python
+    rootDir: app/backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn wsgi:app --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 60
+    healthCheckPath: /api/health
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        # Set to your Vercel frontend origin(s), comma-separated.
+        value: https://kimi-earth-sentinel-3d.vercel.app
+      - key: CACHE_TYPE
+        value: simple
+      - key: REQUEST_TIMEOUT
+        value: '15'
+      - key: AIRNOW_API_KEY
+        sync: false
+      - key: NASA_FIRMS_API_KEY
+        sync: false
