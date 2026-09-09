@@ -38,14 +38,14 @@ No screenshots are checked in yet. To add them, place PNG files under `docs/scre
 │  Vite +      │─────▶│  /api/v1/*     │─────▶│  usgs / eonet /  │─────▶│  USGS · NASA EONET ·    │
 │  Three.js    │ JSON │  validation +  │      │  open_meteo /    │ HTTP │  NASA FIRMS ·           │
 │  frontend    │◀─────│  cache +       │      │  airnow / firms  │◀─────│  Open-Meteo · AirNow    │
-│  (app/src)   │      │  data_status   │      │  + fallback      │      │                         │
+│  (frontend/ │      │  data_status   │      │  + fallback      │      │                         │
 └──────────────┘      └────────────────┘      └──────────────────┘      └─────────────────────────┘
 ```
 
-- **Frontend (`app/src`)** — globe scene, markers, panels, search, API client (`services/api.ts`), formatting/provenance display. Single `activeLayer` state (see *Future Roadmap* for compositing plans).
-- **Flask API (`app/backend/app`)** — route validation, per-layer TTL caching, `data_status` provenance envelope, JSON error handlers.
-- **Data services (`app/backend/app/services`)** — one module per provider; provider errors and normalization errors are handled separately; failures degrade to *labelled* simulated data, never silent fakes.
-- **Fallback (`services/fallback.py`)** — deterministic demo data used only when a provider is unreachable/misconfigured.
+- **Frontend (`frontend/src`)** — globe scene, markers, panels, search, API client (`services/api.ts`), formatting/provenance display. Single `activeLayer` state (see *Future Roadmap* for compositing plans).
+- **Flask API (`backend/app`)** — route validation, per-layer TTL caching, `data_status` provenance envelope, JSON error handlers.
+- **Data services (`backend/app/services`)** — one module per provider; provider errors and normalization errors are handled separately; failures degrade to *labelled* simulated data, never silent fakes.
+- **Fallback (`backend/app/services/fallback.py`)** — deterministic demo data used only when a provider is unreachable/misconfigured.
 
 ## Tech Stack
 
@@ -59,7 +59,7 @@ Frontend:
 Backend:
 
 - Python, Flask, Flask-CORS, Gunicorn
-- requests, APScheduler (in-process cache warming), structlog, python-dotenv
+- requests, APScheduler (opt-in dev cache warming; off in production), structlog, python-dotenv
 - In-memory `CacheService` (process-local, Redis-swappable interface — no Redis running)
 - pytest (dev)
 
@@ -70,7 +70,7 @@ Backend:
 | Earthquakes | USGS FDSNWS | No | Simulated (labelled) |
 | Disasters | NASA EONET | No | Simulated (labelled) |
 | Temperature / Precipitation / Clouds / Wind | Open-Meteo | No | Simulated (labelled) |
-| Air quality | AirNow (US only) | `AIRNOW_API_KEY` | Simulated (labelled) |
+| Air quality | AirNow (US only) | `AIRNOW_API_KEY` | Simulated (labelled); `bbox` rejected with `400 UNSUPPORTED_PARAM` (cannot be honored by this source) |
 | Wildfires | NASA FIRMS | `NASA_FIRMS_API_KEY` | Simulated (labelled) |
 
 Live vs cached vs simulated:
@@ -84,38 +84,46 @@ Live vs cached vs simulated:
 
 ```
 Kimi-Earth-Sentinel-3D/
-├── render.yaml                  # Render backend deployment
 ├── README.md
-└── app/                         # Frontend root (Vercel Root Directory)
-    ├── package.json
-    ├── vite.config.ts
-    ├── index.html
-    ├── public/textures/         # Earth day/night/cloud/topology/water
-    ├── src/
-    │   ├── App.tsx              # Active layer, selection, fly-to, shortcuts
-    │   ├── components/globe/    # GlobeScene (canvas) + Globe (markers, flight)
-    │   ├── components/panels/   # TopNav, LayerPanel, DataPanel, BottomBar, SettingsModal
-    │   ├── components/overlays/ # Tooltip, DataStatusBanner
-    │   ├── hooks/               # useLayers/useLayerData (loop-safe), useStats/useSearch
-    │   ├── services/api.ts      # Centralized API base URL + client
-    │   ├── lib/geo.ts           # Canonical coordinate validation + projection
-    │   ├── lib/format.ts        # Units, relative time, coordinate formatting
-    │   └── types/               # DataPoint, LayerData, DataStatus, …
-    └── backend/
-        ├── wsgi.py              # Gunicorn entrypoint (honours $PORT)
-        ├── requirements.txt     # Production deps
-        ├── requirements-dev.txt # pytest
-        ├── runtime.txt          # Python version for Render
-        ├── .env.example
-        ├── app/
-        │   ├── __init__.py      # App factory: CORS allow-list, JSON errors, /api/health
-        │   ├── config.py          # Central config (URLs/keys/timeouts from env)
-        │   ├── cache_service.py   # CacheService interface + InMemoryCache (process-local)
-        │   ├── routes/          # layers, events, search, stats, geocode, imagery, health
-        │   ├── services/        # usgs, nasa_eonet, nasa_firms, open_meteo, airnow, heatmap, fallback, imagery, geocode
-        │   ├── utils/           # validation (400s, never 500s) + provenance (data_status)
-        │   └── scheduler/jobs.py  # In-process cache warming (no workers)
-        └── tests/               # pytest: contract + unit tests
+├── render.yaml                  # Render backend deployment (rootDir: backend)
+├── .github/workflows/ci.yml     # Frontend (frontend/) + backend (backend/) jobs
+├── frontend/                    # React/Vite app (Vercel Root Directory)
+│   ├── package.json
+│   ├── vite.config.ts
+│   ├── index.html
+│   ├── public/textures/         # Earth day/night/cloud/topology/water
+│   ├── src/
+│   │   ├── App.tsx              # Active layer, selection, fly-to, shortcuts
+│   │   ├── components/globe/    # GlobeScene (canvas) + Globe (markers, flight)
+│   │   ├── components/panels/   # TopNav, LayerPanel, DataPanel, BottomBar, SettingsModal
+│   │   ├── components/overlays/ # Tooltip, DataStatusBanner
+│   │   ├── hooks/               # useLayers/useLayerData (loop-safe), useSearch
+│   │   ├── services/api.ts      # Centralized API base URL + client
+│   │   ├── lib/geo.ts           # Canonical coordinate validation + projection
+│   │   ├── lib/format.ts        # Units, relative time, coordinate formatting
+│   │   └── types/               # DataPoint, LayerData, DataStatus, …
+│   ├── .env.example
+│   └── README.md
+├── backend/                     # Flask API (Render rootDir)
+│   ├── wsgi.py                  # Gunicorn entrypoint (honours $PORT)
+│   ├── requirements.txt         # Production deps
+│   ├── requirements-dev.txt     # pytest
+│   ├── runtime.txt              # Python version for Render
+│   ├── .env.example
+│   ├── README.md
+│   ├── app/
+│   │   ├── __init__.py      # App factory: CORS allow-list, JSON errors, /api/health
+│   │   ├── config.py          # Central config (URLs/keys/timeouts from env)
+│   │   ├── cache_service.py   # CacheService interface + InMemoryCache (process-local)
+│   │   ├── routes/          # layers, events, search, stats, geocode, imagery, health
+│   │   ├── services/        # usgs, nasa_eonet, nasa_firms, open_meteo, airnow, heatmap, fallback, imagery, geocode
+│   │   ├── utils/           # validation (400s, never 500s) + provenance (data_status)
+│   │   └── scheduler/jobs.py  # Opt-in cache warming (disabled in production)
+│   └── tests/               # pytest: contract + unit tests
+└── docs/
+    ├── development.md           # Practical dev guide (setup, env, tests, deploy)
+    └── prompts/
+        └── foundation-architecture-pass.md  # Prior foundation-pass brief
 ```
 
 ## Local Development
@@ -125,7 +133,7 @@ Prerequisites: Node.js 20+, Python 3.12+.
 Backend:
 
 ```bash
-cd app/backend
+cd backend
 python -m venv .venv
 # Windows: .venv\Scripts\activate | macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
@@ -137,7 +145,7 @@ python wsgi.py
 Frontend:
 
 ```bash
-cd app
+cd frontend
 npm install
 # point at the backend (defaults to http://localhost:5001/api/v1)
 copy .env.example .env        # then set VITE_API_BASE_URL if needed
@@ -148,14 +156,14 @@ Open `http://localhost:3000`, pick a layer (or press `5` for earthquakes).
 
 ## Environment Variables
 
-Frontend (`app/.env`):
+Frontend (`frontend/.env`):
 
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
 | `VITE_API_BASE_URL` | Yes (prod) | `http://localhost:5001/api/v1` | Backend base URL incl. `/api/v1` |
 | `VITE_API_URL` | No | — | Legacy alias, used only if the above is unset |
 
-Backend (`app/backend/.env`):
+Backend (`backend/.env`):
 
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
@@ -168,7 +176,7 @@ Backend (`app/backend/.env`):
 | `AIRNOW_API_KEY` | For live AQI | — | Server-side only; air quality is simulated without it |
 | `NASA_FIRMS_API_KEY` | For live fires | — | Server-side only; wildfires are simulated without it |
 | `REQUEST_TIMEOUT` | No | `15` | Upstream HTTP timeout (seconds) |
-| `SCHEDULER_ENABLED` | No | `true` | In-process cache warming toggle (`false` disables) |
+| `SCHEDULER_ENABLED` | No | `true` (local) / `false` (Render) | Opt-in cache warming toggle (`false` disables; production stays `false`) |
 
 Never commit `.env` files or keys; both are git-ignored with `.env.example` templates provided.
 
@@ -181,7 +189,7 @@ Base URL `/api/v1` (plus unversioned `GET /api/health` for deployment checks). A
 | `GET /api/health` | Liveness: `{ status: "ok", service, version, timestamp, uptime_seconds }` |
 | `GET /api/v1/health` | Same payload, versioned |
 | `GET /api/v1/layers` | Layer metadata (id, name, source, unit, color scale, refresh interval) |
-| `GET /api/v1/layers/<layer_id>/data?bbox=&limit=&min_severity=` | Points + stats + `data_status`; validated (`limit` 1–2000, bbox ranges, known severities); cached per layer TTL |
+| `GET /api/v1/layers/<layer_id>/data?bbox=&limit=&min_severity=` | Points + stats + `data_status`; validated (`limit` 1–2000, bbox ranges, known severities); cached per layer TTL; `air_quality` rejects `bbox` with `400 UNSUPPORTED_PARAM` (US-only source) |
 | `GET /api/v1/layers/<layer_id>/heatmap?resolution=&time_range=` | Base64 float32 grid + `data_status` (currently simulated; same schema for future real grids) |
 | `GET /api/v1/events/<id>` | Event detail (currently simulated, labelled; live lookup is an extension point) |
 | `GET /api/v1/search?q=&type=&limit=` | Location/event search over bundled gazetteer + event index |
@@ -198,9 +206,9 @@ High-level request path:
 ```
 Vercel
   ↓ HTTPS
-React + Three.js frontend (app/src)
+React + Three.js frontend (frontend/src)
   ↓ JSON (/api/v1/*)
-Render / Flask API (app/backend/app)
+Render / Flask API (backend/app)
   ↓ dispatch
 Provider adapters (services/usgs, nasa_eonet, nasa_firms, open_meteo, airnow)
   ↓ HTTPS
@@ -216,10 +224,10 @@ External environmental APIs (USGS, NASA EONET/FIRMS/GIBS, Open-Meteo, AirNow)
 
 In-memory, process-local:
 
-- `CacheService` interface → `InMemoryCache` implementation (`app/backend/app/cache_service.py`).
+- `CacheService` interface → `InMemoryCache` implementation (`backend/app/cache_service.py`).
 - Per-layer TTLs (`utils/provenance.py`); `SIMULATED`/`UNAVAILABLE` payloads cached only briefly (`FALLBACK_TTL = 60s`) so recovery is fast.
 - Expired `LIVE` entries are served once more as `STALE` (original `fetched_at` preserved) when a refresh fails.
-- An in-process APScheduler warms the default view of each layer at its TTL — no workers, no queues.
+- V1 flow is deliberately request-driven with no background infrastructure: request → process-local cache → provider on miss → cache result. An opt-in in-process APScheduler (`backend/app/scheduler/jobs.py`, `SCHEDULER_ENABLED`) can warm the default view of each layer, but it is **disabled in production** (`render.yaml` sets `false`): with multiple Gunicorn workers each process would run its own scheduler against its own process-local cache — duplicate provider traffic with no shared benefit.
 
 **No database is currently required.** The application retrieves environmental data from external providers and visualizes it rather than maintaining a persistent user-owned dataset, so a short-lived process-local cache is sufficient.
 
@@ -246,13 +254,20 @@ Shortcuts are ignored while typing in inputs.
 
 Backend → Render (see `render.yaml` at repo root):
 
-- Root Directory `app/backend`, build `pip install -r requirements.txt`, start via Gunicorn (`wsgi:app`, honours `$PORT`), health check `/api/health`, Python pinned in `runtime.txt`.
-- Set `CORS_ORIGINS` to the Vercel frontend origin, plus `SECRET_KEY` and any provider keys.
+- Root Directory `backend`, build `pip install -r requirements.txt`, start via Gunicorn (`wsgi:app`, honours `$PORT`), health check `/api/health`, Python pinned in `runtime.txt`.
+- Set `CORS_ORIGINS` to the Vercel frontend origin(s), comma-separated, plus `SECRET_KEY` and any provider keys. The backend uses an explicit allow-list — never `*`; see *CORS* below.
+- `SCHEDULER_ENABLED` is `false` in production (request-time cache + stale fallback need no warming).
 
 Frontend → Vercel:
 
-- Root Directory `app`, framework Vite, build `npm run build`, output `dist`.
+- Root Directory `frontend`, framework Vite, build `npm run build`, output `dist`.
 - Set `VITE_API_BASE_URL` to `https://<your-render-service>.onrender.com/api/v1`. No localhost URL is baked into the client; all calls go through the centralized `API_BASE`.
+
+## CORS
+
+- The Flask API enables CORS only for `/api/*` against the explicit `CORS_ORIGINS` allow-list (exact origins, comma-separated). There is no wildcard mode.
+- Local development default covers the Vite dev server (`http://localhost:3000`, `http://localhost:5173`).
+- Production: set `CORS_ORIGINS` to the deployed Vercel frontend origin(s). After renaming the Vercel project or adding a custom domain, update this variable — otherwise browsers block API requests. Preview deployments with distinct URLs need their own entries; no automatic preview-wildcard behavior is implemented.
 
 ## Data Reliability
 
@@ -278,8 +293,8 @@ Upstream providers can be slow, rate-limited, or down — and two layers need ke
 ## Contributing
 
 1. Fork and branch from `main`.
-2. Frontend: `cd app && npm install && npm run dev` — keep `npm run lint` and `npm run build` clean.
-3. Backend: `cd app/backend && pip install -r requirements.txt -r requirements-dev.txt && python -m pytest tests` — new endpoints need validation tests and `data_status` coverage.
+2. Frontend: `cd frontend && npm install && npm run dev` — keep `npm run lint` and `npm run build` clean.
+3. Backend: `cd backend && pip install -r requirements.txt -r requirements-dev.txt && python -m pytest tests` — new endpoints need validation tests and `data_status` coverage.
 4. Never commit secrets, `__pycache__`, or `node_modules`; simulated data must always stay labelled.
 
 ## License

@@ -129,3 +129,38 @@ def test_cors_allowlist_present(client):
     # Flask-CORS answers preflight; simple GET just needs to succeed.
     assert r.status_code == 200
     assert re.match(r"application/json", r.content_type)
+
+
+def test_airnow_bbox_rejected_with_unsupported_param(client):
+    r = client.get("/api/v1/layers/air_quality/data?bbox=-125,25,-65,49&limit=5")
+    assert r.status_code == 400
+    body = r.get_json()
+    assert body["success"] is False
+    assert body["error"]["code"] == "UNSUPPORTED_PARAM"
+
+
+def test_bbox_still_accepted_for_bbox_capable_layers(client):
+    r = client.get("/api/v1/layers/earthquakes/data?bbox=-125,25,-65,49&limit=5")
+    assert r.status_code == 200
+    assert r.get_json()["success"] is True
+
+
+def test_secret_key_sentinel_consistent():
+    """One dev-placeholder value shared by config, warning, and template."""
+    import inspect
+    import os
+
+    import app as app_pkg
+    from app.config import Config
+
+    assert Config.DEFAULT_SECRET_KEY == "dev-secret-key-change-in-production"
+    # The production warning must compare against the same sentinel, not a
+    # duplicated literal that can drift.
+    factory_src = inspect.getsource(app_pkg.create_app)
+    assert "Config.DEFAULT_SECRET_KEY" in factory_src
+    assert "dev-secret-key-change-in-production" not in factory_src
+    # The .env template must ship the same placeholder so copying it
+    # verbatim in production still triggers the warning.
+    template = os.path.join(os.path.dirname(__file__), "..", ".env.example")
+    with open(template, encoding="utf-8") as f:
+        assert f"SECRET_KEY={Config.DEFAULT_SECRET_KEY}" in f.read()

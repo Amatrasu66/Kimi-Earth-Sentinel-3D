@@ -16,7 +16,7 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
 
-    if _is_production(app) and app.config.get("SECRET_KEY") == "dev-secret-key-change-in-production":
+    if _is_production(app) and app.config.get("SECRET_KEY") == Config.DEFAULT_SECRET_KEY:
         logger.warning("secret_key_default", message="Running with the default SECRET_KEY; set SECRET_KEY.")
 
     # CORS restricted to the configured allow-list (Phase 17).

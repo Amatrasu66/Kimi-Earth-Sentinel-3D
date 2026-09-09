@@ -82,9 +82,10 @@ def _normalize(items, limit, min_severity=None):
 def get_air_quality_data(bbox=None, limit=500, min_severity=None):
     """Fetch air quality data from AirNow API (labels provenance).
 
-    AirNow is US-only with a fixed central-US query point; ``bbox`` cannot
-    be honoured upstream and is documented rather than silently ignored
-    (see README data sources). ``min_severity`` is applied post-fetch.
+    AirNow is US-only with a fixed central-US query point; ``bbox`` is
+    rejected with 400 UNSUPPORTED_PARAM at the route layer (see
+    ``validation.check_supported_params``), so it never arrives here
+    silently ignored. ``min_severity`` is applied post-fetch.
     """
     api_key = current_app.config.get("AIRNOW_API_KEY")
     if not api_key:

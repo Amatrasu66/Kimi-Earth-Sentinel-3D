@@ -17,7 +17,10 @@ def _as_bool(raw, default=True):
 
 class Config:
     FLASK_ENV = os.environ.get("FLASK_ENV", "production")
-    SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key-change-in-production")
+    # Single sentinel for the dev placeholder: development may run with it,
+    # production must override it (create_app warns on this exact value).
+    DEFAULT_SECRET_KEY = "dev-secret-key-change-in-production"
+    SECRET_KEY = os.environ.get("SECRET_KEY", DEFAULT_SECRET_KEY)
 
     # CORS — explicit allow-list (Phase 17). Development default covers Vite.
     CORS_ORIGINS = _csv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173")

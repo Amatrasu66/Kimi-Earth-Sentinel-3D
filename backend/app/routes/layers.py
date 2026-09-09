@@ -11,6 +11,7 @@ from ..models.layer import get_all_layers, get_layer
 from ..services.layer_service import get_heatmap_payload, get_layer_payload
 from ..utils.provenance import success_response
 from ..utils.validation import (
+    check_supported_params,
     error_response,
     parse_bbox,
     parse_limit,
@@ -44,6 +45,9 @@ def get_layer_data(layer_id):
     min_severity, sev_err = parse_severity(request.args.get("min_severity"))
     if sev_err:
         return error_response(sev_err)
+    unsupported = check_supported_params(layer_id, bbox_raw)
+    if unsupported:
+        return error_response(unsupported, code="UNSUPPORTED_PARAM")
 
     # No broad except here by design: provider failures are already
     # converted to labelled SIMULATED/STALE payloads inside the service

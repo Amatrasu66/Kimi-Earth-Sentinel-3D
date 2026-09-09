@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Search, Settings, Globe } from 'lucide-react';
-import { useSearch } from '@/hooks/useStats';
+import { useSearch } from '@/hooks/useSearch';
 
 interface TopNavProps {
   onSearchResultClick: (lat: number, lon: number) => void;

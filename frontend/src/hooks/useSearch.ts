@@ -1,32 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '@/services/api';
-import type { GlobalStats } from '@/types';
-
-export function useStats() {
-  const [stats, setStats] = useState<GlobalStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    api.getStats()
-      .then(data => {
-        if (cancelled) return;
-        setStats(data);
-        setLoading(false);
-      })
-      .catch(err => {
-        if (cancelled) return;
-        setError(err.message);
-        setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return { stats, loading, error };
-}
 
 export function useSearch() {
   const [results, setResults] = useState<import('@/types').SearchResult[]>([]);

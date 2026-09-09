@@ -15,10 +15,12 @@ __all__ = [
     "DEFAULT_LIMIT",
     "MAX_HEATMAP_RESOLUTION",
     "DEFAULT_HEATMAP_RESOLUTION",
+    "LAYERS_WITHOUT_BBOX",
     "error_response",
     "parse_limit",
     "parse_bbox",
     "bbox_to_string",
+    "check_supported_params",
     "parse_severity",
     "parse_resolution",
     "parse_time_range",
@@ -28,6 +30,11 @@ __all__ = [
 
 SEVERITIES = ("low", "moderate", "high", "critical")
 TIME_RANGES = ("24h", "48h", "7d", "30d")
+
+# Layers whose upstream source cannot honor an arbitrary global bbox.
+# The AirNow adapter queries a fixed US-oriented observation endpoint, so
+# accepting bbox there would silently ignore the caller's filter.
+LAYERS_WITHOUT_BBOX = frozenset({"air_quality"})
 
 MAX_LIMIT = 2000
 DEFAULT_LIMIT = 500
@@ -76,6 +83,20 @@ def bbox_to_string(bbox):
     if not bbox:
         return None
     return f"{bbox['min_lon']},{bbox['min_lat']},{bbox['max_lon']},{bbox['max_lat']}"
+
+
+def check_supported_params(layer_id, bbox_raw=None):
+    """Reject params the layer's source cannot honor (never silently ignore).
+
+    Returns an error message, or ``None`` when the combination is supported.
+    """
+    if bbox_raw and layer_id in LAYERS_WITHOUT_BBOX:
+        return (
+            f"Layer {layer_id!r} does not support the 'bbox' parameter: "
+            "its source is US-oriented and cannot honor an arbitrary global "
+            "bounding box. Omit 'bbox' to fetch this layer."
+        )
+    return None
 
 
 def parse_severity(raw):

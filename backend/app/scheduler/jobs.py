@@ -1,9 +1,20 @@
-"""In-process cache warming (Phase 6).
+"""Opt-in in-process cache warming (disabled in production for V1).
 
-No workers, no queues, no additional infrastructure: APScheduler runs
-inside the Flask process and pre-fetches the default view of every layer
-(the exact parameters and cache keys the routes use) so user requests
-rarely pay for a cold provider call.
+No workers, no queues, no additional infrastructure: when enabled,
+APScheduler runs inside the Flask process and pre-fetches the default
+view of every layer so user requests rarely pay for a cold provider call.
+
+V1 DECISION: ``SCHEDULER_ENABLED`` is ``false`` in production
+(``render.yaml``). With multiple Gunicorn workers each process would run
+its own scheduler against its own process-local cache — duplicate
+provider traffic with no shared benefit. The request-time cache plus
+stale fallback in :mod:`app.services.layer_service` remain fully
+functional without warming, so the desired V1 behavior is simply::
+
+    request → process-local cache → provider on miss → cache result
+
+Enable the scheduler only for single-process deployments (local dev)
+where warming one shared-in-that-process cache is genuinely useful.
 
 * Jobs run at each layer's TTL, so entries are refreshed just as they
   would otherwise expire.
