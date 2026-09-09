@@ -59,7 +59,7 @@ Kimi-Earth-Sentinel-3D/
 
 Supporting frontend libraries (forms, charts, utilities — not core stack): `react-hook-form`, `zod`, `recharts`, `date-fns`, `clsx` / `tailwind-merge` / `class-variance-authority`, `cmdk`, `embla-carousel-react`, `input-otp`, `next-themes`, `react-day-picker`, `react-resizable-panels`, `sonner`, `vaul`. State is local React state (`useState` + hooks); there is no Redux, Zustand store, or React Router in the application code.
 
-Python runtime is pinned to `python-3.12.7` in `backend/runtime.txt`; local development requires Python 3.12+ and Node.js 20+.
+Python runtime is pinned to `python-3.12.7` in `backend/runtime.txt`; local development requires Python 3.12+ and Node.js 24+.
 
 ## System Architecture
 
@@ -187,7 +187,7 @@ Kimi-Earth-Sentinel-3D/
 
 ## Local Development
 
-Prerequisites: Node.js 20+, Python 3.12+.
+Prerequisites: Node.js 24+, Python 3.12+.
 
 Backend (serves on `http://localhost:5001` by default; `PORT` wins, `FLASK_PORT` is the local fallback):
 
@@ -277,7 +277,7 @@ pip install -r requirements.txt -r requirements-dev.txt
 python -m pytest tests/ -q
 ```
 
-CI (`.github/workflows/ci.yml`) runs both on pushes to `main` and on all pull requests: frontend `npm ci` → `lint` → `test` → `build` (Node 20), and backend `pip install -r requirements.txt -r requirements-dev.txt` → `pytest` (Python 3.12, scheduler disabled via `DISABLE_SCHEDULER=1`).
+CI (`.github/workflows/ci.yml`) runs both on pushes to `main` and on all pull requests: frontend `npm ci` → `lint` → `test` → `build` (Node 24), and backend `pip install -r requirements.txt -r requirements-dev.txt` → `pytest` (Python 3.12, scheduler disabled via `DISABLE_SCHEDULER=1`).
 
 ## Deployment
 
