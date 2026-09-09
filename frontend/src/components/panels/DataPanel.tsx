@@ -65,6 +65,104 @@ function StatCard({ label, value, icon }: { label: string; value: string | numbe
   );
 }
 
+function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex justify-between items-center gap-3 text-sm py-1">
+      <span className="text-white/40 text-xs flex-shrink-0">{label}</span>
+      <span className="text-white/85 text-xs text-right">{children}</span>
+    </div>
+  );
+}
+
+/**
+ * Live provider fields for one event. Only renders fields the provider
+ * actually supplied — no "N/A" placeholders. Marker-level facts
+ * (magnitude/depth/time/location) already appear above from the point.
+ */
+function EventLiveDetails({ detail, showMagnitude }: { detail: EventDetail; showMagnitude: boolean }) {
+  const hasRows =
+    (showMagnitude && detail.magnitude != null) ||
+    detail.updated_at ||
+    detail.felt != null ||
+    detail.alert ||
+    detail.tsunami != null ||
+    detail.significance != null ||
+    detail.status ||
+    (detail.categories && detail.categories.length > 0);
+
+  return (
+    <>
+      {hasRows && (
+        <div
+          className="rounded-xl p-3"
+          style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
+        >
+          <div className="text-white/40 text-xs mb-1">Provider details</div>
+          {showMagnitude && detail.magnitude != null && (
+            <DetailRow label="Magnitude">
+              M{detail.magnitude}
+              {detail.magnitude_unit ? ` (${detail.magnitude_unit})` : ''}
+            </DetailRow>
+          )}
+          {detail.updated_at && (
+            <DetailRow label="Updated">
+              <span title={detail.updated_at}>{formatRelativeTime(detail.updated_at)}</span>
+            </DetailRow>
+          )}
+          {detail.felt != null && <DetailRow label="Felt reports">{detail.felt}</DetailRow>}
+          {detail.alert && <DetailRow label="Alert">{detail.alert.toUpperCase()}</DetailRow>}
+          {detail.tsunami != null && <DetailRow label="Tsunami">{detail.tsunami ? 'Yes' : 'No'}</DetailRow>}
+          {detail.significance != null && <DetailRow label="Significance">{detail.significance}</DetailRow>}
+          {detail.status && (
+            <DetailRow label="Status">
+              {detail.status}
+              {detail.closed_at ? ` · closed ${formatRelativeTime(detail.closed_at)}` : ''}
+            </DetailRow>
+          )}
+          {detail.categories && detail.categories.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              {detail.categories.map((cat) => (
+                <span
+                  key={cat}
+                  className="px-2 py-0.5 rounded-full text-[11px] text-white/60"
+                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
+                >
+                  {cat}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {detail.sources && detail.sources.length > 0 && (
+        <div
+          className="rounded-xl p-3"
+          style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
+        >
+          <div className="text-white/40 text-xs mb-1">Sources</div>
+          {detail.sources.map((s) => (
+            <div key={s.id} className="text-xs py-0.5">
+              {s.url ? (
+                <a
+                  href={s.url}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="text-[#FFC31F]/90 hover:text-[#FFC31F] hover:underline"
+                >
+                  {s.id} ↗
+                </a>
+              ) : (
+                <span className="text-white/60">{s.id}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 function LayerLegend({ layerMeta }: { layerMeta: LayerMetadata }) {
   if (!layerMeta.color_scale || layerMeta.color_scale.length === 0) return null;
   return (
@@ -206,6 +304,10 @@ export default function DataPanel({
               </div>
             </div>
 
+            {/* Provenance travels with the detail view: live provider
+                records must never be visually identical to fallbacks. */}
+            <DataStatusBanner status={eventDetail?.data_status ?? dataStatus} compact />
+
             {eventDetailLoading ? (
               <div className="space-y-3" role="status" aria-label="Loading event details">
                 <div className="h-20 rounded-xl animate-pulse" style={{ background: 'rgba(255,255,255,0.03)' }} />
@@ -260,10 +362,37 @@ export default function DataPanel({
                       <span className="text-white/40 text-xs">Description</span>
                     </div>
                     <p className="text-white/70 text-sm leading-relaxed">{eventDetail.description}</p>
-                    {eventDetail.source && (
-                      <p className="text-white/30 text-xs mt-2">Source: {eventDetail.source.name}</p>
+                  </div>
+                )}
+
+                {/* Attribution is independent of description: live provider
+                    records (e.g. USGS) often carry no description text. */}
+                {eventDetail?.source && (
+                  <div
+                    className="rounded-xl p-3"
+                    style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
+                  >
+                    <span className="text-white/40 text-xs">Source: </span>
+                    {eventDetail.source.url ? (
+                      <a
+                        href={eventDetail.source.url}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="text-[#FFC31F]/90 hover:text-[#FFC31F] hover:underline text-xs"
+                      >
+                        {eventDetail.source.name} ↗
+                      </a>
+                    ) : (
+                      <span className="text-white/70 text-xs">{eventDetail.source.name}</span>
                     )}
                   </div>
+                )}
+
+                {eventDetail && !eventDetailLoading && (
+                  <EventLiveDetails
+                    detail={eventDetail}
+                    showMagnitude={selectedEvent.magnitude === undefined && selectedEvent.value === undefined}
+                  />
                 )}
 
                 {eventDetail?.impact && (

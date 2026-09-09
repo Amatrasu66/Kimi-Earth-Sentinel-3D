@@ -191,7 +191,7 @@ Base URL `/api/v1` (plus unversioned `GET /api/health` for deployment checks). A
 | `GET /api/v1/layers` | Layer metadata (id, name, source, unit, color scale, refresh interval) |
 | `GET /api/v1/layers/<layer_id>/data?bbox=&limit=&min_severity=` | Points + stats + `data_status`; validated (`limit` 1–2000, bbox ranges, known severities); cached per layer TTL; `air_quality` rejects `bbox` with `400 UNSUPPORTED_PARAM` (US-only source) |
 | `GET /api/v1/layers/<layer_id>/heatmap?resolution=&time_range=` | Base64 float32 grid + `data_status` (currently simulated; same schema for future real grids) |
-| `GET /api/v1/events/<id>` | Event detail (currently simulated, labelled; live lookup is an extension point) |
+| `GET /api/v1/events/<id>` | Event detail: live USGS lookup for earthquake ids, live NASA EONET lookup for `eonet-*` ids (both cached 5 min, `LIVE`/`STALE` labelled); provider-confirmed absence → `404`; provider failure or lookup-less markers (wildfire observations, other layers) → labelled `SIMULATED` fallback |
 | `GET /api/v1/search?q=&type=&limit=` | Location/event search over bundled gazetteer + event index |
 | `GET /api/v1/stats` | Global rollup (simulated, labelled) |
 | `GET /api/v1/stats/historical?metric=&period=&aggregation=` | Placeholder series (simulated, labelled — no fake history presented as measured) |
@@ -271,7 +271,7 @@ Frontend → Vercel:
 
 ## Data Reliability
 
-Upstream providers can be slow, rate-limited, or down — and two layers need keys that may not exist in every environment. The API therefore degrades gracefully **without lying**: failures and missing keys return deterministic fallback data wrapped in `data_status: { status: "simulated", source, fetched_at, message }`, and the frontend renders an amber `SIMULATED` banner wherever that data appears. Cached responses keep their original `fetched_at` with `cache_hit: true` so the UI reports true age. Event details and historical series are simulated placeholders in this build and are labelled as such; they are extension points for live endpoints, not real records.
+Upstream providers can be slow, rate-limited, or down — and two layers need keys that may not exist in every environment. The API therefore degrades gracefully **without lying**: failures and missing keys return deterministic fallback data wrapped in `data_status: { status: "simulated", source, fetched_at, message }`, and the frontend renders an amber `SIMULATED` banner wherever that data appears. Cached responses keep their original `fetched_at` with `cache_hit: true` so the UI reports true age. Earthquake event details come live from USGS and disaster details live from NASA EONET when available (cached briefly, `STALE`-served on refresh failure); wildfire markers are FIRMS observations with no individual-event endpoint, so their details stay explicitly `SIMULATED`. Historical series remain simulated placeholders and are labelled as such; they are extension points for live endpoints, not real records.
 
 ## Performance
 
@@ -286,7 +286,7 @@ Upstream providers can be slow, rate-limited, or down — and two layers need ke
 - Multi-layer compositing (visible-layers set + per-layer opacity; `MarkerSystem` already accepts arbitrary point arrays)
 - Timeline/history playback (24h / 48h / 7d) backed by real archives — no fabricated history
 - Real gridded heatmaps per layer via `HEATMAP_PROVIDERS` (schema is ready)
-- Live single-event lookup in `GET /events/<id>` (USGS/EONET by id)
+- Live single-event lookup for remaining marker kinds (wildfire observations have no provider event endpoint today)
 - PostGIS + Redis for geospatial filtering and shared caching
 - Alerting, richer analytics, mobile layout refinements
 

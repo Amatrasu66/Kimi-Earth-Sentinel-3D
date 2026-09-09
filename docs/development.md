@@ -75,7 +75,7 @@ python -m pytest tests/ -q
 
 ## Where integrations live
 
-- **Provider integrations:** `backend/app/services/` — one adapter per upstream (`usgs`, `nasa_eonet`, `nasa_firms`, `open_meteo`, `airnow`), plus `heatmap`, `fallback`, `imagery`, `geocode`. Dispatch + cache + stale-fallback live in `services/layer_service.py`.
+- **Provider integrations:** `backend/app/services/` — one adapter per upstream (`usgs`, `nasa_eonet`, `nasa_firms`, `open_meteo`, `airnow`), plus `heatmap`, `fallback`, `imagery`, `geocode`. Dispatch + cache + stale-fallback live in `services/layer_service.py`. Individual event lookup lives in `services/event_detail.py`: an explicit id resolver routes raw ids to the USGS detail feed, `eonet-*` ids to the EONET event endpoint, and everything else (FIRMS fire observations, mock markers, other layers) to labelled simulated detail. No database is required — details are fetched on demand and cached briefly in process-local memory.
 - **Frontend API integration:** `frontend/src/services/api.ts` — the single client boundary (base URL, timeout, cancellation, error normalization). Components never call `fetch` directly.
 - **Provenance:** every payload carries `data_status` (`live` / `simulated` / `stale` / `unavailable`); see `backend/app/utils/provenance.py` and `frontend/src/components/overlays/DataStatusBanner.tsx`.
 

@@ -65,17 +65,32 @@ export interface EventDetail {
   layer_id: string;
   type: string;
   title: string;
-  lat: number;
-  lon: number;
-  timestamp: string;
-  description?: string;
+  lat: number | null;
+  lon: number | null;
+  timestamp: string | null;
+  description?: string | null;
   severity: string;
-  magnitude?: number;
-  depth?: number;
+  magnitude?: number | null;
+  depth?: number | null;
   source?: { name: string; url: string };
   impact?: Record<string, unknown>;
   related_events?: Array<{ id: string; title: string; timestamp: string }>;
   geometry?: { type: string; coordinates: number[] };
+  /** Live-lookup fields (present on provider details, absent on fallbacks). */
+  provider?: string;
+  updated_at?: string | null;
+  magnitude_unit?: string | null;
+  status?: string | null;
+  closed_at?: string | null;
+  categories?: string[] | null;
+  geometry_type?: string | null;
+  sources?: Array<{ id: string; url: string }>;
+  felt?: number | null;
+  alert?: string | null;
+  tsunami?: boolean | null;
+  significance?: number | null;
+  /** Provenance: present on backend responses (live / simulated / stale). */
+  data_status?: DataStatus;
 }
 
 export interface SearchResult {

@@ -19,7 +19,7 @@ backend/
 └── tests/               # pytest contract + unit tests
 ```
 
-Boundaries: routes validate input and render JSON; `services/layer_service.py` owns dispatch, caching, and stale-fallback; provider adapters fetch one upstream API and normalize to the canonical payload. Programming bugs propagate to the JSON 500 handler — they are never converted into simulated data.
+Boundaries: routes validate input and render JSON; `services/layer_service.py` owns dispatch, caching, and stale-fallback; provider adapters fetch one upstream API and normalize to the canonical payload. Individual event lookup (`services/event_detail.py`) resolves an event id to the USGS detail feed or the EONET event endpoint, caches live details briefly (`event:<provider>:<id>`, 5 min TTL), and falls back to labelled simulated detail when the provider is unreachable or the marker has no event endpoint (FIRMS fire observations). Programming bugs propagate to the JSON 500 handler — they are never converted into simulated data.
 
 ## Run
 

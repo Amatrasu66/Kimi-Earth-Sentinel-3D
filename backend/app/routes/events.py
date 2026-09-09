@@ -1,10 +1,15 @@
+import re
+
 from flask import Blueprint, jsonify
 
-from ..services.fallback import get_mock_event_detail
-from ..utils.provenance import SIMULATED, success_response, with_status
+from ..services.event_detail import EventNotFound, get_event_detail
+from ..utils.provenance import success_response
 from ..utils.validation import error_response
 
 events_bp = Blueprint("events", __name__)
+
+# Provider ids are alphanumeric (USGS) plus -, _, . (EONET/marker ids).
+_EVENT_ID_RE = re.compile(r"^[A-Za-z0-9_.\-]+$")
 
 
 @events_bp.route("/events/<event_id>", methods=["GET"])
@@ -13,15 +18,16 @@ def get_event(event_id):
         return error_response("event_id must not be empty.")
     if len(event_id) > 128:
         return error_response("event_id must be at most 128 characters.")
-    # NOTE: event detail is currently served from the local fallback
-    # generator (no upstream single-event endpoint is wired up). It is
-    # always labelled SIMULATED so it is never mistaken for live data.
-    # Extension point: resolve live USGS/EONET events by id here first.
-    event = get_mock_event_detail(event_id)
-    data = with_status(
-        event,
-        SIMULATED,
-        (event.get("source") or {}).get("name", "fallback"),
-        "Event detail is simulated in this build — not a live provider record.",
-    )
-    return jsonify(success_response(data))
+    if not _EVENT_ID_RE.match(event_id):
+        return error_response(
+            f"Invalid event_id {event_id!r}: must match [A-Za-z0-9_.-]."
+        )
+    # Live USGS/EONET lookup with labelled SIMULATED fallback (see
+    # services/event_detail.py). A provider-confirmed absence is a 404 —
+    # never disguised as fallback data. Unexpected exceptions propagate
+    # to the JSON 500 handler (programming bugs stay visible).
+    try:
+        data, cache_hit, stale = get_event_detail(event_id)
+    except EventNotFound as e:
+        return error_response(str(e), code="NOT_FOUND", status=404)
+    return jsonify(success_response(data, cache_hit=cache_hit, stale=stale))
