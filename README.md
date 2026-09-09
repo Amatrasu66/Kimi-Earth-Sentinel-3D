@@ -2,6 +2,17 @@
 
 Interactive 3D Earth environmental-intelligence dashboard: a React + Three.js globe fed by a Flask API that aggregates live environmental data (USGS, NASA EONET/FIRMS, Open-Meteo, AirNow) with clearly-labelled simulated fallbacks when providers are unreachable.
 
+## Live Demo
+
+The project is deployed and publicly accessible:
+
+| Service | URL | Hosting |
+|---|---|---|
+| Live Frontend | https://kimi-earth-sentinel-3d.vercel.app/ | Vercel (Hobby) |
+| Backend API | https://kimi-earth-sentinel-3d.onrender.com | Render (Free) |
+
+The React + TypeScript frontend is hosted on Vercel and communicates over HTTPS with the Flask backend hosted on Render. Both services deploy from this GitHub repository. Hosting uses free tiers (Vercel Hobby for the frontend, Render Free Web Service for the backend), so the backend may respond slowly after idle periods.
+
 ## Overview
 
 Kimi Earth Sentinel renders an interactive 3D Earth (day/night textures, clouds, atmosphere glow, starfield) with switchable environmental layers. Selecting a layer fetches geolocated observations from the backend and renders them as severity-coloured 3D markers that can be hovered, clicked, filtered, and inspected in detail. A search box flies the camera to any matching location or event.
@@ -53,9 +64,9 @@ Kimi-Earth-Sentinel-3D/
 | Production Server | Gunicorn                           | 22.0.0               |
 | Frontend Testing  | Vitest + Testing Library           | Vitest ^5            |
 | Backend Testing   | pytest                             | 8.3.4                |
-| CI                | GitHub Actions                     | —                    |
-| Frontend Hosting  | Vercel                             | —                    |
-| Backend Hosting   | Render                             | —                    |
+| CI                | GitHub Actions                     | source control + CI                |
+| Frontend Hosting  | Vercel (Hobby)                     | https://kimi-earth-sentinel-3d.vercel.app/ |
+| Backend Hosting   | Render (Free)                      | https://kimi-earth-sentinel-3d.onrender.com |
 
 Supporting frontend libraries (forms, charts, utilities — not core stack): `react-hook-form`, `zod`, `recharts`, `date-fns`, `clsx` / `tailwind-merge` / `class-variance-authority`, `cmdk`, `embla-carousel-react`, `input-otp`, `next-themes`, `react-day-picker`, `react-resizable-panels`, `sonner`, `vaul`. State is local React state (`useState` + hooks); there is no Redux, Zustand store, or React Router in the application code.
 
@@ -210,7 +221,7 @@ copy .env.example .env        # then set VITE_API_BASE_URL if needed
 npm run dev                   # Vite on http://localhost:3000
 ```
 
-Open `http://localhost:3000`, pick a layer (or press `5` for earthquakes). The client defaults to `http://localhost:5001/api/v1`; in production set `VITE_API_BASE_URL` to the Render backend URL.
+Open `http://localhost:3000`, pick a layer (or press `5` for earthquakes). The client defaults to `http://localhost:5001/api/v1`; in production `VITE_API_BASE_URL` points at the Render backend (`https://kimi-earth-sentinel-3d.onrender.com/api/v1`).
 
 ## Environment Variables
 
@@ -281,30 +292,55 @@ CI (`.github/workflows/ci.yml`) runs both on pushes to `main` and on all pull re
 
 ## Deployment
 
-Intended architecture (not claimed as currently live — configure your own instances):
+The project is live in production:
 
 ```text
 GitHub
-├── frontend/ → Vercel
-└── backend/  → Render + Gunicorn
+├── frontend/ → Vercel (React/TypeScript frontend)
+└── backend/  → Render (Flask backend via Gunicorn)
 ```
+
+### Production URLs
+
+| Service | URL |
+|---|---|
+| Frontend (Vercel) | https://kimi-earth-sentinel-3d.vercel.app/ |
+| Backend API (Render) | https://kimi-earth-sentinel-3d.onrender.com |
+| API base | https://kimi-earth-sentinel-3d.onrender.com/api/v1 |
+| Health check | https://kimi-earth-sentinel-3d.onrender.com/api/health |
+
+### Production request flow
+
+```text
+User
+ ↓
+Vercel-hosted React frontend
+ ↓ HTTPS
+Render-hosted Flask API (Gunicorn, /api/v1/*)
+ ↓
+Provider adapters/services
+ ↓
+USGS / NASA EONET / NASA FIRMS / Open-Meteo / AirNow / NASA GIBS
+```
+
+Both services run on free-tier hosting: Vercel Hobby for the frontend and a Render Free Web Service for the backend. External data providers keep their own access requirements (AirNow and NASA FIRMS need server-side keys; without them the affected layers return labelled simulated data — see Environmental Data Sources below).
 
 Backend → Render (see `render.yaml` at repo root):
 
 - Root Directory `backend`, build `pip install -r requirements.txt`, start via Gunicorn (`wsgi:app`, honours `$PORT`), health check `/api/health`, Python pinned in `runtime.txt`.
-- Set `CORS_ORIGINS` to the Vercel frontend origin(s), comma-separated, plus `SECRET_KEY` and any provider keys. The backend uses an explicit allow-list — never `*`.
+- `CORS_ORIGINS` includes the Vercel frontend origin (`https://kimi-earth-sentinel-3d.vercel.app`), plus `SECRET_KEY` and any provider keys. The backend uses an explicit allow-list — never `*`.
 - `SCHEDULER_ENABLED` is `false` in production: with multiple Gunicorn workers each process would run its own scheduler against its own process-local cache — duplicate provider traffic with no shared benefit. Request-time cache + stale fallback need no warming.
 
 Frontend → Vercel:
 
 - Root Directory `frontend`, framework Vite, build `npm run build`, output `dist`.
-- Set `VITE_API_BASE_URL` to `https://<your-render-service>.onrender.com/api/v1`. No localhost URL is baked into the client; all calls go through the centralized `API_BASE`.
+- `VITE_API_BASE_URL` is set to `https://kimi-earth-sentinel-3d.onrender.com/api/v1`. No localhost URL is baked into the client; all calls go through the centralized `API_BASE`.
 
 CORS:
 
 - The Flask API enables CORS only for `/api/*` against the explicit `CORS_ORIGINS` allow-list (exact origins, comma-separated). There is no wildcard mode.
 - Local development default covers the Vite dev server (`http://localhost:3000`, `http://localhost:5173`).
-- Production: set `CORS_ORIGINS` to the deployed Vercel frontend origin(s). After renaming the Vercel project or adding a custom domain, update this variable — otherwise browsers block API requests. Preview deployments with distinct URLs need their own entries.
+- Production: `CORS_ORIGINS` includes the deployed Vercel frontend origin (`https://kimi-earth-sentinel-3d.vercel.app`). After renaming the Vercel project or adding a custom domain, update this variable — otherwise browsers block API requests. Preview deployments with distinct URLs need their own entries.
 
 ## Current Limitations
 
