@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import GlobeScene from '@/components/globe/GlobeScene';
+import EarthRenderer from '@/components/globe/EarthRenderer';
+import type { RendererInfo } from '@/components/globe/EarthRenderer';
 import TopNav from '@/components/panels/TopNav';
 import LayerPanel from '@/components/panels/LayerPanel';
 import DataPanel from '@/components/panels/DataPanel';
@@ -37,6 +38,11 @@ function App() {
   const [isRotating, setIsRotating] = useState(true);
   const [allDataPoints, setAllDataPoints] = useState<DataPoint[]>([]);
   const [flyTo, setFlyTo] = useState<{ lat: number; lon: number; key: number } | null>(null);
+  const [rendererInfo, setRendererInfo] = useState<RendererInfo>({
+    active: 'loading',
+    detail: 'probing WebGPU support…',
+    textures: { loaded: 0, total: 0 },
+  });
   const { layers } = useLayers();
   const {
     data: layerData,
@@ -186,20 +192,48 @@ function App() {
     isSettingsOpen,
   });
 
+  // "?" opens settings (not part of the layer/rotation shortcut map).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+      if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === '?') {
+        e.preventDefault();
+        setIsSettingsOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   return (
-    <div className="w-screen h-screen overflow-hidden" style={{ background: '#020202' }}>
-      {/* 3D Globe - Full viewport background */}
-      <GlobeScene
+    <div className="dark h-screen w-screen overflow-hidden" style={{ background: '#050607' }}>
+      {/* Skip link for keyboard users */}
+      <a
+        href="#sentinel-data-panel"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-16 focus:z-[300] focus:rounded-md focus:bg-[#FFC31F] focus:px-3 focus:py-1.5 focus:text-xs focus:font-semibold focus:text-black"
+      >
+        Skip to data panel
+      </a>
+      {/* 3D Globe - Full viewport background (WebGPU Earth, WebGL fallback) */}
+      <EarthRenderer
         activeLayer={activeLayer}
         dataPoints={allDataPoints}
         onMarkerClick={handleMarkerClick}
         onMarkerHover={handleMarkerHover}
         isRotating={isRotating}
         flyTo={flyTo}
+        onActiveRenderer={setRendererInfo}
       />
 
       {/* UI Overlays */}
-      <TopNav onSearchResultClick={handleSearchResultClick} onSettingsClick={() => setIsSettingsOpen(true)} />
+      <TopNav
+        onSearchResultClick={handleSearchResultClick}
+        onSettingsClick={() => setIsSettingsOpen(true)}
+        dataStatus={dataStatus}
+        activeLayerName={activeLayerMeta?.name ?? null}
+      />
 
       <LayerPanel activeLayer={activeLayer} onLayerToggle={handleLayerToggle} shortcutLayers={SHORTCUT_LAYERS} />
 
@@ -224,6 +258,7 @@ function App() {
         activeLayer={activeLayer}
         dataCount={allDataPoints.length}
         dataStatus={dataStatus}
+        rendererInfo={rendererInfo}
       />
 
       <SettingsModal
@@ -231,6 +266,9 @@ function App() {
         onClose={() => setIsSettingsOpen(false)}
         isRotating={isRotating}
         onToggleRotation={() => setIsRotating((prev) => !prev)}
+        rendererInfo={rendererInfo}
+        activeLayer={activeLayer}
+        dataStatus={dataStatus}
       />
 
       <Tooltip point={hoveredPoint} mousePos={mousePos} activeLayer={activeLayer} />

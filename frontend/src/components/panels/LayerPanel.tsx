@@ -1,4 +1,8 @@
-import { Thermometer, CloudRain, Cloud, Wind, Activity, AlertTriangle, Flame, Sparkles } from 'lucide-react';
+import { Thermometer, CloudRain, Cloud, Wind, Activity, AlertTriangle, Sparkles, Flame } from 'lucide-react';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import { Kbd } from '@/components/ui/kbd';
+import { Separator } from '@/components/ui/separator';
+import { cn } from '@/lib/utils';
 import type { LayerId } from '@/types';
 
 interface LayerPanelProps {
@@ -12,74 +16,104 @@ const LAYER_CONFIG: Array<{
   id: LayerId;
   icon: React.ReactNode;
   label: string;
+  hint: string;
 }> = [
-  { id: 'temperature', icon: <Thermometer className="w-5 h-5" />, label: 'Temperature' },
-  { id: 'precipitation', icon: <CloudRain className="w-5 h-5" />, label: 'Precipitation' },
-  { id: 'clouds', icon: <Cloud className="w-5 h-5" />, label: 'Cloud Cover' },
-  { id: 'wind', icon: <Wind className="w-5 h-5" />, label: 'Wind' },
-  { id: 'earthquakes', icon: <Activity className="w-5 h-5" />, label: 'Earthquakes' },
-  { id: 'disasters', icon: <AlertTriangle className="w-5 h-5" />, label: 'Disasters' },
-  { id: 'air_quality', icon: <Sparkles className="w-5 h-5" />, label: 'Air Quality' },
-  { id: 'wildfires', icon: <Flame className="w-5 h-5" />, label: 'Wildfires' },
+  { id: 'temperature', icon: <Thermometer className="h-[18px] w-[18px]" />, label: 'Temperature', hint: 'Surface temperature anomalies' },
+  { id: 'precipitation', icon: <CloudRain className="h-[18px] w-[18px]" />, label: 'Precipitation', hint: 'Rainfall & drought extent' },
+  { id: 'clouds', icon: <Cloud className="h-[18px] w-[18px]" />, label: 'Cloud Cover', hint: 'Live cloud coverage' },
+  { id: 'wind', icon: <Wind className="h-[18px] w-[18px]" />, label: 'Wind', hint: 'Wind speed & storm tracks' },
+  { id: 'earthquakes', icon: <Activity className="h-[18px] w-[18px]" />, label: 'Earthquakes', hint: 'USGS seismic events' },
+  { id: 'disasters', icon: <AlertTriangle className="h-[18px] w-[18px]" />, label: 'Disasters', hint: 'EONET natural events' },
+  { id: 'air_quality', icon: <Sparkles className="h-[18px] w-[18px]" />, label: 'Air Quality', hint: 'AQI & particulates' },
+  { id: 'wildfires', icon: <Flame className="h-[18px] w-[18px]" />, label: 'Wildfires', hint: 'Active fire detections' },
 ];
 
 export default function LayerPanel({ activeLayer, onLayerToggle, shortcutLayers = [] }: LayerPanelProps) {
   return (
-    <div
-      role="toolbar"
-      aria-label="Environmental layers"
-      className="fixed left-4 z-50 flex flex-col gap-2 rounded-2xl p-2"
-      style={{
-        top: '50%',
-        transform: 'translateY(-50%)',
-        background: 'rgba(15, 15, 20, 0.7)',
-        backdropFilter: 'blur(20px)',
-        border: '1px solid rgba(255,255,255,0.1)',
-      }}
-    >
-      {LAYER_CONFIG.map((layer) => {
-        const isActive = activeLayer === layer.id;
-        const shortcutIdx = shortcutLayers.indexOf(layer.id);
-        const hint = shortcutIdx >= 0 ? ` (press ${shortcutIdx + 1})` : '';
-        return (
-          <button
-            key={layer.id}
-            onClick={() => onLayerToggle(layer.id)}
-            className="relative w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 group focus-visible:outline-2 focus-visible:outline-[#FFC31F]"
-            style={{
-              background: isActive ? 'rgba(255,195,31,0.15)' : 'transparent',
-              border: isActive ? '2px solid #FFC31F' : '2px solid transparent',
-              boxShadow: isActive ? '0 0 12px rgba(255,195,31,0.3)' : 'none',
-            }}
-            title={`${layer.label}${hint}`}
-            aria-label={`Toggle ${layer.label} layer${hint}`}
-            aria-pressed={isActive}
-          >
-            <div className="transition-colors duration-200" style={{ color: isActive ? '#FFC31F' : 'rgba(255,255,255,0.5)' }}>
-              {layer.icon}
-            </div>
+    <>
+      {/* Desktop: vertical command rail, vertically centered */}
+      <nav
+        role="toolbar"
+        aria-label="Environmental layers"
+        aria-orientation="vertical"
+        className="rail-enter sentinel-floating fixed left-3 top-1/2 z-50 hidden -translate-y-1/2 flex-col gap-0.5 rounded-xl p-1.5 md:flex"
+      >
+        <p className="sentinel-label px-2 pb-1 pt-1">Layers</p>
+        {LAYER_CONFIG.map((layer) => {
+          const isActive = activeLayer === layer.id;
+          const shortcutIdx = shortcutLayers.indexOf(layer.id);
+          return (
+            <Tooltip key={layer.id} delayDuration={100}>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => onLayerToggle(layer.id)}
+                  aria-label={`Toggle ${layer.label} layer${shortcutIdx >= 0 ? `, shortcut ${shortcutIdx + 1}` : ''}`}
+                  aria-pressed={isActive}
+                  data-active={isActive}
+                  className={cn(
+                    'sentinel-spot group relative flex h-10 w-10 items-center justify-center rounded-lg transition-colors duration-150',
+                    isActive
+                      ? 'sentinel-active-ring bg-[rgba(255,195,31,0.13)] text-[#FFC31F]'
+                      : 'border border-transparent text-white/45 hover:bg-white/[0.07] hover:text-white/90',
+                  )}
+                >
+                  {layer.icon}
+                  {isActive && (
+                    <span className="absolute -left-[7px] top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-[#FFC31F]" aria-hidden />
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="right"
+                sideOffset={10}
+                className="border-white/10 bg-[#14171d] px-2.5 py-1.5 text-white"
+              >
+                <span className="block text-xs font-semibold">{layer.label}</span>
+                <span className="block max-w-[200px] text-[11px] text-white/50">{layer.hint}</span>
+                {shortcutIdx >= 0 && (
+                  <span className="mt-1 flex items-center gap-1 text-[11px] text-white/40">
+                    press <Kbd className="border-white/10 bg-white/10 text-white/70">{shortcutIdx + 1}</Kbd>
+                  </span>
+                )}
+              </TooltipContent>
+            </Tooltip>
+          );
+        })}
+        <Separator className="my-1 bg-white/[0.07]" />
+        <p className="sentinel-micro sentinel-mono px-2 py-1 text-center">
+          {activeLayer ? LAYER_CONFIG.find((l) => l.id === activeLayer)?.label.slice(0, 4).toUpperCase() : '— —'}
+        </p>
+      </nav>
 
-            {/* Hover glow */}
-            <div
-              className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"
-              style={{ background: 'rgba(255,255,255,0.05)' }}
-            />
-
-            {/* Tooltip */}
-            <div
-              className="absolute left-full ml-3 px-2 py-1 rounded-md text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
-              style={{
-                background: 'rgba(15, 15, 20, 0.9)',
-                color: '#fff',
-                border: '1px solid rgba(255,255,255,0.1)',
-              }}
+      {/* Mobile / narrow: horizontal layer strip above the status bar */}
+      <nav
+        role="toolbar"
+        aria-label="Environmental layers"
+        aria-orientation="horizontal"
+        className="sentinel-floating fixed bottom-[68px] left-3 right-3 z-50 flex items-center gap-1 overflow-x-auto rounded-xl p-1.5 md:hidden"
+        style={{ scrollbarWidth: 'none' }}
+      >
+        {LAYER_CONFIG.map((layer) => {
+          const isActive = activeLayer === layer.id;
+          return (
+            <button
+              key={layer.id}
+              onClick={() => onLayerToggle(layer.id)}
+              aria-label={`Toggle ${layer.label} layer`}
+              aria-pressed={isActive}
+              title={layer.label}
+              className={cn(
+                'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-150',
+                isActive
+                  ? 'sentinel-active-ring bg-[rgba(255,195,31,0.13)] text-[#FFC31F]'
+                  : 'border border-transparent text-white/45 hover:bg-white/[0.07] hover:text-white/90',
+              )}
             >
-              {layer.label}
-              {shortcutIdx >= 0 && <span className="text-white/40 ml-1">({shortcutIdx + 1})</span>}
-            </div>
-          </button>
-        );
-      })}
-    </div>
+              {layer.icon}
+            </button>
+          );
+        })}
+      </nav>
+    </>
   );
 }

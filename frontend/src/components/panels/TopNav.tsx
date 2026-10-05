@@ -1,174 +1,332 @@
-import { useState, useRef, useEffect } from 'react';
-import { Search, Settings, Globe } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Search, Settings, Globe, X, MapPin, AlertTriangle, CornerDownLeft } from 'lucide-react';
 import { useSearch } from '@/hooks/useSearch';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Spinner } from '@/components/ui/spinner';
+import { Kbd } from '@/components/ui/kbd';
+import { Separator } from '@/components/ui/separator';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
+import type { DataStatus, SearchResult } from '@/types';
+import { statusLabel } from '@/lib/format';
 
 interface TopNavProps {
   onSearchResultClick: (lat: number, lon: number) => void;
   onSettingsClick: () => void;
+  /** Optional — shown as a compact provenance badge in the header. */
+  dataStatus?: DataStatus | null;
+  activeLayerName?: string | null;
 }
 
-export default function TopNav({ onSearchResultClick, onSettingsClick }: TopNavProps) {
+const STATUS_DOT: Record<string, string> = {
+  live: '#34D399',
+  simulated: '#FFC31F',
+  stale: '#FB923C',
+  unavailable: '#F87171',
+  unknown: '#9CA3AF',
+};
+
+export default function TopNav({ onSearchResultClick, onSettingsClick, dataStatus = null, activeLayerName = null }: TopNavProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [showResults, setShowResults] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [highlight, setHighlight] = useState(0);
   const searchRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { results, loading, error, search } = useSearch();
 
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
-        setShowResults(false);
-      }
+    const onDown = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) setOpen(false);
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
   }, []);
 
-  // Debounced search: one request per pause in typing, not per keystroke.
   useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, []);
 
-  const handleSearch = (value: string) => {
-    setSearchQuery(value);
+  // "/" focuses search when not typing; preserves existing shortcut system.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+      if (typing) return;
+      if (e.key === '/' && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const runSearch = useCallback(
+    (value: string) => {
+      setSearchQuery(value);
+      setHighlight(0);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (value.trim().length >= 2) {
+        debounceRef.current = setTimeout(() => {
+          search(value.trim());
+          setOpen(true);
+        }, 300);
+      } else {
+        setOpen(false);
+      }
+    },
+    [search],
+  );
+
+  const choose = useCallback(
+    (result: SearchResult) => {
+      onSearchResultClick(result.lat, result.lon);
+      setOpen(false);
+      setSearchQuery(result.name);
+      inputRef.current?.blur();
+    },
+    [onSearchResultClick],
+  );
+
+  const clear = useCallback(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (value.length >= 2) {
-      debounceRef.current = setTimeout(() => {
-        search(value);
-        setShowResults(true);
-      }, 300);
-    } else {
-      setShowResults(false);
-    }
-  };
+    setSearchQuery('');
+    setOpen(false);
+    setHighlight(0);
+    inputRef.current?.focus();
+  }, []);
 
-  const handleResultClick = (result: import('@/types').SearchResult) => {
-    onSearchResultClick(result.lat, result.lon);
-    setShowResults(false);
-    setSearchQuery(result.name);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const onInputKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
-      setShowResults(false);
-    } else if (e.key === 'Enter' && results.length > 0) {
-      handleResultClick(results[0]);
+      if (open) {
+        e.stopPropagation();
+        setOpen(false);
+      } else {
+        (e.target as HTMLInputElement).blur();
+      }
+      return;
+    }
+    if (e.key === 'ArrowDown' && open && results.length > 0) {
+      e.preventDefault();
+      setHighlight((h) => (h + 1) % results.length);
+      return;
+    }
+    if (e.key === 'ArrowUp' && open && results.length > 0) {
+      e.preventDefault();
+      setHighlight((h) => (h - 1 + results.length) % results.length);
+      return;
+    }
+    if (e.key === 'Enter') {
+      if (open && results.length > 0) {
+        e.preventDefault();
+        choose(results[highlight % results.length]);
+      }
     }
   };
+
+  const safeHighlight = results.length > 0 ? highlight % results.length : 0;
+
+  // Keep highlighted option visible.
+  useEffect(() => {
+    listRef.current?.querySelector(`[data-idx="${safeHighlight}"]`)?.scrollIntoView({ block: 'nearest' });
+  }, [safeHighlight]);
+
+  const statusKind = dataStatus?.status ?? 'unknown';
+  const showStatus = dataStatus !== null && dataStatus !== undefined;
 
   return (
-    <nav
-      className="fixed top-0 left-0 right-0 z-[100] flex items-center justify-between px-4 gap-3"
+    <header
+      className="fixed left-0 right-0 top-0 z-[100] flex h-14 items-center gap-2 px-3 sm:gap-3 sm:px-4"
       style={{
-        height: 56,
-        background: 'rgba(2, 2, 2, 0.6)',
-        backdropFilter: 'blur(20px)',
-        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        background: 'rgba(5, 6, 7, 0.72)',
+        backdropFilter: 'blur(20px) saturate(1.2)',
+        WebkitBackdropFilter: 'blur(20px) saturate(1.2)',
+        borderBottom: '1px solid rgba(255,255,255,0.07)',
       }}
     >
-      {/* Left: Logo */}
-      <div className="flex items-center gap-3 flex-shrink-0">
-        <Globe className="w-6 h-6 text-[#FFC31F]" aria-hidden />
-        <span className="text-white font-semibold text-lg tracking-tight hidden sm:inline" style={{ fontFamily: 'Instrument Sans, sans-serif' }}>
-          Earth Sentinel 3D
+      {/* Brand */}
+      <div className="flex min-w-0 flex-shrink-0 items-center gap-2.5">
+        <span
+          className="flex h-8 w-8 items-center justify-center rounded-lg"
+          style={{ background: 'rgba(255,195,31,0.12)', border: '1px solid rgba(255,195,31,0.28)' }}
+          aria-hidden
+        >
+          <Globe className="h-[18px] w-[18px] text-[#FFC31F]" />
         </span>
+        <span className="hidden min-w-0 flex-col leading-none md:flex">
+          <span className="sentinel-app-title truncate text-white">Earth Sentinel 3D</span>
+          <span className="sentinel-micro mt-0.5 truncate">Environmental intelligence</span>
+        </span>
+        <span className="sentinel-app-title truncate text-white md:hidden">Sentinel</span>
       </div>
 
-      {/* Center: Search */}
-      <div ref={searchRef} className="relative w-full max-w-[300px]" role="combobox" aria-expanded={showResults} aria-haspopup="listbox">
-        <div
-          className="flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-200"
-          style={{
-            background: 'rgba(255,255,255,0.05)',
-            border: '1px solid rgba(255,255,255,0.1)',
-          }}
-          onFocus={(e) => {
-            (e.currentTarget as HTMLDivElement).style.border = '1px solid rgba(255,195,31,0.5)';
-          }}
-          onBlur={(e) => {
-            (e.currentTarget as HTMLDivElement).style.border = '1px solid rgba(255,255,255,0.1)';
-          }}
+      {activeLayerName && (
+        <Badge
+          variant="secondary"
+          className="hidden max-w-[160px] truncate border-[rgba(255,195,31,0.3)] bg-[rgba(255,195,31,0.1)] text-[#FFC31F] lg:inline-flex"
+          title={`Active layer: ${activeLayerName}`}
         >
-          <Search className="w-4 h-4 text-white/40 flex-shrink-0" aria-hidden />
-          <input
+          {activeLayerName}
+        </Badge>
+      )}
+
+      {/* Search — the primary command interaction */}
+      <div ref={searchRef} className="relative mx-auto w-full max-w-[300px] flex-1 sm:max-w-[420px]">
+        <div
+          className={cn(
+            'flex h-9 items-center gap-2 rounded-lg border px-2.5 transition-colors duration-150',
+            open ? 'border-[rgba(255,195,31,0.45)] bg-[rgba(255,255,255,0.06)]' : 'border-white/10 bg-white/[0.04] hover:bg-white/[0.06]',
+          )}
+        >
+          {loading ? <Spinner className="h-4 w-4 shrink-0 text-white/50" /> : <Search className="h-4 w-4 shrink-0 text-white/40" aria-hidden />}
+          <Input
+            ref={inputRef}
             type="text"
-            placeholder="Search locations, events..."
+            role="combobox"
+            placeholder="Search locations, events…"
             aria-label="Search locations and events"
-            className="bg-transparent text-white text-sm w-full outline-none placeholder:text-white/30"
-            style={{ fontFamily: 'Instrument Sans, sans-serif' }}
+            aria-expanded={open}
+            aria-haspopup="listbox"
+            aria-autocomplete="list"
+            aria-controls="sentinel-search-listbox"
+            aria-activedescendant={open && results.length > 0 ? `sentinel-search-${results[safeHighlight]?.id}` : undefined}
+            className="h-full border-0 bg-transparent p-0 text-[13px] text-white shadow-none placeholder:text-white/30 focus-visible:ring-0"
             value={searchQuery}
-            onChange={(e) => handleSearch(e.target.value)}
-            onFocus={() => searchQuery.length >= 2 && setShowResults(true)}
-            onKeyDown={handleKeyDown}
+            onChange={(e) => runSearch(e.target.value)}
+            onFocus={() => searchQuery.trim().length >= 2 && setOpen(true)}
+            onKeyDown={onInputKeyDown}
           />
+          {searchQuery ? (
+            <button
+              onClick={clear}
+              aria-label="Clear search"
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-white/40 transition-colors hover:bg-white/10 hover:text-white/80"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          ) : (
+            <Kbd className="hidden shrink-0 border-white/10 bg-white/5 text-white/40 sm:inline-flex">/</Kbd>
+          )}
         </div>
 
-        {/* Search Results Dropdown */}
-        {showResults && (
+        {open && (
           <div
-            role="listbox"
-            aria-label="Search results"
-            className="absolute top-full left-0 right-0 mt-2 rounded-xl overflow-hidden"
-            style={{
-              background: 'rgba(15, 15, 20, 0.95)',
-              backdropFilter: 'blur(20px)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              maxHeight: 400,
-              overflowY: 'auto',
-            }}
+            className="sentinel-elev panel-enter absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-xl"
+            style={{ maxHeight: 380 }}
           >
-            {loading ? (
-              <div className="p-4 text-white/40 text-sm text-center" role="status">Searching...</div>
-            ) : error ? (
-              <div className="p-4 text-red-400/80 text-sm text-center" role="alert">
-                Search failed: {error}
-              </div>
-            ) : results.length === 0 ? (
-              <div className="p-4 text-white/40 text-sm text-center">No results found</div>
-            ) : (
-              results.map((result) => (
-                <button
-                  key={result.id}
-                  role="option"
-                  aria-selected="false"
-                  className="w-full text-left px-4 py-3 flex items-center gap-3 transition-colors hover:bg-white/5 focus-visible:bg-white/5 focus-visible:outline-2 focus-visible:outline-[#FFC31F]"
-                  onClick={() => handleResultClick(result)}
-                >
-                  <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-                    style={{ background: result.type === 'location' ? 'rgba(255,195,31,0.15)' : 'rgba(255,69,0,0.15)' }}
-                  >
-                    {result.type === 'location' ? (
-                      <Globe className="w-4 h-4 text-[#FFC31F]" aria-hidden />
-                    ) : (
-                      <span className="text-xs text-orange-400" aria-hidden>
-                        !
+            <div className="flex items-center justify-between px-3 pb-1 pt-2.5">
+              <span className="sentinel-label">Results</span>
+              {results.length > 0 && <span className="sentinel-micro sentinel-mono">{results.length} found</span>}
+            </div>
+            <Separator className="bg-white/[0.06]" />
+            <div ref={listRef} id="sentinel-search-listbox" role="listbox" aria-label="Search results" className="max-h-[300px] overflow-y-auto p-1.5">
+              {loading ? (
+                <div className="flex items-center justify-center gap-2 px-3 py-8 text-[13px] text-white/40" role="status">
+                  <Spinner className="h-4 w-4" /> Searching…
+                </div>
+              ) : error ? (
+                <div className="px-2 py-3 text-center" role="alert">
+                  <p className="text-[13px] text-red-300/90">Search failed</p>
+                  <p className="sentinel-micro mt-1 truncate">{error}</p>
+                  <Button variant="outline" size="sm" className="mt-3 border-white/10 bg-white/5 text-white hover:bg-white/10" onClick={() => search(searchQuery.trim())}>
+                    Retry
+                  </Button>
+                </div>
+              ) : results.length === 0 ? (
+                <div className="px-3 py-8 text-center">
+                  <Search className="mx-auto h-5 w-5 text-white/20" aria-hidden />
+                  <p className="mt-2 text-[13px] font-medium text-white/70">No results found</p>
+                  <p className="sentinel-micro mt-1">Try a place name or event — e.g. “Tokyo”, “Etna”.</p>
+                </div>
+              ) : (
+                results.map((result, i) => {
+                  const active = i === safeHighlight;
+                  return (
+                    <button
+                      key={result.id}
+                      id={`sentinel-search-${result.id}`}
+                      data-idx={i}
+                      role="option"
+                      aria-selected={active}
+                      onMouseEnter={() => setHighlight(i)}
+                      onClick={() => choose(result)}
+                      className={cn(
+                        'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors duration-150',
+                        active ? 'bg-[rgba(255,195,31,0.12)]' : 'hover:bg-white/[0.05]',
+                      )}
+                    >
+                      <span
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md"
+                        style={{
+                          background: result.type === 'location' ? 'rgba(255,195,31,0.12)' : 'rgba(255,69,0,0.12)',
+                          border: `1px solid ${result.type === 'location' ? 'rgba(255,195,31,0.25)' : 'rgba(255,69,0,0.25)'}`,
+                        }}
+                        aria-hidden
+                      >
+                        {result.type === 'location' ? <MapPin className="h-3.5 w-3.5 text-[#FFC31F]" /> : <AlertTriangle className="h-3.5 w-3.5 text-orange-400" />}
                       </span>
-                    )}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-white text-sm truncate">{result.name}</div>
-                    <div className="text-white/40 text-xs truncate">{result.snippet}</div>
-                  </div>
-                </button>
-              ))
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-medium text-white">{result.name}</span>
+                        <span className="sentinel-micro block truncate">{result.snippet ?? `${result.lat.toFixed(2)}, ${result.lon.toFixed(2)}`}</span>
+                      </span>
+                      {active && <CornerDownLeft className="h-3.5 w-3.5 shrink-0 text-[#FFC31F]/70" aria-hidden />}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+            {results.length > 0 && !loading && (
+              <>
+                <Separator className="bg-white/[0.06]" />
+                <div className="flex items-center gap-3 px-3 py-2">
+                  <span className="sentinel-micro flex items-center gap-1"><Kbd className="border-white/10 bg-white/5 text-white/40">↑↓</Kbd> navigate</span>
+                  <span className="sentinel-micro flex items-center gap-1"><Kbd className="border-white/10 bg-white/5 text-white/40">↵</Kbd> fly to</span>
+                  <span className="sentinel-micro flex items-center gap-1"><Kbd className="border-white/10 bg-white/5 text-white/40">esc</Kbd> close</span>
+                </div>
+              </>
             )}
           </div>
         )}
       </div>
 
-      {/* Right: Actions */}
-      <div className="flex items-center gap-2 flex-shrink-0">
-        <button
-          className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[#FFC31F]"
-          onClick={onSettingsClick}
-          aria-label="Settings"
-        >
-          <Settings className="w-5 h-5 text-white/70" />
-        </button>
+      {/* Right cluster */}
+      <div className="flex flex-shrink-0 items-center gap-1.5">
+        {showStatus && (
+          <Tooltip delayDuration={150}>
+            <TooltipTrigger asChild>
+              <span
+                className="mr-0.5 hidden items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-2 py-1.5 sm:inline-flex"
+                role="status"
+                aria-label={`Data status: ${statusLabel(dataStatus ?? undefined)}`}
+              >
+                <span className={cn('h-1.5 w-1.5 rounded-full', statusKind === 'live' && 'sentinel-live-dot')} style={{ background: STATUS_DOT[statusKind] ?? STATUS_DOT.unknown }} aria-hidden />
+                <span className="text-[11px] font-semibold tracking-wide" style={{ color: STATUS_DOT[statusKind] }}>
+                  {statusLabel(dataStatus ?? undefined)}
+                </span>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="border-white/10 bg-[#14171d] text-white">
+              <span className="text-xs">{dataStatus?.source ?? 'Unknown source'}{dataStatus?.message ? ` — ${dataStatus.message}` : ''}</span>
+            </TooltipContent>
+          </Tooltip>
+        )}
+        <Tooltip delayDuration={150}>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" onClick={onSettingsClick} aria-label="Open settings" className="h-9 w-9 rounded-lg text-white/60 hover:bg-white/10 hover:text-white">
+              <Settings className="h-[18px] w-[18px]" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="border-white/10 bg-[#14171d] text-white">
+            <span className="flex items-center gap-2 text-xs">Settings <Kbd className="border-white/10 bg-white/10 text-white/60">?</Kbd></span>
+          </TooltipContent>
+        </Tooltip>
       </div>
-    </nav>
+    </header>
   );
 }

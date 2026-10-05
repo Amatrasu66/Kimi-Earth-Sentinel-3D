@@ -29,7 +29,7 @@ Kimi-Earth-Sentinel-3D/
 
 ## Key Features
 
-- Interactive 3D Earth (Three.js / React Three Fiber): rotate, zoom, auto-rotation, night lights, clouds, atmosphere glow, starfield
+- Interactive 3D Earth (Three.js WebGPU + TSL day/night Earth, WebGL/React Three Fiber fallback): rotate, zoom, auto-rotation, night lights, clouds, Fresnel atmosphere, starfield
 - Environmental layers: temperature, precipitation, cloud cover, wind, earthquakes, natural disasters, air quality, wildfires
 - Live data from USGS, NASA EONET, NASA FIRMS, Open-Meteo, AirNow (keys required for AirNow/FIRMS)
 - Simulated fallback data that is always labelled `SIMULATED` in the UI
@@ -160,12 +160,12 @@ Kimi-Earth-Sentinel-3D/
 │   ├── public/textures/           # Earth day/night/cloud/topology/water
 │   ├── src/
 │   │   ├── App.tsx                # active layer, selection, fly-to, shortcuts
-│   │   ├── components/globe/      # GlobeScene (canvas) + Globe (markers, flight)
-│   │   ├── components/panels/     # TopNav, LayerPanel, DataPanel, BottomBar, SettingsModal
+│   │   ├── components/globe/      # EarthRenderer (selector) + WebGPUEarth (TSL) + Globe/GlobeScene (WebGL fallback)
+│   │   ├── components/panels/     # TopNav, LayerPanel, DataPanel, BottomBar, SettingsModal (+ Diagnostics)
 │   │   ├── components/overlays/   # Tooltip, DataStatusBanner
 │   │   ├── components/ui/         # shadcn-style Radix primitives
 │   │   ├── hooks/                 # useLayers/useLayerData, useSearch, useKeyboardShortcuts
-│   │   ├── services/api.ts        # centralized API base URL + client
+│   │   ├── services/api.ts        # centralized API base URL + client (fail-loud in prod without VITE_API_BASE_URL)
 │   │   ├── lib/geo.ts             # canonical coordinate validation + projection
 │   │   ├── lib/format.ts          # units, relative time, coordinate formatting
 │   │   ├── shaders/               # atmosphere shader
@@ -229,8 +229,10 @@ Frontend (`frontend/.env`):
 
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
-| `VITE_API_BASE_URL` | Yes (prod) | `http://localhost:5001/api/v1` | Backend base URL incl. `/api/v1` |
+| `VITE_API_BASE_URL` | Yes (prod) | `http://localhost:5001/api/v1` (dev only) | Backend base URL incl. `/api/v1`. A production build without it fails loudly with a configuration error instead of silently calling localhost |
 | `VITE_API_URL` | No | — | Legacy alias, used only if the above is unset |
+
+Use `GET /api/v1/health` (or Settings → Diagnostics in the UI) to verify the deployed frontend reaches the Render backend. Diagnostics shows the configured API base, backend health + latency, current layer/provenance, WebGPU support, and the active renderer — never secrets.
 
 Backend (`backend/.env`):
 
@@ -341,6 +343,18 @@ CORS:
 - The Flask API enables CORS only for `/api/*` against the explicit `CORS_ORIGINS` allow-list (exact origins, comma-separated). There is no wildcard mode.
 - Local development default covers the Vite dev server (`http://localhost:3000`, `http://localhost:5173`).
 - Production: `CORS_ORIGINS` includes the deployed Vercel frontend origin (`https://kimi-earth-sentinel-3d.vercel.app`). After renaming the Vercel project or adding a custom domain, update this variable — otherwise browsers block API requests. Preview deployments with distinct URLs need their own entries.
+
+## Earth Renderer (WebGPU + TSL)
+
+The Earth surface is rendered by `frontend/src/components/globe/WebGPUEarth.tsx`, an imperative React component built on the official Three.js `webgpu_tsl_earth` example (Three.js 0.185.x, `three/webgpu` + `three/tsl`):
+
+- `MeshStandardNodeMaterial` with a TSL `colorNode` blending the day texture and night city-lights by a sun-oriented smoothstep transition (`dot(normalWorld, sunDirection)`), classic `emissiveMap` night glow, water-texture roughness, and topology bump.
+- TSL Fresnel atmosphere shell (`BackSide`, additive), drifting cloud layer, deterministic starfield, directional sun (configurable `sunDirection` prop, reserved for future UTC solar wiring).
+- `EarthRenderer.tsx` probes WebGPU support and lazy-loads the WebGPU chunk only on capable browsers; otherwise (or on init failure) the existing WebGL/React Three Fiber globe (`Globe`/`GlobeScene`) takes over with the identical marker/hover/click/fly-to/rotation contract. The app never renders a blank viewport.
+- Markers keep the canonical `latLonToVector3Into` projection (same radius `5`, altitude factor `1.012`), severity colors, instanced rendering, rAF-throttled raycast picking, and quaternion fly-to — verified against known continents (no lat/lon reversal).
+- Earth textures are the existing `frontend/public/textures/` assets (NASA Visible Earth Blue Marble family, as credited in Settings → About).
+
+Validate the real renderer manually in a Chromium browser with WebGPU (day/night transition, night lights, clouds, atmosphere, rotation, marker hover/click, search fly-to), plus once with WebGPU disabled (`--disable-webgpu` or a non-supporting browser) to confirm the fallback.
 
 ## Current Limitations
 

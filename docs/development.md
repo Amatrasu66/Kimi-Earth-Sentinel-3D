@@ -68,6 +68,20 @@ pip install -r requirements.txt -r requirements-dev.txt
 python -m pytest tests/ -q
 ```
 
+## Diagnosing production connectivity
+
+1. Open the deployed frontend → Settings → Diagnostics. It shows the configured API base + source, backend health + latency, current layer/provenance, WebGPU support, and the active renderer.
+2. If `API base` reads `not configured`, the Vercel build is missing `VITE_API_BASE_URL` — set it to `https://<render-service>.onrender.com/api/v1` and redeploy. The client intentionally refuses to fall back to localhost in production.
+3. If `Backend health` reads `unreachable`, check the Render service (sleeping, crashed, bad start command) and that `CORS_ORIGINS` includes the exact Vercel origin. Browser devtools will show CORS failures as blocked `fetch` calls, not HTTP errors.
+4. `GET /api/health` and `GET /api/v1/health` must both return `{ status: "ok", … }`; `GET /api/v1/layers` must list the 8 layers.
+
+## Earth renderer
+
+- `components/globe/WebGPUEarth.tsx` — WebGPU + TSL Earth (Three.js 0.185.x: `three/webgpu`, `three/tsl`, OrbitControls from `three/addons`). Imperative engine in a mount-once effect; props flow through refs so the frame loop never sets React state. Full cleanup on unmount (animation loop, controls, listeners, geometries/materials/textures, renderer).
+- `components/globe/EarthRenderer.tsx` — probes `lib/webgpu.ts`, lazy-loads the WebGPU chunk on capable browsers, falls back to `Globe`/`GlobeScene` (WebGL) otherwise or on init error.
+- `lib/webgpu.ts` — cached `navigator.gpu.requestAdapter()` probe; unit-tested with mocks (never requires a real GPU in CI).
+- Manual GPU validation cannot run in Vitest/jsdom: verify in a real browser (see root README → Earth Renderer).
+
 ## Deployment overview
 
 - **Backend → Render:** `render.yaml` (`rootDir: backend`, Gunicorn `wsgi:app`, health check `/api/health`). Set `CORS_ORIGINS` to the Vercel origin(s), `SECRET_KEY`, and provider keys. `SCHEDULER_ENABLED` stays `false` in production.

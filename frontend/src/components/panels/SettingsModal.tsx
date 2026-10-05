@@ -1,251 +1,198 @@
-import { X, RotateCw, Zap, Eye, Database } from 'lucide-react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
+import { RotateCw, Activity, Keyboard, Info } from 'lucide-react';
+import { api, getApiConfig } from '@/services/api';
+import { hasNavigatorGpu, probeWebGpuSupport } from '@/lib/webgpu';
+import type { RendererInfo } from '@/components/globe/EarthRenderer';
+import type { DataStatus, LayerId } from '@/types';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
+import { Kbd } from '@/components/ui/kbd';
+import { statusLabel } from '@/lib/format';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   isRotating: boolean;
   onToggleRotation: () => void;
+  rendererInfo?: RendererInfo;
+  activeLayer?: LayerId | null;
+  dataStatus?: DataStatus | null;
 }
 
-interface SettingSection {
-  title: string;
-  icon: React.ReactNode;
-  settings: Array<{
-    label: string;
-    description: string;
-    type: 'toggle' | 'slider';
-    value: boolean | number;
-    onChange: (val: boolean | number) => void;
-    disabled?: boolean;
-    comingSoon?: boolean;
-  }>;
-}
+/**
+ * Lightweight production diagnostic (Settings → Diagnostics).
+ * Shows only safe values: configured API base, backend health + latency,
+ * current layer/provenance, and renderer capability. Never any secret.
+ */
+function DiagnosticsPanel({
+  rendererInfo,
+  activeLayer,
+  dataStatus,
+}: {
+  rendererInfo?: RendererInfo;
+  activeLayer?: LayerId | null;
+  dataStatus?: DataStatus | null;
+}) {
+  const [health, setHealth] = useState<string | null>(null);
+  const [latencyMs, setLatencyMs] = useState<number | null>(null);
+  const [lastOk, setLastOk] = useState<string | null>(null);
+  const [webgpuProbe, setWebgpuProbe] = useState<string>('checking…');
+  const config = getApiConfig();
 
-export default function SettingsModal({ isOpen, onClose, isRotating, onToggleRotation }: SettingsModalProps) {
-  const [cloudOpacity, setCloudOpacity] = useState(0.9);
-  const [markerDensity, setMarkerDensity] = useState(100);
-  const [atmosphereIntensity, setAtmosphereIntensity] = useState(1.0);
-  const [showStars, setShowStars] = useState(true);
-  const closeRef = useRef<HTMLButtonElement>(null);
-
-  // Focus management + Escape to close while the dialog is open.
   useEffect(() => {
-    if (!isOpen) return;
-    closeRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+    let cancelled = false;
+    probeWebGpuSupport().then((support) => {
+      if (!cancelled) {
+        setWebgpuProbe(support.supported ? `supported (${support.reason})` : `unsupported (${support.reason})`);
+      }
+    });
+    if (config.error || !config.base) return;
+    const started = performance.now();
+    api
+      .getHealth()
+      .then((payload) => {
+        if (cancelled) return;
+        setHealth(`ok · ${payload.service} v${payload.version}`);
+        setLatencyMs(Math.round(performance.now() - started));
+        setLastOk(new Date().toISOString());
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setHealth(`unreachable · ${err instanceof Error ? err.message : 'request failed'}`);
+      });
+    return () => {
+      cancelled = true;
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, onClose]);
+    // Fetch once per dialog open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  if (!isOpen) return null;
-
-  const sections: SettingSection[] = [
-    {
-      title: 'Globe',
-      icon: <RotateCw className="w-4 h-4 text-[#FFC31F]" />,
-      settings: [
-        {
-          label: 'Auto-rotate',
-          description: 'Globe rotates automatically',
-          type: 'toggle',
-          value: isRotating,
-          onChange: () => onToggleRotation(),
-        },
-        {
-          label: 'Atmosphere',
-          description: 'Atmospheric glow intensity — coming soon',
-          type: 'slider',
-          value: atmosphereIntensity,
-          onChange: (val) => setAtmosphereIntensity(val as number),
-          disabled: true,
-          comingSoon: true,
-        },
-        {
-          label: 'Cloud Opacity',
-          description: 'Cloud layer transparency — coming soon',
-          type: 'slider',
-          value: cloudOpacity,
-          onChange: (val) => setCloudOpacity(val as number),
-          disabled: true,
-          comingSoon: true,
-        },
-      ],
-    },
-    {
-      title: 'Display',
-      icon: <Eye className="w-4 h-4 text-[#FFC31F]" />,
-      settings: [
-        {
-          label: 'Starfield',
-          description: 'Show background stars — coming soon',
-          type: 'toggle',
-          value: showStars,
-          onChange: () => setShowStars(!showStars),
-          disabled: true,
-          comingSoon: true,
-        },
-        {
-          label: 'Marker Density',
-          description: 'Number of visible markers — coming soon',
-          type: 'slider',
-          value: markerDensity,
-          onChange: (val) => setMarkerDensity(val as number),
-          disabled: true,
-          comingSoon: true,
-        },
-      ],
-    },
-    {
-      title: 'Data',
-      icon: <Database className="w-4 h-4 text-[#FFC31F]" />,
-      settings: [
-        {
-          label: 'Auto-refresh',
-          description: 'Refresh data automatically — coming soon',
-          type: 'toggle',
-          value: true,
-          onChange: () => {},
-          disabled: true,
-          comingSoon: true,
-        },
-      ],
-    },
+  const rows: Array<[string, string]> = [
+    ['API base', config.base || 'not configured'],
+    ['API source', `${config.source}${config.isProduction ? ' · production build' : ' · dev build'}`],
+    ['Backend health', config.error ? config.error : (health ?? 'checking…')],
+    ['API latency', latencyMs === null ? '—' : `${latencyMs} ms`],
+    ['Last success', lastOk ?? '—'],
+    ['Current layer', activeLayer ?? 'none'],
+    ['Data status', dataStatus ? `${statusLabel(dataStatus)} · ${dataStatus.source}` : 'no layer data'],
+    ['WebGPU', `${hasNavigatorGpu() ? 'navigator.gpu present' : 'no navigator.gpu'} · probe ${webgpuProbe}`],
+    ['Active renderer', rendererInfo ? `${rendererInfo.active} · ${rendererInfo.detail}` : 'unknown'],
+    ['Earth textures', rendererInfo ? `${rendererInfo.textures.loaded}/${rendererInfo.textures.total} loaded` : '—'],
   ];
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center" onClick={onClose}>
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+    <dl className="sentinel-inset space-y-1.5 rounded-lg p-3">
+      {rows.map(([label, value]) => (
+        <div key={label} className="flex items-baseline justify-between gap-3">
+          <dt className="sentinel-micro flex-shrink-0">{label}</dt>
+          <dd className="break-all text-right text-xs text-white/80">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
 
-      {/* Modal */}
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Settings"
-        className="relative rounded-2xl overflow-hidden"
-        style={{ 
-          width: 480,
-          maxHeight: '80vh',
-          background: 'rgba(15, 15, 20, 0.95)',
-          backdropFilter: 'blur(20px)',
-          border: '1px solid rgba(255,255,255,0.1)',
-        }}
-        onClick={e => e.stopPropagation()}
+const SHORTCUTS: Array<{ keys: string[]; action: string }> = [
+  { keys: ['1', '…', '8'], action: 'Toggle environmental layers' },
+  { keys: ['Space'], action: 'Pause / resume globe rotation' },
+  { keys: ['/'], action: 'Focus search' },
+  { keys: ['↑', '↓', '↵'], action: 'Navigate & fly to search results' },
+  { keys: ['Esc'], action: 'Close results → back to layer → close panel' },
+];
+
+export default function SettingsModal({ isOpen, onClose, isRotating, onToggleRotation, rendererInfo, activeLayer, dataStatus }: SettingsModalProps) {
+  return (
+    <Dialog open={isOpen} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent
+        className="sentinel-panel max-h-[85vh] w-[520px] gap-0 overflow-hidden border-white/10 bg-[#0d0f13]/95 p-0 text-white sm:max-w-[520px]"
+        aria-describedby={undefined}
       >
-        {/* Header */}
-        <div 
-          className="flex items-center justify-between p-4 border-b"
-          style={{ borderColor: 'rgba(255,255,255,0.06)' }}
-        >
-          <div className="flex items-center gap-2">
-            <Zap className="w-5 h-5 text-[#FFC31F]" />
-            <h2 className="text-white font-medium" style={{ fontFamily: 'Instrument Sans, sans-serif' }}>Settings</h2>
-          </div>
-          <button
-            ref={closeRef}
-            onClick={onClose}
-            aria-label="Close settings"
-            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 transition-colors focus-visible:outline-2 focus-visible:outline-[#FFC31F]"
-          >
-            <X className="w-5 h-5 text-white/60" />
-          </button>
-        </div>
+        <DialogHeader className="border-b border-white/[0.07] px-4 py-3 text-left">
+          <DialogTitle className="sentinel-section-title text-white">Settings</DialogTitle>
+          <DialogDescription className="sentinel-micro">Globe behavior, shortcuts, and diagnostics.</DialogDescription>
+        </DialogHeader>
 
-        {/* Content */}
-        <div className="overflow-y-auto p-4 space-y-6" style={{ maxHeight: 'calc(80vh - 60px)' }}>
-          {sections.map((section) => (
-            <div key={section.title}>
-              <div className="flex items-center gap-2 mb-3">
-                {section.icon}
-                <h3 className="text-white/70 text-sm font-medium">{section.title}</h3>
-              </div>
-              
-              <div className="space-y-3">
-                {section.settings.map((setting) => (
-                  <div 
-                    key={setting.label}
-                    className="flex items-center justify-between p-3 rounded-xl"
-                    style={{
-                      background: 'rgba(255,255,255,0.03)',
-                      border: '1px solid rgba(255,255,255,0.04)',
-                      opacity: setting.disabled ? 0.55 : 1,
-                    }}
-                  >
-                    <div>
-                      <div className="text-white text-sm">
-                        {setting.label}
-                        {setting.comingSoon && (
-                          <span className="ml-2 text-[10px] uppercase tracking-wide text-white/40 border border-white/10 rounded px-1.5 py-0.5">
-                            Soon
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-white/30 text-xs">{setting.description}</div>
-                    </div>
-                    
-                    {setting.type === 'toggle' ? (
-                      <button
-                        onClick={() => setting.onChange(!setting.value)}
-                        disabled={setting.disabled}
-                        aria-disabled={setting.disabled}
-                        className="relative w-10 h-6 rounded-full transition-colors disabled:cursor-not-allowed"
-                        style={{
-                          background: setting.value ? '#FFC31F' : 'rgba(255,255,255,0.1)',
-                        }}
-                      >
-                        <div 
-                          className="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform"
-                          style={{ 
-                            left: 2,
-                            transform: setting.value ? 'translateX(16px)' : 'translateX(0)',
-                          }}
-                        />
-                      </button>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="range"
-                          min={0}
-                          max={typeof setting.value === 'number' && setting.label === 'Marker Density' ? 200 : 1}
-                          step={0.01}
-                          value={setting.value as number}
-                          disabled={setting.disabled}
-                          onChange={(e) => setting.onChange(parseFloat(e.target.value))}
-                          className="w-24 accent-[#FFC31F] disabled:cursor-not-allowed"
-                        />
-                        <span className="text-white/40 text-xs w-10 text-right">
-                          {typeof setting.value === 'number' 
-                            ? setting.label === 'Marker Density' 
-                              ? Math.round(setting.value) 
-                              : `${Math.round((setting.value as number) * 100)}%`
-                            : setting.value}
-                        </span>
-                      </div>
-                    )}
+        <Tabs defaultValue="globe" className="min-h-0 gap-0">
+          <div className="border-b border-white/[0.07] px-4 pt-2.5">
+            <TabsList className="h-8 border border-white/10 bg-white/[0.04] p-0.5">
+              <TabsTrigger value="globe" className="h-7 px-3 text-xs data-[state=active]:bg-[rgba(255,195,31,0.15)] data-[state=active]:text-[#FFC31F]">Globe</TabsTrigger>
+              <TabsTrigger value="shortcuts" className="h-7 px-3 text-xs data-[state=active]:bg-[rgba(255,195,31,0.15)] data-[state=active]:text-[#FFC31F]">
+                <Keyboard className="h-3.5 w-3.5" /> Shortcuts
+              </TabsTrigger>
+              <TabsTrigger value="diagnostics" className="h-7 px-3 text-xs data-[state=active]:bg-[rgba(255,195,31,0.15)] data-[state=active]:text-[#FFC31F]">
+                <Activity className="h-3.5 w-3.5" /> Diagnostics
+              </TabsTrigger>
+              <TabsTrigger value="about" className="h-7 px-3 text-xs data-[state=active]:bg-[rgba(255,195,31,0.15)] data-[state=active]:text-[#FFC31F]">
+                <Info className="h-3.5 w-3.5" /> About
+              </TabsTrigger>
+            </TabsList>
+          </div>
+
+          <div className="max-h-[55vh] overflow-y-auto overscroll-contain p-4">
+            <TabsContent value="globe" className="mt-0 space-y-3">
+              <div className="sentinel-inset flex items-center justify-between gap-3 rounded-lg p-3">
+                <div className="flex items-start gap-2.5">
+                  <RotateCw className="mt-0.5 h-4 w-4 shrink-0 text-[#FFC31F]" aria-hidden />
+                  <div>
+                    <Label htmlFor="sentinel-rotate" className="text-[13px] font-medium text-white">Auto-rotate</Label>
+                    <p className="sentinel-micro mt-0.5">Globe rotates when idle. Also toggled with <Kbd className="border-white/10 bg-white/10 text-white/60">Space</Kbd>.</p>
                   </div>
-                ))}
+                </div>
+                <Switch id="sentinel-rotate" checked={isRotating} onCheckedChange={onToggleRotation} aria-label="Toggle globe auto-rotation" className="data-[state=checked]:bg-[#FFC31F]" />
               </div>
-            </div>
-          ))}
+              <div className="sentinel-inset rounded-lg p-3">
+                <p className="sentinel-micro leading-relaxed">
+                  Display theme is fixed to the dark command theme so the Earth stays the visual centerpiece.
+                  Renderer status is always visible in the bottom bar.
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <Badge variant="secondary" className="border-white/10 bg-white/5 text-[11px] text-white/60">
+                    {rendererInfo ? `${rendererInfo.active} · ${rendererInfo.detail}` : 'renderer…'}
+                  </Badge>
+                  {activeLayer && (
+                    <Badge variant="secondary" className="border-[rgba(255,195,31,0.25)] bg-[rgba(255,195,31,0.08)] text-[11px] text-[#FFC31F]">
+                      {activeLayer}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            </TabsContent>
 
-          {/* About */}
-          <div 
-            className="rounded-xl p-4"
-            style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)' }}
-          >
-            <div className="text-white/40 text-xs mb-2">Earth Sentinel 3D v1.0.0</div>
-            <div className="text-white/20 text-xs">
-              Data sources: NASA EONET, USGS, NOAA, AirNow, Open-Meteo
-            </div>
-            <div className="text-white/20 text-xs mt-1">
-              Earth textures: NASA Visible Earth (Blue Marble)
-            </div>
+            <TabsContent value="shortcuts" className="mt-0">
+              <ul className="sentinel-inset divide-y divide-white/[0.05] rounded-lg px-3">
+                {SHORTCUTS.map((s) => (
+                  <li key={s.action} className="flex items-center justify-between gap-3 py-2.5">
+                    <span className="text-[13px] text-white/75">{s.action}</span>
+                    <span className="flex shrink-0 items-center gap-1">
+                      {s.keys.map((k) => (
+                        <Kbd key={k} className="border-white/10 bg-white/[0.07] text-white/70">{k}</Kbd>
+                      ))}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="sentinel-micro mt-2.5 leading-relaxed">Shortcuts are ignored while typing. Press Esc to blur the search field.</p>
+            </TabsContent>
+
+            <TabsContent value="diagnostics" className="mt-0">
+              <DiagnosticsPanel rendererInfo={rendererInfo} activeLayer={activeLayer} dataStatus={dataStatus} />
+            </TabsContent>
+
+            <TabsContent value="about" className="mt-0 space-y-3">
+              <div className="sentinel-inset rounded-lg p-3">
+                <div className="sentinel-section-title text-white">Earth Sentinel 3D v1.0.0</div>
+                <Separator className="my-2 bg-white/[0.07]" />
+                <p className="sentinel-micro leading-relaxed">Data sources: NASA EONET, USGS, NOAA, AirNow, Open-Meteo</p>
+                <p className="sentinel-micro mt-1 leading-relaxed">Earth textures: NASA Visible Earth (Blue Marble)</p>
+              </div>
+            </TabsContent>
           </div>
-        </div>
-      </div>
-    </div>
+        </Tabs>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -1,16 +1,78 @@
 /**
- * Centralized API configuration (Phase 20).
+ * Centralized API configuration (Phase 20, production-hardened).
  *
  * Development: VITE_API_BASE_URL=http://localhost:5001/api/v1
  * Production:  VITE_API_BASE_URL=https://<render-backend>.onrender.com/api/v1
  *
  * VITE_API_URL is honoured as a legacy fallback. No component may hardcode
  * a host — everything goes through API_BASE below.
+ *
+ * Production safety: a production bundle built without an explicit
+ * VITE_API_BASE_URL / VITE_API_URL must NEVER silently call localhost.
+ * In that case API_BASE is empty and every request fails loudly with
+ * API_CONFIG_ERROR so the misconfiguration is visible instead of
+ * producing confusing network errors against localhost.
  */
-const rawBase =
-  import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:5001/api/v1';
+export const DEV_API_FALLBACK = 'http://localhost:5001/api/v1';
 
-export const API_BASE = String(rawBase).replace(/\/+$/, '');
+export type ApiBaseSource =
+  | 'VITE_API_BASE_URL'
+  | 'VITE_API_URL'
+  | 'localhost-fallback'
+  | 'missing';
+
+export interface ResolvedApiConfig {
+  base: string;
+  source: ApiBaseSource;
+  /** Non-null when the app cannot talk to any API (prod without env). */
+  error: string | null;
+}
+
+/**
+ * Pure resolver — testable without touching import.meta.env.
+ * Production without an explicit base is a hard configuration error.
+ */
+export function resolveApiConfig(
+  env: { baseUrl?: unknown; legacyUrl?: unknown },
+  isProduction: boolean,
+): ResolvedApiConfig {
+  const explicit = String(env.baseUrl ?? '').trim();
+  const legacy = String(env.legacyUrl ?? '').trim();
+  if (explicit) {
+    return { base: explicit.replace(/\/+$/, ''), source: 'VITE_API_BASE_URL', error: null };
+  }
+  if (legacy) {
+    return { base: legacy.replace(/\/+$/, ''), source: 'VITE_API_URL', error: null };
+  }
+  if (!isProduction) {
+    return { base: DEV_API_FALLBACK, source: 'localhost-fallback', error: null };
+  }
+  return {
+    base: '',
+    source: 'missing',
+    error:
+      'VITE_API_BASE_URL is not set — the production frontend has no backend to call. ' +
+      'Set VITE_API_BASE_URL to the Render API base (e.g. https://<service>.onrender.com/api/v1) and rebuild.',
+  };
+}
+
+const resolved: ResolvedApiConfig = resolveApiConfig(
+  {
+    baseUrl: import.meta.env.VITE_API_BASE_URL,
+    legacyUrl: import.meta.env.VITE_API_URL,
+  },
+  import.meta.env.PROD,
+);
+
+export const API_BASE = resolved.base;
+export const API_BASE_SOURCE: ApiBaseSource = resolved.source;
+export const API_CONFIG_ERROR: string | null = resolved.error;
+export const IS_PRODUCTION_BUILD = import.meta.env.PROD;
+
+/** Safe diagnostic snapshot for the Settings → Diagnostics panel. No secrets. */
+export function getApiConfig(): ResolvedApiConfig & { isProduction: boolean } {
+  return { base: API_BASE, source: API_BASE_SOURCE, error: API_CONFIG_ERROR, isProduction: IS_PRODUCTION_BUILD };
+}
 
 const REQUEST_TIMEOUT_MS = 15000;
 
@@ -44,6 +106,9 @@ export interface RequestOptions {
 }
 
 async function fetchApi<T>(path: string, options?: FetchOptions): Promise<T> {
+  if (!API_BASE) {
+    throw new Error(API_CONFIG_ERROR ?? 'API is not configured.');
+  }
   const { timeoutMs = REQUEST_TIMEOUT_MS, signal: externalSignal, ...init } = options ?? {};
   const controller = new AbortController();
   let timedOut = false;
@@ -182,10 +247,22 @@ export const api = {
     );
   },
 
+  // Timezones (simulated longitude approximation — see backend)
+  getTimezone: (lat: number, lon: number, opts?: RequestOptions) => {
+    return fetchApi<{ timezone: string; offset_hours: number; name: string }>(
+      `/timezones?lat=${lat}&lon=${lon}`,
+      opts,
+    );
+  },
+
   // GIBS Imagery
   getGibsCapabilities: (opts?: RequestOptions) =>
     fetchApi<{ layers: Array<{ id: string; name: string; projection: string; format: string }> }>(
       '/imagery/gibs/capabilities',
       opts,
     ),
+
+  /** Direct tile URL (backend 302-redirects to NASA GIBS). Pure builder, no fetch. */
+  gibsTileUrl: (layer: string, z: number, x: number, y: number): string =>
+    `${API_BASE}/imagery/gibs/tile/${encodeURIComponent(layer)}/${z}/${x}/${y}`,
 };

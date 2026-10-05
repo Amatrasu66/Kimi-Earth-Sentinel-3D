@@ -1,90 +1,123 @@
-import { useMemo, useState, useEffect } from 'react';
-import { Crosshair } from 'lucide-react';
-import DataStatusBanner from '@/components/overlays/DataStatusBanner';
-import { formatCoordinates } from '@/lib/format';
+import { useState, useEffect } from 'react';
+import { Crosshair, Cpu } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import { Separator } from '@/components/ui/separator';
+import { formatCoordinates, statusLabel } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import type { DataStatus } from '@/types';
+import type { RendererInfo } from '@/components/globe/EarthRenderer';
 
 interface BottomBarProps {
   coordinates: { lat: number; lon: number } | null;
   activeLayer: string | null;
   dataCount: number;
   dataStatus?: DataStatus | null;
+  rendererInfo?: RendererInfo | null;
 }
 
-export default function BottomBar({ coordinates, activeLayer, dataCount, dataStatus = null }: BottomBarProps) {
-  const [time, setTime] = useState(new Date());
+const STATUS_DOT: Record<string, string> = {
+  live: '#34D399',
+  simulated: '#FFC31F',
+  stale: '#FB923C',
+  unavailable: '#F87171',
+  unknown: '#9CA3AF',
+};
+
+export default function BottomBar({ coordinates, activeLayer, dataCount, dataStatus = null, rendererInfo = null }: BottomBarProps) {
+  const [time, setTime] = useState(() => new Date());
 
   useEffect(() => {
     const interval = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(interval);
   }, []);
 
-  // Stable minimap dots — Math.random() in render flickered every second.
-  const dots = useMemo(
-    () =>
-      Array.from({ length: 80 }, (_, i) => ({
-        x: ((i * 53) % 16) * 10 + ((i * 37) % 5),
-        y: Math.floor(i / 16) * 8 + ((i * 29) % 4),
-      })),
-    [],
-  );
+  const statusKind = dataStatus?.status ?? 'unknown';
+  const rendererLabel =
+    rendererInfo?.active === 'webgpu'
+      ? `WebGPU · ${rendererInfo.detail}`
+      : rendererInfo?.active === 'webgl'
+        ? 'WebGL fallback'
+        : 'Renderer…';
 
   return (
-    <div
-      className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-between px-4 gap-3"
+    <footer
+      className="fixed bottom-0 left-0 right-0 z-50 flex h-[52px] items-center justify-between gap-2 px-3 sm:px-4"
       style={{
-        height: 60,
-        background: 'rgba(2, 2, 2, 0.7)',
-        backdropFilter: 'blur(20px)',
-        borderTop: '1px solid rgba(255,255,255,0.06)',
+        background: 'rgba(5, 6, 7, 0.72)',
+        backdropFilter: 'blur(20px) saturate(1.2)',
+        WebkitBackdropFilter: 'blur(20px) saturate(1.2)',
+        borderTop: '1px solid rgba(255,255,255,0.07)',
       }}
+      aria-label="Status bar"
     >
-      {/* Left: Coordinates */}
-      <div className="flex items-center gap-2 sm:gap-4 min-w-0">
-        <div className="flex items-center gap-2">
-          <Crosshair className="w-4 h-4 text-white/30 flex-shrink-0" />
-          <span className="text-white/50 text-xs font-mono whitespace-nowrap">
-            {coordinates ? formatCoordinates(coordinates.lat, coordinates.lon) : '--°, --°'}
-          </span>
-        </div>
-        {activeLayer && (
-          <div
-            className="px-2 py-0.5 rounded-md text-xs whitespace-nowrap hidden sm:block"
-            style={{ background: 'rgba(255,195,31,0.1)', color: '#FFC31F' }}
-          >
-            {activeLayer}: {dataCount} events
-          </div>
+      {/* Left: position + layer + provenance */}
+      <div className="flex min-w-0 items-center gap-2">
+        <Tooltip delayDuration={200}>
+          <TooltipTrigger asChild>
+            <span className="flex shrink-0 cursor-default items-center gap-1.5" aria-label={coordinates ? `Cursor coordinates ${formatCoordinates(coordinates.lat, coordinates.lon)}` : 'No hovered coordinate'}>
+              <Crosshair className="h-3.5 w-3.5 text-white/30" aria-hidden />
+              <span className="sentinel-micro sentinel-mono whitespace-nowrap text-white/50">
+                {coordinates ? formatCoordinates(coordinates.lat, coordinates.lon) : '— —'}
+              </span>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="border-white/10 bg-[#14171d] text-xs text-white">
+            Hover the globe to inspect coordinates
+          </TooltipContent>
+        </Tooltip>
+
+        <Separator orientation="vertical" className="hidden h-4 bg-white/10 sm:block" />
+
+        {activeLayer ? (
+          <Badge variant="secondary" className="sentinel-mono hidden max-w-[220px] truncate border-[rgba(255,195,31,0.25)] bg-[rgba(255,195,31,0.08)] text-[11px] text-[#FFC31F] sm:inline-flex" title={`Active layer: ${activeLayer}`}>
+            {activeLayer} · {dataCount}
+          </Badge>
+        ) : (
+          <span className="sentinel-micro hidden sm:inline">No layer selected</span>
         )}
+
         {dataStatus && (
-          <div className="hidden md:block">
-            <DataStatusBanner status={dataStatus} compact />
-          </div>
+          <Tooltip delayDuration={200}>
+            <TooltipTrigger asChild>
+              <span
+                className="hidden cursor-default items-center gap-1.5 md:inline-flex"
+                role="status"
+                aria-label={`Data status: ${statusLabel(dataStatus)} · ${dataStatus.source}`}
+              >
+                <span className={cn('h-1.5 w-1.5 rounded-full', statusKind === 'live' && 'sentinel-live-dot')} style={{ background: STATUS_DOT[statusKind] }} aria-hidden />
+                <span className="text-[11px] font-semibold tracking-wide" style={{ color: STATUS_DOT[statusKind] }}>
+                  {statusLabel(dataStatus)}
+                </span>
+                <span className="sentinel-micro max-w-[180px] truncate">{dataStatus.source}</span>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="border-white/10 bg-[#14171d] text-xs text-white">
+              {dataStatus.message ?? `Source: ${dataStatus.source}`}
+            </TooltipContent>
+          </Tooltip>
         )}
       </div>
 
-      {/* Center: Timestamp */}
-      <div className="text-white/30 text-xs font-mono whitespace-nowrap hidden sm:block">
+      {/* Center: UTC clock */}
+      <div className="sentinel-micro sentinel-mono hidden whitespace-nowrap lg:block" aria-label="Current UTC time">
         {time.toISOString().replace('T', ' ').slice(0, 19)} UTC
       </div>
 
-      {/* Right: Minimap */}
-      <div
-        className="rounded-lg overflow-hidden flex-shrink-0 hidden sm:block"
-        style={{
-          width: 160,
-          height: 40,
-          background: 'rgba(5, 24, 64, 0.8)',
-          border: '1px solid rgba(255,255,255,0.06)',
-        }}
-        aria-hidden
-      >
-        <svg viewBox="0 0 160 40" className="w-full h-full">
-          {dots.map((d, i) => (
-            <rect key={i} x={d.x} y={d.y} width="2" height="2" fill="#0A2A5C" rx="0.5" />
-          ))}
-          <rect x={60} y={10} width={40} height={20} fill="none" stroke="#FFC31F" strokeWidth="0.5" rx="2" opacity="0.6" />
-        </svg>
-      </div>
-    </div>
+      {/* Right: renderer state */}
+      <Tooltip delayDuration={200}>
+        <TooltipTrigger asChild>
+          <span className="flex shrink-0 cursor-default items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-2 py-1" role="status" aria-label={`Renderer: ${rendererLabel}`}>
+            <Cpu className="h-3.5 w-3.5 text-white/40" aria-hidden />
+            <span className="sentinel-micro hidden sm:inline">{rendererInfo?.active === 'loading' || !rendererInfo ? 'Starting…' : rendererInfo.active === 'webgpu' ? 'WebGPU' : 'WebGL'}</span>
+            <span className={cn('h-1.5 w-1.5 rounded-full', rendererInfo?.active === 'webgpu' && 'sentinel-live-dot')} style={{ background: rendererInfo?.active === 'webgpu' ? '#34D399' : rendererInfo?.active === 'webgl' ? '#FFC31F' : '#9CA3AF' }} aria-hidden />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="border-white/10 bg-[#14171d] text-xs text-white">
+          {rendererLabel}
+          {rendererInfo && rendererInfo.textures.total > 0 && ` · textures ${rendererInfo.textures.loaded}/${rendererInfo.textures.total}`}
+        </TooltipContent>
+      </Tooltip>
+    </footer>
   );
 }
