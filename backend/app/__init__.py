@@ -3,7 +3,7 @@ import structlog
 from flask import Flask, jsonify
 from flask_cors import CORS
 from .cache_service import InMemoryCache
-from .config import Config
+from .config import Config, resolve_cors_origins
 
 logger = structlog.get_logger()
 
@@ -19,7 +19,12 @@ def create_app(config_class=Config):
     if _is_production(app) and app.config.get("SECRET_KEY") == Config.DEFAULT_SECRET_KEY:
         logger.warning("secret_key_default", message="Running with the default SECRET_KEY; set SECRET_KEY.")
 
-    # CORS restricted to the configured allow-list (Phase 17).
+    # CORS restricted to the configured allow-list (Phase 17). Re-resolve
+    # from the live environment here: Config attributes freeze at import
+    # time, so without this an env var provided after import (Render
+    # dashboard values injected at process start, tests) would be ignored
+    # and production would silently keep localhost-only defaults.
+    app.config["CORS_ORIGINS"] = resolve_cors_origins()
     CORS(
         app,
         resources={

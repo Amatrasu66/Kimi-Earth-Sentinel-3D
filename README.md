@@ -241,7 +241,7 @@ Backend (`backend/.env`):
 | `FLASK_ENV` | No | `production` | `development` enables verbose 500s |
 | `SECRET_KEY` | Yes (prod) | dev placeholder | Flask secret; warning logged if default in prod |
 | `PORT` / `FLASK_PORT` | No | `5001` | Listen port (`PORT` wins; Render injects it) |
-| `CORS_ORIGINS` | Yes (prod) | `http://localhost:3000,http://localhost:5173` | Allowed browser origins, comma-separated |
+| `CORS_ORIGINS` | Yes (prod) | `https://kimi-earth-sentinel-3d.vercel.app,http://localhost:3000,http://localhost:5173` | Allowed browser origins, comma-separated (trailing slashes ignored) |
 | `CACHE_DEFAULT_TIMEOUT` | No | `300` | Fallback cache TTL (s); per-layer TTLs in code |
 | `USGS_API_URL` / `NASA_EONET_URL` / `NASA_FIRMS_URL` / `NASA_GIBS_URL` / `OPEN_METEO_URL` / `AIRNOW_API_URL` | No | provider defaults | Upstream base URLs (override for tests/proxies) |
 | `AIRNOW_API_KEY` | For live AQI | — | Server-side only; air quality is simulated without it |

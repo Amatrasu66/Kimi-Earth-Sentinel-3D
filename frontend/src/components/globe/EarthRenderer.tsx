@@ -16,6 +16,7 @@
  */
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import GlobeScene from './GlobeScene';
+import WebGpuErrorBoundary from './WebGpuErrorBoundary';
 import type { EarthStatus } from './earthConfig';
 import { probeWebGpuSupport } from '@/lib/webgpu';
 
@@ -81,6 +82,38 @@ export default function EarthRenderer({
     }
   }, []);
 
+  const handleWebgpuCrash = useCallback(() => {
+    // Lazy-chunk load failure or render throw: same graceful fallback.
+    setWebgpuStatus({
+      phase: 'error',
+      renderer: 'webgpu',
+      textures: { loaded: 0, total: 0 },
+      error: 'WebGPU chunk failed to load',
+    });
+    setMode('webgl');
+  }, []);
+
+  // Watchdog: if WebGPU hasn't reported ready within the budget (hung
+  // adapter init, stalled texture fetch — neither rejects nor emits an
+  // error), fall back to WebGL instead of holding a black canvas forever.
+  useEffect(() => {
+    if (mode !== 'webgpu') return;
+    if (webgpuStatus?.phase === 'ready' || webgpuStatus?.phase === 'error') return;
+    const timer = setTimeout(() => {
+      setWebgpuStatus((prev) => {
+        if (prev?.phase === 'ready' || prev?.phase === 'error') return prev;
+        return {
+          phase: 'error',
+          renderer: 'webgpu',
+          textures: prev?.textures ?? { loaded: 0, total: 0 },
+          error: 'WebGPU initialization timed out',
+        };
+      });
+      setMode((prev) => (prev === 'webgpu' ? 'webgl' : prev));
+    }, 30_000);
+    return () => clearTimeout(timer);
+  }, [mode, webgpuStatus?.phase]);
+
   useEffect(() => {
     const info: RendererInfo =
       mode === 'pending'
@@ -124,16 +157,18 @@ export default function EarthRenderer({
             </div>
           }
         >
-          <WebGPUEarth
-            dataPoints={dataPoints}
-            onMarkerClick={onMarkerClick}
-            onMarkerHover={onMarkerHover}
-            isRotating={isRotating}
-            rotationSpeed={0.0003}
-            flyTo={flyTo}
-            sunDirection={sunDirection}
-            onStatus={handleWebgpuStatus}
-          />
+          <WebGpuErrorBoundary onError={handleWebgpuCrash}>
+            <WebGPUEarth
+              dataPoints={dataPoints}
+              onMarkerClick={onMarkerClick}
+              onMarkerHover={onMarkerHover}
+              isRotating={isRotating}
+              rotationSpeed={0.0003}
+              flyTo={flyTo}
+              sunDirection={sunDirection}
+              onStatus={handleWebgpuStatus}
+            />
+          </WebGpuErrorBoundary>
         </Suspense>
       ) : mode === 'webgl' ? (
         <GlobeScene

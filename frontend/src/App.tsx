@@ -208,7 +208,7 @@ function App() {
   }, []);
 
   return (
-    <div className="dark h-screen w-screen overflow-hidden" style={{ background: '#050607' }}>
+    <div className="dark h-dvh w-screen overflow-hidden" style={{ background: '#050607' }}>
       {/* Skip link for keyboard users */}
       <a
         href="#sentinel-data-panel"

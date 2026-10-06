@@ -66,6 +66,22 @@ interface WebGPUEarthProps {
 const EASE_IN_OUT = (t: number) =>
   t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
 
+/**
+ * Rejects if `promise` neither resolves nor rejects within `ms`.
+ * Three.js GPU init / texture fetches can hang indefinitely on blocklisted
+ * GPUs or stalled networks (no rejection, no error) — without this the
+ * viewport would hold a black canvas forever instead of falling back to
+ * WebGL. The loser of the race is left to settle harmlessly; unmount
+ * disposal still runs via the `cancelled` flag.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms} ms.`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 interface Flight {
   t: number;
   duration: number;
@@ -247,7 +263,9 @@ export default function WebGPUEarth({
 
       renderer = new THREE.WebGPURenderer({ canvas, antialias: true });
       if (typeof renderer.init === 'function') {
-        await renderer.init();
+        // Adapter/device acquisition can hang (no rejection) on
+        // blocklisted or busy GPUs — bound it so we fall back to WebGL.
+        await withTimeout(renderer.init(), 15_000, 'WebGPU renderer.init()');
       }
       if (cancelled) return;
       const activeRenderer = renderer;
@@ -282,12 +300,16 @@ export default function WebGPUEarth({
       canvas.addEventListener('wheel', cancelFlight, { passive: true });
 
       // ---- Textures (existing local assets) ----
+      // Each fetch is bounded: a stalled texture must reject (→ WebGL
+      // fallback) rather than leave the canvas black indefinitely.
+      const loadTex = (file: string) =>
+        withTimeout(loader.loadAsync(tex(file)), 25_000, `texture ${file}`);
       const [dayMap, nightMap, cloudMap, topologyMap, waterMap] = await Promise.all([
-        loader.loadAsync(tex('earth-day.jpg')).then((t) => { bumpTextures(); return t; }),
-        loader.loadAsync(tex('earth-night.jpg')).then((t) => { bumpTextures(); return t; }),
-        loader.loadAsync(tex('earth-clouds.png')).then((t) => { bumpTextures(); return t; }),
-        loader.loadAsync(tex('earth-topology.png')).then((t) => { bumpTextures(); return t; }),
-        loader.loadAsync(tex('earth-water.png')).then((t) => { bumpTextures(); return t; }),
+        loadTex('earth-day.jpg').then((t) => { bumpTextures(); return t; }),
+        loadTex('earth-night.jpg').then((t) => { bumpTextures(); return t; }),
+        loadTex('earth-clouds.png').then((t) => { bumpTextures(); return t; }),
+        loadTex('earth-topology.png').then((t) => { bumpTextures(); return t; }),
+        loadTex('earth-water.png').then((t) => { bumpTextures(); return t; }),
       ]);
       if (cancelled) return;
       dayMap.colorSpace = THREE.SRGBColorSpace;

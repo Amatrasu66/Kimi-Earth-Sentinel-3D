@@ -6,7 +6,36 @@ load_dotenv()
 
 def _csv(name, default):
     raw = os.environ.get(name, default)
-    return [item.strip() for item in raw.split(",") if item.strip()]
+    origins: list[str] = []
+    for item in raw.split(","):
+        # Browsers send `Origin` without a trailing slash or whitespace
+        # (e.g. `https://app.vercel.app`), so normalize each entry the
+        # same way — otherwise `https://app.vercel.app/` in the env var
+        # silently never matches and the browser blocks every request.
+        normalized = item.strip().rstrip("/")
+        if normalized and normalized not in origins:
+            origins.append(normalized)
+    return origins
+
+
+# Default CORS allow-list: production Vercel frontend + local Vite dev
+# servers. render.yaml pins the production origin explicitly; this is the
+# safety net underneath it so a deploy without the env var still serves
+# production. Never use "*".
+DEFAULT_CORS_ORIGINS = (
+    "https://kimi-earth-sentinel-3d.vercel.app,"
+    "http://localhost:3000,http://localhost:5173"
+)
+
+
+def resolve_cors_origins() -> list[str]:
+    """Read the CORS allow-list from the *live* environment.
+
+    Config class attributes freeze at import time, so the app factory calls
+    this at creation time instead — otherwise an env var injected after
+    import (tests, containers) would silently have no effect.
+    """
+    return _csv("CORS_ORIGINS", DEFAULT_CORS_ORIGINS)
 
 
 def _as_bool(raw, default=True):
@@ -22,8 +51,12 @@ class Config:
     DEFAULT_SECRET_KEY = "dev-secret-key-change-in-production"
     SECRET_KEY = os.environ.get("SECRET_KEY", DEFAULT_SECRET_KEY)
 
-    # CORS — explicit allow-list (Phase 17). Development default covers Vite.
-    CORS_ORIGINS = _csv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173")
+    # CORS — explicit allow-list (Phase 17). Import-time snapshot; the app
+    # factory re-resolves from the live environment via
+    # resolve_cors_origins() (Session 4: import-frozen config silently
+    # ignored runtime env). Default covers production + local Vite.
+    # Never use "*".
+    CORS_ORIGINS = _csv("CORS_ORIGINS", DEFAULT_CORS_ORIGINS)
 
     # Cache (Phase 5): process-local in-memory cache. CACHE_DEFAULT_TIMEOUT
     # is the fallback TTL; per-layer TTLs live in utils/provenance.py.
