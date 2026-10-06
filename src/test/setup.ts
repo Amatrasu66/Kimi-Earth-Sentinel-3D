@@ -8,3 +8,9 @@ import { cleanup } from "@testing-library/react";
 afterEach(() => {
   cleanup();
 });
+
+// jsdom has no layout engine: stub scrollIntoView (used to keep highlighted
+// combobox options visible) so component effects don't throw under test.
+if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = function () {};
+}

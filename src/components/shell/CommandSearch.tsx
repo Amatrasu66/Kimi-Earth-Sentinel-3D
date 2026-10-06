@@ -104,6 +104,11 @@ export default function CommandSearch({ onResultClick, className }: CommandSearc
     return out;
   }, [results]);
 
+  // Canonical display order. Keyboard nav, Enter, and aria-activedescendant
+  // must index THIS array — never raw `results`, whose API order can
+  // interleave types and would desync highlight from the rendered rows.
+  const ordered = useMemo(() => sections.flatMap((s) => s.items), [sections]);
+
   const onInputKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       if (open) {
@@ -114,25 +119,25 @@ export default function CommandSearch({ onResultClick, className }: CommandSearc
       }
       return;
     }
-    if (e.key === 'ArrowDown' && open && results.length > 0) {
+    if (e.key === 'ArrowDown' && open && ordered.length > 0) {
       e.preventDefault();
-      setHighlight((h) => (h + 1) % results.length);
+      setHighlight((h) => (h + 1) % ordered.length);
       return;
     }
-    if (e.key === 'ArrowUp' && open && results.length > 0) {
+    if (e.key === 'ArrowUp' && open && ordered.length > 0) {
       e.preventDefault();
-      setHighlight((h) => (h - 1 + results.length) % results.length);
+      setHighlight((h) => (h - 1 + ordered.length) % ordered.length);
       return;
     }
     if (e.key === 'Enter') {
-      if (open && results.length > 0) {
+      if (open && ordered.length > 0) {
         e.preventDefault();
-        choose(results[highlight % results.length]);
+        choose(ordered[highlight % ordered.length]);
       }
     }
   };
 
-  const safeHighlight = results.length > 0 ? highlight % results.length : 0;
+  const safeHighlight = ordered.length > 0 ? highlight % ordered.length : 0;
 
   // Keep highlighted option visible.
   useEffect(() => {
@@ -158,7 +163,7 @@ export default function CommandSearch({ onResultClick, className }: CommandSearc
           aria-haspopup="listbox"
           aria-autocomplete="list"
           aria-controls="sentinel-search-listbox"
-          aria-activedescendant={open && results.length > 0 ? `sentinel-search-${results[safeHighlight]?.id}` : undefined}
+          aria-activedescendant={open && ordered.length > 0 ? `sentinel-search-${ordered[safeHighlight]?.id}` : undefined}
           className="h-full border-0 bg-transparent p-0 text-[13px] text-white shadow-none placeholder:text-white/30 focus-visible:ring-0"
           value={searchQuery}
           onChange={(e) => runSearch(e.target.value)}
@@ -227,7 +232,7 @@ export default function CommandSearch({ onResultClick, className }: CommandSearc
                         // pattern in the previous header passed). No `.current`
                         // is read during render — `choose` runs only on click.
                         // eslint-disable-next-line react-hooks/refs
-                        onClick={() => choose(results[flat])}
+                        onClick={() => choose(ordered[flat])}
                         className={cn(
                           'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors duration-150',
                           active ? 'bg-sentinel-accent/[0.12]' : 'hover:bg-white/[0.05]',
