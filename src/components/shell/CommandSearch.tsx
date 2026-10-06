@@ -209,8 +209,8 @@ export default function CommandSearch({ onResultClick, className }: CommandSearc
               </div>
             ) : (
               sections.map((section) => (
-                <div key={section.title}>
-                  <p className="sentinel-micro px-2.5 pb-0.5 pt-2 uppercase tracking-wider">{section.title}</p>
+                <div key={section.title} role="group" aria-label={section.title}>
+                  <p className="sentinel-micro px-2.5 pb-0.5 pt-2 uppercase tracking-wider" aria-hidden="true">{section.title}</p>
                   {section.items.map((result, i) => {
                     const flat = section.offset + i;
                     const active = flat === safeHighlight;

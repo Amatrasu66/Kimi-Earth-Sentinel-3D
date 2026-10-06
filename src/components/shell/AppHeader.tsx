@@ -43,7 +43,7 @@ export default function AppHeader({ onSearchResultClick, onSettingsClick, dataSt
           <span className="sentinel-app-title truncate text-white">Earth Sentinel 3D</span>
           <span className="sentinel-micro mt-0.5 truncate">Environmental intelligence</span>
         </span>
-        <span className="sentinel-app-title truncate text-white md:hidden">Sentinel</span>
+        <span className="sentinel-app-title hidden truncate text-white min-[480px]:block md:hidden">Sentinel</span>
         {activeLayerName && (
           <span className="hidden min-w-0 items-center gap-1 lg:flex" aria-label={`Active layer: ${activeLayerName}`}>
             <ChevronRight className="h-3.5 w-3.5 shrink-0 text-white/25" aria-hidden />
