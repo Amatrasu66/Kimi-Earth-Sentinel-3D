@@ -2,7 +2,6 @@ import { X, AlertCircle, RefreshCw, ChevronLeft, Radio } from 'lucide-react';
 import DataStatusBanner from '@/components/overlays/DataStatusBanner';
 import LayerOverview from '@/components/intelligence/LayerOverview';
 import EventDetails from '@/components/intelligence/EventDetails';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -74,9 +73,9 @@ export default function DataPanel({
             {selectedEvent ? 'Event Detail' : layerMeta?.name || 'Data'}
           </h2>
           {!selectedEvent && dataPoints.length > 0 && (
-            <Badge variant="secondary" className="sentinel-mono border-white/10 bg-white/5 text-[11px] text-white/60">
+            <span className="sentinel-micro sentinel-mono text-white/45">
               {dataPoints.length}
-            </Badge>
+            </span>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1">

@@ -40,4 +40,22 @@ export default defineConfig([
       'react-refresh/only-export-components': 'off',
     },
   },
+  {
+    // Vendored Bklit registry code (official @bklit/bar-chart install).
+    // Third-party chart internals trip the project's strict v7 hooks rules
+    // (ref syncs, mount effects, multi-export modules) by design — rewriting
+    // them would fork us from registry updates. Our wrapper
+    // (charts/ValueHistogram.tsx) stays fully linted; only the vendored
+    // modules are exempted here.
+    files: ['src/components/charts/**/*.{ts,tsx}'],
+    ignores: ['src/components/charts/ValueHistogram*.{ts,tsx}'],
+    rules: {
+      'react-hooks/refs': 'off',
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/exhaustive-deps': 'off',
+      'react-refresh/only-export-components': 'off',
+      '@typescript-eslint/no-unused-vars': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
+    },
+  },
 ])

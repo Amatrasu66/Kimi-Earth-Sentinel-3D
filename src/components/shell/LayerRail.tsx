@@ -31,9 +31,69 @@ const LAYER_CONFIG: Array<{
 ];
 
 /**
- * Compact instrumentation rail for environmental layers. Accent marks
- * selection only — idle icons stay neutral so the globe keeps priority.
+ * Layer rail geometry (desktop):
+ *
+ *   8px padding │ 3px indicator gutter │ 8px gap │ 40px button column │ 8px padding
+ *
+ * Every row is the same grid — the active marker lives in its own gutter
+ * cell, never absolutely positioned over borders. Header and footer labels
+ * align to the button column.
  */
+function RailButton({
+  layer,
+  isActive,
+  shortcutIdx,
+  onToggle,
+}: {
+  layer: (typeof LAYER_CONFIG)[number];
+  isActive: boolean;
+  shortcutIdx: number;
+  onToggle: (layerId: LayerId) => void;
+}) {
+  return (
+    <div className="grid grid-cols-[3px_40px] items-center gap-2">
+      <span
+        className={cn(
+          'h-5 w-[3px] rounded-full transition-colors duration-150',
+          isActive ? 'bg-sentinel-accent' : 'bg-transparent',
+        )}
+        aria-hidden
+      />
+      <Tooltip delayDuration={100}>
+        <TooltipTrigger asChild>
+          <button
+            onClick={() => onToggle(layer.id)}
+            aria-label={`Toggle ${layer.label} layer${shortcutIdx >= 0 ? `, shortcut ${shortcutIdx + 1}` : ''}`}
+            aria-pressed={isActive}
+            data-active={isActive}
+            className={cn(
+              'sentinel-spot flex h-10 w-10 items-center justify-center rounded-lg transition-colors duration-150',
+              isActive
+                ? 'sentinel-active-ring bg-sentinel-accent/[0.13] text-sentinel-accent'
+                : 'border border-transparent text-white/45 hover:bg-white/[0.07] hover:text-white/90',
+            )}
+          >
+            {layer.icon}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent
+          side="right"
+          sideOffset={10}
+          className="border-white/10 bg-sentinel-elev px-2.5 py-1.5 text-white"
+        >
+          <span className="block text-xs font-semibold">{layer.label}</span>
+          <span className="block max-w-[200px] text-[11px] text-white/50">{layer.hint}</span>
+          {shortcutIdx >= 0 && (
+            <span className="mt-1 flex items-center gap-1 text-[11px] text-white/40">
+              press <Kbd className="border-white/10 bg-white/10 text-white/70">{shortcutIdx + 1}</Kbd>
+            </span>
+          )}
+        </TooltipContent>
+      </Tooltip>
+    </div>
+  );
+}
+
 export default function LayerRail({ activeLayer, onLayerToggle, shortcutLayers = [] }: LayerRailProps) {
   const activeLabel = activeLayer ? LAYER_CONFIG.find((l) => l.id === activeLayer)?.label : null;
 
@@ -44,56 +104,28 @@ export default function LayerRail({ activeLayer, onLayerToggle, shortcutLayers =
         role="toolbar"
         aria-label="Environmental layers"
         aria-orientation="vertical"
-        className="rail-enter sentinel-floating fixed left-3 top-1/2 z-50 hidden -translate-y-1/2 flex-col gap-0.5 rounded-xl p-1.5 md:flex"
+        className="rail-enter sentinel-floating fixed left-3 top-1/2 z-50 hidden -translate-y-1/2 flex-col rounded-xl p-2 md:flex"
       >
-        <p className="sentinel-label px-2 pb-1 pt-1">Layers</p>
-        {LAYER_CONFIG.map((layer) => {
-          const isActive = activeLayer === layer.id;
-          const shortcutIdx = shortcutLayers.indexOf(layer.id);
-          return (
-            <Tooltip key={layer.id} delayDuration={100}>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => onLayerToggle(layer.id)}
-                  aria-label={`Toggle ${layer.label} layer${shortcutIdx >= 0 ? `, shortcut ${shortcutIdx + 1}` : ''}`}
-                  aria-pressed={isActive}
-                  data-active={isActive}
-                  className={cn(
-                    'sentinel-spot group relative flex h-10 w-10 items-center justify-center rounded-lg transition-colors duration-150',
-                    isActive
-                      ? 'sentinel-active-ring bg-sentinel-accent/[0.13] text-sentinel-accent'
-                      : 'border border-transparent text-white/45 hover:bg-white/[0.07] hover:text-white/90',
-                  )}
-                >
-                  {layer.icon}
-                  {isActive && (
-                    <span className="absolute -left-[7px] top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-sentinel-accent" aria-hidden />
-                  )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent
-                side="right"
-                sideOffset={10}
-                className="border-white/10 bg-sentinel-elev px-2.5 py-1.5 text-white"
-              >
-                <span className="block text-xs font-semibold">{layer.label}</span>
-                <span className="block max-w-[200px] text-[11px] text-white/50">{layer.hint}</span>
-                {shortcutIdx >= 0 && (
-                  <span className="mt-1 flex items-center gap-1 text-[11px] text-white/40">
-                    press <Kbd className="border-white/10 bg-white/10 text-white/70">{shortcutIdx + 1}</Kbd>
-                  </span>
-                )}
-              </TooltipContent>
-            </Tooltip>
-          );
-        })}
+        <p className="sentinel-label flex h-7 items-center justify-center">Layers</p>
+        <div className="flex flex-col gap-1 py-1">
+          {LAYER_CONFIG.map((layer) => (
+            <RailButton
+              key={layer.id}
+              layer={layer}
+              isActive={activeLayer === layer.id}
+              shortcutIdx={shortcutLayers.indexOf(layer.id)}
+              onToggle={onLayerToggle}
+            />
+          ))}
+        </div>
         <Separator className="my-1 bg-white/[0.07]" />
-        <p className="sentinel-micro sentinel-mono px-2 py-1 text-center" aria-live="off">
+        <p className="sentinel-micro sentinel-mono flex h-6 items-center justify-center" aria-live="off">
           {activeLabel ? activeLabel.slice(0, 4).toUpperCase() : '— —'}
         </p>
       </nav>
 
-      {/* Mobile / narrow: horizontal layer strip above the status bar */}
+      {/* Mobile / narrow: horizontal strip above the status bar.
+          Same fixed hitboxes and gaps as desktop, laid horizontally. */}
       <nav
         role="toolbar"
         aria-label="Environmental layers"

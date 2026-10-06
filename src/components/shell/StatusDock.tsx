@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { Crosshair, Cpu } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Separator } from '@/components/ui/separator';
 import { formatCoordinates, statusLabel } from '@/lib/format';
@@ -71,9 +70,10 @@ export default function StatusDock({ coordinates, activeLayer, dataCount, dataSt
         <Separator orientation="vertical" className="hidden h-4 bg-white/10 sm:block" />
 
         {activeLayer ? (
-          <Badge variant="secondary" className="sentinel-mono hidden max-w-[220px] truncate border-sentinel-accent/25 bg-sentinel-accent/[0.08] text-[11px] text-sentinel-accent sm:inline-flex" title={`Active layer: ${activeLayer}`}>
-            {activeLayer} · {dataCount}
-          </Badge>
+          <span className="sentinel-mono hidden max-w-[220px] truncate text-[11px] sm:block" title={`Active layer: ${activeLayer}`}>
+            <span className="text-sentinel-accent">{activeLayer}</span>
+            <span className="text-white/35"> · {dataCount}</span>
+          </span>
         ) : (
           <span className="sentinel-micro hidden sm:inline">No layer selected</span>
         )}

@@ -3,7 +3,6 @@
 import { Settings, Globe, ChevronRight } from 'lucide-react';
 import CommandSearch from '@/components/shell/CommandSearch';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Kbd } from '@/components/ui/kbd';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -47,13 +46,9 @@ export default function AppHeader({ onSearchResultClick, onSettingsClick, dataSt
         {activeLayerName && (
           <span className="hidden min-w-0 items-center gap-1 lg:flex" aria-label={`Active layer: ${activeLayerName}`}>
             <ChevronRight className="h-3.5 w-3.5 shrink-0 text-white/25" aria-hidden />
-            <Badge
-              variant="secondary"
-              className="max-w-[160px] truncate border-sentinel-accent/30 bg-sentinel-accent/10 text-sentinel-accent"
-              title={`Active layer: ${activeLayerName}`}
-            >
+            <span className="truncate text-[13px] font-medium text-sentinel-accent" title={`Active layer: ${activeLayerName}`}>
               {activeLayerName}
-            </Badge>
+            </span>
           </span>
         )}
       </div>

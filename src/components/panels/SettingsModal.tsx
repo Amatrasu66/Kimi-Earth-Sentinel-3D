@@ -13,7 +13,6 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { Badge } from '@/components/ui/badge';
 import { Kbd } from '@/components/ui/kbd';
 import { statusLabel } from '@/lib/format';
 
@@ -158,14 +157,14 @@ function SettingsBody({
               Display theme is fixed to the dark command theme so the Earth stays the visual centerpiece.
               Renderer status is always visible in the bottom bar.
             </p>
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <Badge variant="secondary" className="border-white/10 bg-white/5 text-[11px] text-white/60">
-                {rendererInfo ? `${rendererInfo.active} · ${rendererInfo.detail}` : 'renderer…'}
-              </Badge>
+            <div className="sentinel-micro sentinel-mono mt-2 space-y-1">
+              <p className="truncate text-white/55" title={rendererInfo ? `${rendererInfo.active} · ${rendererInfo.detail}` : undefined}>
+                renderer — {rendererInfo ? `${rendererInfo.active} · ${rendererInfo.detail}` : '…'}
+              </p>
               {activeLayer && (
-                <Badge variant="secondary" className="border-sentinel-accent/25 bg-sentinel-accent/[0.08] text-[11px] text-sentinel-accent">
-                  {activeLayer}
-                </Badge>
+                <p className="truncate text-sentinel-accent/90" title={`layer — ${activeLayer}`}>
+                  layer — {activeLayer}
+                </p>
               )}
             </div>
           </div>

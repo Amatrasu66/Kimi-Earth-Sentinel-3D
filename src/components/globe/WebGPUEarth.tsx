@@ -405,17 +405,20 @@ export default function WebGPUEarth({
       group.add(clouds);
 
       // ---- Atmosphere: TSL Fresnel rim shell (BackSide, additive) ----
+      // Restrained rim matching the WebGL path: tight falloff (pow 4.5),
+      // low gain (0.55), close shell (1.07×) — edge separation from space,
+      // not a neon ring. See src/shaders/atmosphere.ts.
       const atmosphereMaterial = track(new THREE.MeshBasicNodeMaterial());
       {
         const viewDir = normalize(cameraPosition.sub(positionWorld));
-        const rim = pow(saturate(float(1).sub(dot(normalize(normalWorld), viewDir))), float(3.2));
-        atmosphereMaterial.colorNode = vec3(0.3, 0.6, 1).mul(rim).mul(float(1.6));
+        const rim = pow(saturate(float(1).sub(dot(normalize(normalWorld), viewDir))), float(4.5));
+        atmosphereMaterial.colorNode = vec3(0.36, 0.56, 0.9).mul(rim).mul(float(0.55));
         atmosphereMaterial.transparent = true;
         atmosphereMaterial.blending = THREE.AdditiveBlending;
         atmosphereMaterial.side = THREE.BackSide;
         atmosphereMaterial.depthWrite = false;
       }
-      const atmosphereGeometry = track(new THREE.SphereGeometry(EARTH_RADIUS * 1.14, 64, 64));
+      const atmosphereGeometry = track(new THREE.SphereGeometry(EARTH_RADIUS * 1.07, 64, 64));
       const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
       // Atmosphere stays camera-facing: added to the scene, not the group,
       // so globe rotation never carries the rim with it.
