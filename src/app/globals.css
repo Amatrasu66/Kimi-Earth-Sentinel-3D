@@ -1,0 +1,381 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Sentinel design system — dark environmental-intelligence theme.
+ * Single dark theme (the app is always a command center around the globe).
+ * shadcn tokens below drive Button/Badge/Dialog/Sheet/Tabs/Tooltip/etc.
+ * Custom --sentinel-* tokens drive bespoke surfaces (rail, panels, status).
+ * (Ported from the Vite frontend: index.css + App.css merged for Next.js,
+ * where global CSS may only be imported from the root layout.)
+ */
+
+@layer base {
+  :root {
+    /* ——— Sentinel surfaces ——— */
+    --sentinel-bg: #050607;
+    --sentinel-panel: rgba(13, 15, 19, 0.82);
+    --sentinel-panel-solid: #0d0f13;
+    --sentinel-elev: rgba(20, 23, 29, 0.92);
+    --sentinel-border: rgba(255, 255, 255, 0.08);
+    --sentinel-border-strong: rgba(255, 255, 255, 0.14);
+    --sentinel-accent: #ffc31f;
+    --sentinel-accent-soft: rgba(255, 195, 31, 0.12);
+    --sentinel-text: #f4f5f6;
+    --sentinel-text-2: rgba(244, 245, 246, 0.62);
+    --sentinel-text-3: rgba(244, 245, 246, 0.38);
+
+    /* ——— Semantic status (single source of truth) ——— */
+    --status-live: #34d399;
+    --status-simulated: #ffc31f;
+    --status-stale: #fb923c;
+    --status-unavailable: #f87171;
+    --status-info: #60a5fa;
+    --status-neutral: #9ca3af;
+
+    /* ——— shadcn tokens (dark-first) ——— */
+    --background: 220 12% 4%;
+    --foreground: 0 0% 96%;
+    --card: 220 11% 7%;
+    --card-foreground: 0 0% 96%;
+    --popover: 220 11% 7%;
+    --popover-foreground: 0 0% 96%;
+    --primary: 45 100% 56%;
+    --primary-foreground: 220 12% 5%;
+    --secondary: 220 9% 13%;
+    --secondary-foreground: 0 0% 92%;
+    --muted: 220 9% 13%;
+    --muted-foreground: 220 6% 58%;
+    --accent: 220 9% 13%;
+    --accent-foreground: 0 0% 96%;
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 220 9% 15%;
+    --input: 220 9% 15%;
+    --ring: 45 100% 56%;
+    --chart-1: 45 100% 56%;
+    --chart-2: 160 70% 45%;
+    --chart-3: 210 80% 60%;
+    --chart-4: 25 90% 55%;
+    --chart-5: 0 75% 55%;
+    --radius: 0.625rem;
+
+    --sidebar-background: 220 12% 5%;
+    --sidebar-foreground: 0 0% 96%;
+    --sidebar-primary: 45 100% 56%;
+    --sidebar-primary-foreground: 220 12% 5%;
+    --sidebar-accent: 220 9% 13%;
+    --sidebar-accent-foreground: 0 0% 96%;
+    --sidebar-border: 220 9% 15%;
+    --sidebar-ring: 45 100% 56%;
+  }
+
+  .dark {
+    --background: 220 12% 4%;
+    --foreground: 0 0% 96%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    font-family: 'Instrument Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--sentinel-bg);
+    color: var(--sentinel-text);
+    font-feature-settings: 'cv02', 'cv11';
+    -webkit-font-smoothing: antialiased;
+    touch-action: manipulation;
+  }
+
+  html,
+  body,
+  #root {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  html {
+    color-scheme: dark;
+  }
+}
+
+@layer components {
+  /* Surface hierarchy: background → floating → panel → elevated → active */
+  .sentinel-floating {
+    background: var(--sentinel-panel);
+    backdrop-filter: blur(20px) saturate(1.2);
+    -webkit-backdrop-filter: blur(20px) saturate(1.2);
+    border: 1px solid var(--sentinel-border);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+  }
+
+  .sentinel-panel {
+    background: var(--sentinel-panel);
+    backdrop-filter: blur(20px) saturate(1.2);
+    -webkit-backdrop-filter: blur(20px) saturate(1.2);
+    border: 1px solid var(--sentinel-border);
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.55);
+  }
+
+  .sentinel-elev {
+    background: var(--sentinel-elev);
+    border: 1px solid var(--sentinel-border);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  }
+
+  .sentinel-inset {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  /* Restrained Aceternity-style spotlight for active layer buttons */
+  .sentinel-spot {
+    position: relative;
+    overflow: hidden;
+  }
+  .sentinel-spot::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    background: radial-gradient(120px circle at var(--spot-x, 50%) var(--spot-y, 0%), rgba(255, 195, 31, 0.14), transparent 70%);
+    opacity: 0;
+    transition: opacity 200ms ease;
+    pointer-events: none;
+  }
+  .sentinel-spot:hover::before,
+  .sentinel-spot[data-active='true']::before {
+    opacity: 1;
+  }
+
+  /* Subtle animated border for the selected/active surface only */
+  .sentinel-active-ring {
+    border: 1px solid rgba(255, 195, 31, 0.45) !important;
+    box-shadow: 0 0 0 1px rgba(255, 195, 31, 0.18), 0 0 16px rgba(255, 195, 31, 0.18);
+  }
+
+  /* Typography scale */
+  .sentinel-app-title {
+    font-size: 15px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+  }
+  .sentinel-section-title {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  .sentinel-panel-title {
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .sentinel-label {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--sentinel-text-3);
+  }
+  .sentinel-body {
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .sentinel-meta {
+    font-size: 12px;
+    color: var(--sentinel-text-2);
+  }
+  .sentinel-micro {
+    font-size: 11px;
+    color: var(--sentinel-text-3);
+  }
+  .sentinel-mono {
+    font-variant-numeric: tabular-nums;
+    font-family: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+  }
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+/* Globe canvas cursor */
+canvas {
+  cursor: grab;
+}
+canvas:active {
+  cursor: grabbing;
+}
+
+/* Visible focus that matches the command theme */
+:focus-visible {
+  outline: 2px solid rgba(255, 195, 31, 0.7);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ——— Sentinel motion system (from App.css) ———
+   Restrained, 150–300ms, globe-first. Panels fade/slide subtly;
+   nothing loops except spinners/pulses.
+   prefers-reduced-motion disables all non-essential motion. */
+
+/* Initial loading veil (progressive globe init, not a full-app blocker) */
+.loading-screen {
+  position: fixed;
+  inset: 0;
+  background: #050607;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  z-index: 1000;
+}
+
+.loading-ring {
+  width: 36px;
+  height: 36px;
+  border: 2px solid rgba(255, 195, 31, 0.18);
+  border-top-color: #ffc31f;
+  border-radius: 50%;
+  animation: sentinel-spin 0.9s linear infinite;
+}
+
+@keyframes sentinel-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Panel entrance: 220ms rise, no bounce */
+@keyframes sentinel-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes sentinel-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes sentinel-rail-in {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
+}
+
+.panel-enter {
+  animation: sentinel-panel-in 220ms ease-out both;
+}
+
+.modal-enter {
+  animation: sentinel-fade-in 180ms ease-out both;
+}
+
+.rail-enter {
+  animation: sentinel-rail-in 220ms ease-out both;
+}
+
+@media (max-width: 767px) {
+  @keyframes sentinel-rail-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+/* Shimmer for skeletons (uses shadcn Skeleton base + this sheen) */
+.shimmer {
+  position: relative;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.04);
+}
+.shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 25%, rgba(255, 255, 255, 0.06) 50%, transparent 75%);
+  background-size: 200% 100%;
+  animation: sentinel-shimmer 1.4s infinite;
+}
+
+@keyframes sentinel-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Live-data pulse dot only (single small element may pulse) */
+.sentinel-live-dot {
+  animation: sentinel-live-pulse 2s ease-in-out infinite;
+}
+
+@keyframes sentinel-live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* Legacy classes kept for compat */
+.marker-pulse {
+  animation: sentinel-live-pulse 2s ease-in-out infinite;
+}
+.panel-exit {
+  animation: sentinel-fade-in 150ms ease-out reverse both;
+}
+
+/* Reduced motion: kill entrances, shimmer, pulses */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

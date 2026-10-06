@@ -2,12 +2,12 @@
 
 Interactive 3D Earth environmental-intelligence dashboard: a React + Three.js globe fed by a Next.js API (App Router Route Handlers) that aggregates live environmental data (USGS, NASA EONET/FIRMS, Open-Meteo, AirNow) with clearly-labelled simulated fallbacks when providers are unreachable.
 
-> **Backend migration (Flask → Next.js) complete.** The Python/Flask backend
-> (`backend/`, formerly on Render) is retired and archived. The production
-> backend is now TypeScript Route Handlers under `src/app/api/*` with server
-> modules in `src/server/*`, deployed as part of the single Vercel Next.js
-> application. Same-origin API base: `/api/v1`. See “Deployment” below and
-> `backend/README.md` for the retirement notice.
+> **Full-stack migration complete.** The Python/Flask backend (`backend/`,
+> formerly on Render) is retired and archived, and the Vite frontend
+> (`frontend/`) has been integrated into this Next.js application. The
+> production app is now a single Next.js project: the 3D globe UI at `/`
+> plus API Route Handlers under `/api/v1`, deployed as one Vercel project.
+> Same-origin API base: `/api/v1`. See “Deployment” below.
 
 ## Live Demo
 
@@ -160,35 +160,26 @@ Event details: earthquake ids resolve live against the USGS detail feed; `eonet-
 ```text
 Kimi-Earth-Sentinel-3D/
 ├── README.md                      # this file
-├── package.json                   # Next.js API app (root: typecheck/test/build)
+├── package.json                   # Next.js app (root: lint/typecheck/test/build)
 ├── next.config.mjs / vercel.json  # Vercel deployment (single project)
+├── tailwind.config.js             # Tailwind v3 (ported from the Vite frontend)
 ├── .env.example                   # API env template (server-only, no secrets)
+├── public/textures/               # Earth day/night/cloud/topology/water
 ├── src/
-│   ├── app/api/                   # Route Handlers: health, v1/{health,layers,events,search,stats,geocode,timezones,imagery}
-│   ├── app/page.tsx               # status page
+│   ├── app/
+│   │   ├── layout.tsx             # root layout + metadata + globals.css
+│   │   ├── page.tsx               # globe UI (server wrapper, force-dynamic)
+│   │   ├── globals.css            # design system (ported index.css + App.css)
+│   │   └── api/                   # Route Handlers: health, v1/{health,layers,events,search,stats,geocode,timezones,imagery}
+│   ├── components/
+│   │   ├── app/SentinelApp.tsx    # app shell ("use client")
+│   │   ├── globe/                 # EarthRenderer + WebGPUEarth (ssr:false) + WebGL fallback
+│   │   ├── panels/ overlays/ ui/  # HUD, shadcn/Radix primitives
+│   ├── hooks/ lib/ types/ shaders/ services/  # incl. same-origin api.ts (/api/v1)
 │   └── server/                    # config, provenance, validation, cache, http,
 │                                  # models/layers, providers/*, services/*, health
-├── .github/workflows/ci.yml       # Frontend (lint/test/build) + API (typecheck/test/build)
-├── frontend/                      # React/Vite app (transition to same-origin /api/v1 pending)
-│   ├── package.json
-│   ├── vite.config.ts             # dev server on :3000, "@" alias, dev-only inspect plugin
-│   ├── vitest.config.ts           # jsdom + setup file, src/**/*.test.{ts,tsx}
-│   ├── index.html
-│   ├── public/textures/           # Earth day/night/cloud/topology/water
-│   ├── src/
-│   │   ├── App.tsx                # active layer, selection, fly-to, shortcuts
-│   │   ├── components/globe/      # EarthRenderer (selector) + WebGPUEarth (TSL) + Globe/GlobeScene (WebGL fallback)
-│   │   ├── components/panels/     # TopNav, LayerPanel, DataPanel, BottomBar, SettingsModal (+ Diagnostics)
-│   │   ├── components/overlays/   # Tooltip, DataStatusBanner
-│   │   ├── components/ui/         # shadcn-style Radix primitives
-│   │   ├── hooks/                 # useLayers/useLayerData, useSearch, useKeyboardShortcuts
-│   │   ├── services/api.ts        # centralized API base URL + client (fail-loud in prod without VITE_API_BASE_URL)
-│   │   ├── lib/geo.ts             # canonical coordinate validation + projection
-│   │   ├── lib/format.ts          # units, relative time, coordinate formatting
-│   │   ├── shaders/               # atmosphere shader
-│   │   └── types/                 # DataPoint, LayerData, DataStatus, …
-│   ├── .env.example               # VITE_API_BASE_URL template
-│   └── README.md                  # frontend quick-start
+├── .github/workflows/ci.yml       # Vite frontend job + Next.js app job
+├── frontend/                      # ARCHIVED Vite app (reference only, not deployed)
 ├── backend/                       # RETIRED Flask API (archived reference, not deployed)
 └── docs/
     ├── development.md             # practical dev guide (setup, env, tests, deploy)
@@ -199,7 +190,7 @@ Kimi-Earth-Sentinel-3D/
 
 Prerequisites: Node.js 24+ (Python no longer required).
 
-API (Next.js dev server on `http://localhost:3000`):
+One dev server serves both the globe UI and the API:
 
 ```bash
 npm install
@@ -207,18 +198,7 @@ copy .env.example .env        # then set AIRNOW_API_KEY / NASA_FIRMS_API_KEY if 
 npm run dev                   # Next.js on http://localhost:3000
 ```
 
-`GET /api/health` and `GET /api/v1/layers` verify the API. Provider keys are optional (affected layers return labelled simulated data without them).
-
-Frontend (Vite dev server on `http://localhost:3000` — run on another port if the API dev server already uses 3000):
-
-```bash
-cd frontend
-npm install
-copy .env.example .env        # then set VITE_API_BASE_URL if needed
-npm run dev
-```
-
-Open the Vite dev server, pick a layer (or press `5` for earthquakes). The client defaults to `http://localhost:5001/api/v1` (legacy Flask dev default); point `VITE_API_BASE_URL` at the Next.js API (`http://localhost:3000/api/v1` locally, same-origin `/api/v1` in production).
+Open `http://localhost:3000`, pick a layer (or press `5` for earthquakes). The client calls same-origin `/api/v1` — no `VITE_API_BASE_URL`, no CORS. Provider keys are optional (affected layers return labelled simulated data without them). `GET /api/health` and `GET /api/v1/layers` verify the API directly.
 
 ## Environment Variables
 
@@ -269,23 +249,16 @@ Only the endpoints above exist; no other API surface is implemented.
 
 ## Testing
 
-Frontend (`cd frontend`):
+Full app (repo root):
 
 ```bash
-npm run lint          # eslint
-npm test              # vitest run (jsdom; src/**/*.test.{ts,tsx})
-npm run build         # tsc -b && vite build → dist/
+npm run lint            # eslint (app + server)
+npm run typecheck       # tsc --noEmit
+npm test                # vitest run (node API tests + jsdom UI tests)
+npm run build           # next build (all /api routes + globe page)
 ```
 
-API (repo root):
-
-```bash
-npm run typecheck   # tsc --noEmit
-npm test            # vitest run (node; src/**/*.test.ts)
-npm run build       # next build (all /api routes type-checked)
-```
-
-CI (`.github/workflows/ci.yml`) runs both on pushes to `main` and on all pull requests: frontend `npm ci` → `lint` → `test` → `build` (Node 24), and API `npm ci` → `typecheck` → `test` → `build` (Node 24).
+CI (`.github/workflows/ci.yml`) runs the Next.js app job (`npm ci` → `lint` → `typecheck` → `test` → `build`, Node 24) on pushes to `main` and all pull requests, plus the archived Vite frontend's own lint/test/build job.
 
 ## Deployment
 
@@ -297,13 +270,15 @@ GitHub Repository (root = Next.js app)
         ▼
       Vercel
         │
-        ├── Next.js frontend (this repo root; status page at /)
+        ├── Globe UI at / (SentinelApp client tree)
         │
         └── /api/* Route Handlers (src/app/api, src/server)
 ```
 
 There is **no Render dependency**: `render.yaml` is deleted, and `backend/`
 (Flask/Gunicorn/APScheduler) is retired and archived — never deployed.
+There is no separate frontend deployment either: `frontend/` (Vite) is
+archived reference — the UI now lives in `src/` and ships with the API.
 
 ### Production URLs
 
@@ -337,12 +312,12 @@ Backend → Vercel (root Next.js app):
 - Server-only env vars: `AIRNOW_API_KEY`, `NASA_FIRMS_API_KEY` (never `NEXT_PUBLIC_`), plus optional upstream URL overrides and `REQUEST_TIMEOUT` (see root `.env.example`).
 - No scheduler/cron: request-time caching + stale fallback need no warming (the old `SCHEDULER_ENABLED=false` production posture is now structural).
 - No CORS configuration: browser requests are same-origin.
+- No `VITE_API_BASE_URL`: the UI calls relative `/api/v1` (see `src/services/api.ts`).
 
-Frontend → Vercel transition (still required in `frontend/`):
+Frontend (integrated — no separate deployment):
 
-- `frontend/src/services/api.ts` currently resolves `VITE_API_BASE_URL` (legacy alias `VITE_API_URL`, dev fallback `http://localhost:5001/api/v1`).
-- To switch to same-origin: set `VITE_API_BASE_URL` to `/api/v1` (or the deployed `https://<app>.vercel.app/api/v1`) in the frontend hosting env, or serve the Vite build from this Next.js app. Files: `frontend/src/services/api.ts`, `frontend/.env.example`, Vercel env dashboard.
-- Until then, the new API is fully usable at `/api/v1` with the identical JSON contract (verified endpoint-by-endpoint; see migration notes in `docs/`).
+- The Vite project in `frontend/` is archived reference only. The UI runs from `src/` in this same app: `src/app/page.tsx` (server wrapper) → `src/components/app/SentinelApp.tsx` (`"use client"`).
+- Globe code is unchanged in behavior: `EarthRenderer` probes WebGPU and loads `WebGPUEarth` (`three/webgpu` + TSL, `ssr: false` code-split chunk) with the WebGL `Globe`/`GlobeScene` fallback. Textures moved to root `public/textures/`.
 
 CORS:
 
@@ -382,8 +357,8 @@ Validate the real renderer manually in a Chromium browser with WebGPU (day/night
 ## Contributing
 
 1. Fork and branch from `main`.
-2. Frontend: `cd frontend && npm install && npm run dev` — keep `npm run lint` and `npm run build` clean.
-3. API: `npm install && npm test` — new endpoints need validation tests and `data_status` coverage.
+2. `npm install && npm run dev` — keep `npm run lint`, `npm run typecheck`, and `npm run build` clean.
+3. New endpoints need validation tests and `data_status` coverage (`npm test` covers API + UI).
 4. Never commit secrets, `__pycache__`, or `node_modules`; simulated data must always stay labelled.
 
 ## License

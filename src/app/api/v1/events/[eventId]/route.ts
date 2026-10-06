@@ -3,7 +3,7 @@ import { fail, internalError, ok } from "@/server/route-helpers";
 
 export const dynamic = "force-dynamic";
 
-const EVENT_ID_RE = /^[A-Za-z0-9_.\-]+$/;
+const EVENT_ID_RE = /^[A-Za-z0-9_.-]+$/;
 
 export async function GET(
   _req: Request,

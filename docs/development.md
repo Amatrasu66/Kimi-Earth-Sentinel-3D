@@ -6,76 +6,56 @@ Practical reference for working in this repository. The root `README.md` covers 
 
 ```
 Kimi-Earth-Sentinel-3D/
-├── src/app/api/   # Next.js Route Handlers (health, v1/*)
-├── src/server/    # config, provenance, validation, cache, http,
-│                  # models, providers/*, services/*
-├── frontend/      # React + TypeScript + Vite + Three.js client
-├── backend/       # RETIRED Flask API (archived reference, not deployed)
+├── src/app/         # page.tsx (globe UI) + layout.tsx + globals.css + api/
+├── src/server/      # config, provenance, validation, cache, providers, services
+├── src/components/  # app shell, globe (WebGPU ssr:false + WebGL fallback), panels, ui
+├── src/hooks|lib|types|shaders|services/  # incl. same-origin api.ts (/api/v1)
+├── frontend/        # ARCHIVED Vite app (reference only, not deployed)
+├── backend/         # RETIRED Flask API (archived reference, not deployed)
 ├── docs/
 │   ├── development.md   # this file
 │   └── prompts/         # briefs from prior foundation passes
 ├── .github/workflows/ci.yml
 ├── package.json         # root Next.js app
 ├── next.config.mjs / vercel.json
+├── tailwind.config.js
 └── .env.example         # API env template (server-only)
 ```
 
-`frontend/` (Vite client) and the root Next.js API app are siblings — never nest one inside the other.
+`src/` is the single application (UI + API). `frontend/` and `backend/` are archived siblings — never nest code inside them, and never deploy them.
 
-## Start the API backend
+## Start the app
 
 ```bash
 npm install
 copy .env.example .env        # then set AIRNOW_API_KEY / NASA_FIRMS_API_KEY if needed
-npm run dev                   # http://localhost:3000, GET /api/health
+npm run dev                   # http://localhost:3000 — globe UI at /, API at /api/*
 ```
 
-Provider keys (`AIRNOW_API_KEY`, `NASA_FIRMS_API_KEY`) are optional; without them the affected layers return clearly-labelled `SIMULATED` data.
-
-## Start the frontend
-
-```bash
-cd frontend
-npm install
-copy .env.example .env        # then set VITE_API_BASE_URL if needed
-npm run dev                   # http://localhost:3000 (use another port if the API dev server is on 3000)
-```
-
-The client defaults to `http://localhost:5001/api/v1` (legacy Flask dev default); locally point `VITE_API_BASE_URL` at the Next.js API (`http://localhost:3000/api/v1`), and in production at same-origin `/api/v1` (see root README → Deployment).
+Provider keys (`AIRNOW_API_KEY`, `NASA_FIRMS_API_KEY`) are optional; without them the affected layers return clearly-labelled `SIMULATED` data. The UI calls same-origin `/api/v1` — no `VITE_API_BASE_URL`, no CORS.
 
 ## Environment files
 
 | File | Purpose |
 |---|---|
-| `frontend/.env` (from `.env.example`) | `VITE_API_BASE_URL` (+ legacy `VITE_API_URL` fallback) |
 | root `.env` (from `.env.example`) | provider URLs/keys, `REQUEST_TIMEOUT`, `CACHE_DEFAULT_TIMEOUT` (all server-only) |
 
 Never commit `.env` files or keys; both are git-ignored.
 
 ## Test / build commands
 
-API (repo root):
-
 ```bash
-npm run typecheck
-npm test            # vitest run (node; src/**/*.test.ts)
-npm run build       # next build
-```
-
-Frontend (`cd frontend`):
-
-```bash
-npm run lint
-npm test          # vitest run
-npm run build     # tsc -b && vite build → dist/
+npm run lint            # eslint (app + server)
+npm run typecheck       # tsc --noEmit
+npm test                # vitest run (node API tests + jsdom UI tests)
+npm run build           # next build
 ```
 
 ## Diagnosing production connectivity
 
-1. Open the deployed frontend → Settings → Diagnostics. It shows the configured API base + source, backend health + latency, current layer/provenance, WebGPU support, and the active renderer.
-2. If `API base` reads `not configured`, the Vercel build is missing `VITE_API_BASE_URL` — set it to same-origin `/api/v1` (or the deployed `https://<app>.vercel.app/api/v1`) and redeploy. The client intentionally refuses to fall back to localhost in production.
-3. If `Backend health` reads `unreachable`, check the Vercel deployment (failed build, missing env vars). There is no CORS layer anymore — same-origin requests cannot fail on CORS.
-4. `GET /api/health` and `GET /api/v1/health` must both return `{ status: "ok", … }`; `GET /api/v1/layers` must list the 8 layers.
+1. Open the deployed app → Settings → Diagnostics. It shows the configured API base + source, backend health + latency, current layer/provenance, WebGPU support, and the active renderer.
+2. If `Backend health` reads `unreachable`, check the Vercel deployment (failed build, missing env vars). There is no CORS layer — same-origin requests cannot fail on CORS. (The old `API base: not configured` state no longer exists: the base is the constant `/api/v1`.)
+3. `GET /api/health` and `GET /api/v1/health` must both return `{ status: "ok", … }`; `GET /api/v1/layers` must list the 8 layers.
 
 ## Earth renderer
 
@@ -86,14 +66,14 @@ npm run build     # tsc -b && vite build → dist/
 
 ## Deployment overview
 
-- **Single Vercel project (repo root):** framework Next.js, build `npm run build`. Set server-only `AIRNOW_API_KEY` / `NASA_FIRMS_API_KEY` (never `NEXT_PUBLIC_`). No Render, no `render.yaml`, no CORS, no scheduler.
-- **Frontend transition:** `frontend/src/services/api.ts` still resolves `VITE_API_BASE_URL`; switch it to same-origin `/api/v1` (files: `frontend/src/services/api.ts`, `frontend/.env.example`, Vercel env dashboard).
+- **Single Vercel project (repo root):** framework Next.js, build `npm run build`. Set server-only `AIRNOW_API_KEY` / `NASA_FIRMS_API_KEY` (never `NEXT_PUBLIC_`). No Render, no separate frontend deployment, no CORS, no scheduler. The UI (`/`) and API (`/api/*`) ship together.
 
 ## Where integrations live
 
 - **Provider integrations:** `src/server/providers/` — one adapter per upstream (`usgs`, `nasa-eonet`, `nasa-firms`, `open-meteo`, `airnow`), plus `heatmap`, `fallback`, `imagery`, `geocode`. Dispatch + cache + stale-fallback live in `src/server/services/layers.ts`. Individual event lookup lives in `src/server/services/event-detail.ts`: an explicit id resolver routes raw ids to the USGS detail feed, `eonet-*` ids to the EONET event endpoint, and everything else (FIRMS fire observations, mock markers, other layers) to labelled simulated detail. No database is required — details are fetched on demand and cached briefly per instance.
-- **Frontend API integration:** `frontend/src/services/api.ts` — the single client boundary (base URL, timeout, cancellation, error normalization). Components never call `fetch` directly.
-- **Provenance:** every payload carries `data_status` (`live` / `simulated` / `stale` / `unavailable`); see `src/server/provenance.ts` and `frontend/src/components/overlays/DataStatusBanner.tsx`.
+- **Frontend API integration:** `src/services/api.ts` — the single client boundary (same-origin `/api/v1` base, timeout, cancellation, error normalization). Components never call `fetch` directly.
+- **Globe:** `src/components/globe/` — `EarthRenderer.tsx` probes WebGPU and loads `WebGPUEarth.tsx` (`three/webgpu` + TSL, `ssr: false` code-split) with the WebGL `Globe`/`GlobeScene` fallback. Rendering code is production-sensitive: do not rewrite the scene, textures, markers, controls, or animation loop. Textures live in `public/textures/`.
+- **Provenance:** every payload carries `data_status` (`live` / `simulated` / `stale` / `unavailable`); see `src/server/provenance.ts` and `src/components/overlays/DataStatusBanner.tsx`.
 
 ## Current caching approach
 

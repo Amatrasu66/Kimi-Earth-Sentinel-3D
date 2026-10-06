@@ -38,7 +38,7 @@ jobs:
           VITE_API_BASE_URL: http://localhost:5001/api/v1
 
   backend:
-    name: Backend (Next.js API: typecheck, test, build)
+    name: App (Next.js: lint, typecheck, test, build)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -51,6 +51,7 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - run: npm ci
+      - run: npm run lint
       - run: npm run typecheck
       - run: npm test
       - run: npm run build

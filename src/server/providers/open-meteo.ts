@@ -72,7 +72,7 @@ export async function getWeatherData(
   let gridPoints: { lat: number; lon: number }[];
   try {
     gridPoints = generateWeatherGrid(bbox);
-  } catch (e) {
+  } catch {
     return withStatus(
       generateMockWeather(metric, null, limit, layer, minSeverity),
       SIMULATED,
