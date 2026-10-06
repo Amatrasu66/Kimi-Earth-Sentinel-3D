@@ -22,4 +22,11 @@ export interface EarthStatus {
   renderer: 'webgpu';
   textures: EarthTextureStatus;
   error?: string;
+  /**
+   * Frames submitted to the GPU so far. Present once the render loop has
+   * produced at least one frame — proof the scene is actually rendering,
+   * not merely that `renderer.init()` resolved. Session 5: the badge must
+   * never report success on init alone.
+   */
+  frames?: number;
 }

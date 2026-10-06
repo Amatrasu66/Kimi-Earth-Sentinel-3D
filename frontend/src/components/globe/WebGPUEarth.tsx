@@ -507,7 +507,73 @@ export default function WebGPUEarth({
         }
       }
 
+      // Surface asynchronous GPU failures (shader/pipeline compile errors,
+      // bind-group mistakes, device loss) as status errors so EarthRenderer
+      // can fall back to WebGL instead of holding a black canvas. Three.js
+      // invokes these hooks; without them failures are silent console noise.
+      const fail = (message: string) => {
+        emit({
+          phase: 'error',
+          renderer: 'webgpu',
+          textures: { loaded: loadedTextures, total: totalTextures },
+          error: message,
+        });
+      };
+      try {
+        const hooks = activeRenderer as unknown as {
+          onError?: (info: unknown) => void;
+          onDeviceLost?: (info: unknown) => void;
+        };
+        const prevOnError = hooks.onError;
+        const prevOnDeviceLost = hooks.onDeviceLost;
+        hooks.onError = (info) => {
+          // Preserve the default console logging; the defaults are
+          // installed unbound, so rebind to the renderer instance.
+          try {
+            prevOnError?.call(activeRenderer, info);
+          } catch {
+            /* keep surfacing even if the previous hook throws */
+          }
+          const detail =
+            info && typeof info === 'object'
+              ? String(
+                  (info as { message?: unknown }).message ??
+                    (info as { type?: unknown }).type ??
+                    'unknown GPU error',
+                )
+              : 'unknown GPU error';
+          fail(`WebGPU render error: ${detail}`);
+        };
+        hooks.onDeviceLost = (info) => {
+          // Same rebinding note as above; the default also records
+          // `_isDeviceLost` on the renderer, which must be preserved.
+          try {
+            prevOnDeviceLost?.call(activeRenderer, info);
+          } catch {
+            /* keep surfacing even if the previous hook throws */
+          }
+          const detail =
+            info && typeof info === 'object'
+              ? String(
+                  (info as { message?: unknown }).message ??
+                    (info as { reason?: unknown }).reason ??
+                    'device lost',
+                )
+              : 'device lost';
+          fail(`WebGPU device lost: ${detail}`);
+        };
+      } catch {
+        /* hook installation is best-effort; the watchdog still applies */
+      }
+
       // ---- Frame loop: flight slerp wins over auto-rotate; delta-based ----
+      // Session 5 root cause: this loop previously updated transforms and
+      // controls but never called `renderer.render(scene, camera)`, so the
+      // canvas held its clear color (black) forever while status reported
+      // "ready". The render call below is the actual frame submission —
+      // without it nothing is ever displayed.
+      let framesSubmitted = 0;
+      let readyEmitted = false;
       activeRenderer.setAnimationLoop(() => {
         if (cancelled) return;
         const now = performance.now();
@@ -525,13 +591,87 @@ export default function WebGPUEarth({
         }
         clouds.rotation.y += 0.0008 * delta * 60;
         controls.update();
+        try {
+          activeRenderer.render(scene, camera);
+        } catch (err) {
+          // Stop the dead loop immediately; the error status below makes
+          // EarthRenderer swap in the WebGL fallback.
+          activeRenderer.setAnimationLoop(null);
+          fail(
+            `WebGPU frame render failed: ${err instanceof Error ? err.message : 'unknown error'}`,
+          );
+          return;
+        }
+        framesSubmitted += 1;
+        // 'ready' means the loop has actually submitted frames — never
+        // merely that `renderer.init()` resolved.
+        if (!readyEmitted) {
+          readyEmitted = true;
+          emit({
+            phase: 'ready',
+            renderer: 'webgpu',
+            textures: { loaded: totalTextures, total: totalTextures },
+            frames: framesSubmitted,
+          });
+        }
       });
 
-      emit({ phase: 'ready', renderer: 'webgpu', textures: { loaded: totalTextures, total: totalTextures } });
+      // Live debug handle for real-browser A/B inspection (Session 5):
+      // `__SENTINEL_WEBGPU__.stats()` returns frame count, canvas geometry,
+      // camera state and scene child count without noisy per-frame logging.
+      try {
+        const debugHandle = {
+          stats: () => ({
+            framesSubmitted,
+            readyEmitted,
+            canvas: {
+              width: canvas.width,
+              height: canvas.height,
+              clientWidth: canvas.clientWidth,
+              clientHeight: canvas.clientHeight,
+              isConnected: canvas.isConnected,
+              rect: canvas.getBoundingClientRect().toJSON(),
+              computedStyle: {
+                display: getComputedStyle(canvas).display,
+                visibility: getComputedStyle(canvas).visibility,
+                opacity: getComputedStyle(canvas).opacity,
+              },
+            },
+            renderer: {
+              width: activeRenderer.domElement?.width ?? null,
+              height: activeRenderer.domElement?.height ?? null,
+            },
+            camera: {
+              position: camera.position.toArray(),
+              near: camera.near,
+              far: camera.far,
+              aspect: camera.aspect,
+            },
+            sceneChildren: scene.children.length,
+            earthInFrustum: new THREE.Frustum()
+              .setFromProjectionMatrix(
+                new THREE.Matrix4().multiplyMatrices(
+                  camera.projectionMatrix,
+                  camera.matrixWorldInverse,
+                ),
+              )
+              .intersectsObject(earth),
+          }),
+        };
+        (window as unknown as { __SENTINEL_WEBGPU__?: unknown }).__SENTINEL_WEBGPU__ =
+          debugHandle;
+      } catch {
+        /* debug handle is best-effort */
+      }
 
       // Teardown for THIS successful init (overwrites the outer cleanup).
       teardown.current = () => {
         activeRenderer.setAnimationLoop(null);
+        try {
+          delete (window as unknown as { __SENTINEL_WEBGPU__?: unknown }).__SENTINEL_WEBGPU__;
+        } catch {
+          /* best-effort */
+        }
         resizeObserver?.disconnect();
         canvas.removeEventListener('pointermove', onPointerMove);
         canvas.removeEventListener('pointerdown', onPointerDown);

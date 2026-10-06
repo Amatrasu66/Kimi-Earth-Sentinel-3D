@@ -53,3 +53,49 @@ export function hasNavigatorGpu(): boolean {
     return false;
   }
 }
+
+/**
+ * Development/debug renderer override for the WebGPU vs WebGL A/B test
+ * (Session 5 diagnosis).
+ *
+ * `?renderer=webgl` forces the WebGL fallback even on WebGPU-capable
+ * browsers; `?renderer=webgpu` forces the WebGPU path even where the probe
+ * would decline it (a real init/render failure still falls back to WebGL
+ * via the normal status-error path). Absent or any other value → no
+ * override (`null`).
+ *
+ * Pure function of the query string — unit-testable without a browser.
+ * Reads `window.location.search` in production; accepts an explicit
+ * `search` argument for tests. Never throws.
+ */
+export function getForcedRenderer(search?: string): RendererKind | null {
+  try {
+    const raw =
+      typeof search === 'string'
+        ? search
+        : typeof window !== 'undefined'
+          ? window.location.search
+          : '';
+    const params = new URLSearchParams(raw.startsWith('?') ? raw.slice(1) : raw);
+    const value = params.get('renderer')?.toLowerCase();
+    if (value === 'webgl' || value === 'webgpu') return value;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Single decision point for renderer selection (Session 5 regression seam).
+ *
+ * Priority: explicit `?renderer=` override wins (A/B diagnosis must work on
+ * any browser); otherwise the capability probe decides. A failed/negative
+ * probe always resolves to WebGL so the user never sees a black viewport.
+ */
+export function decideRendererMode(
+  forced: RendererKind | null,
+  support: WebGpuSupport,
+): RendererKind {
+  if (forced === 'webgl' || forced === 'webgpu') return forced;
+  return support.supported ? 'webgpu' : 'webgl';
+}

@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { hasNavigatorGpu, probeWebGpuSupport, resetWebGpuProbeForTests } from './webgpu';
+import {
+  decideRendererMode,
+  getForcedRenderer,
+  hasNavigatorGpu,
+  probeWebGpuSupport,
+  resetWebGpuProbeForTests,
+} from './webgpu';
 
 function setNavigatorGpu(stub: unknown) {
   Object.defineProperty(globalThis.navigator, 'gpu', {
@@ -54,5 +60,49 @@ describe('WebGPU capability probe', () => {
     await probeWebGpuSupport();
     await probeWebGpuSupport();
     expect(requestAdapter).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('forced renderer override (?renderer=… A/B flag)', () => {
+  it('forces WebGL when ?renderer=webgl', () => {
+    expect(getForcedRenderer('?renderer=webgl')).toBe('webgl');
+  });
+
+  it('forces WebGPU when ?renderer=webgpu', () => {
+    expect(getForcedRenderer('?renderer=webgpu')).toBe('webgpu');
+  });
+
+  it('is case-insensitive', () => {
+    expect(getForcedRenderer('?renderer=WebGL')).toBe('webgl');
+  });
+
+  it('returns null when the flag is absent', () => {
+    expect(getForcedRenderer('')).toBeNull();
+    expect(getForcedRenderer('?foo=bar')).toBeNull();
+  });
+
+  it('returns null for unknown values', () => {
+    expect(getForcedRenderer('?renderer=canvas')).toBeNull();
+  });
+});
+
+describe('renderer mode decision (Session 5 regression)', () => {
+  it('a forced override wins over a positive probe', () => {
+    expect(decideRendererMode('webgl', { supported: true, reason: 'ok' })).toBe('webgl');
+    expect(decideRendererMode('webgpu', { supported: false, reason: 'no-adapter' })).toBe(
+      'webgpu',
+    );
+  });
+
+  it('a positive probe selects WebGPU when nothing is forced', () => {
+    expect(decideRendererMode(null, { supported: true, reason: 'ok' })).toBe('webgpu');
+  });
+
+  it.each([
+    { supported: false, reason: 'no-navigator-gpu' },
+    { supported: false, reason: 'no-adapter' },
+    { supported: false, reason: 'probe-failed' },
+  ] as const)('a failed probe ($reason) falls back to WebGL', (support) => {
+    expect(decideRendererMode(null, support)).toBe('webgl');
   });
 });

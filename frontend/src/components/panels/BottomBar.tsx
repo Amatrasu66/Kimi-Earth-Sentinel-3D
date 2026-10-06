@@ -37,7 +37,7 @@ export default function BottomBar({ coordinates, activeLayer, dataCount, dataSta
     rendererInfo?.active === 'webgpu'
       ? `WebGPU · ${rendererInfo.detail}`
       : rendererInfo?.active === 'webgl'
-        ? 'WebGL fallback'
+        ? `WebGL fallback · ${rendererInfo.detail}`
         : 'Renderer…';
 
   return (

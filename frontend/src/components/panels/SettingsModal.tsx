@@ -82,6 +82,14 @@ function DiagnosticsPanel({
     ['WebGPU', `${hasNavigatorGpu() ? 'navigator.gpu present' : 'no navigator.gpu'} · probe ${webgpuProbe}`],
     ['Active renderer', rendererInfo ? `${rendererInfo.active} · ${rendererInfo.detail}` : 'unknown'],
     ['Earth textures', rendererInfo ? `${rendererInfo.textures.loaded}/${rendererInfo.textures.total} loaded` : '—'],
+    [
+      'WebGPU frames',
+      rendererInfo?.active === 'webgpu'
+        ? (rendererInfo.frames !== undefined
+            ? `${rendererInfo.frames} submitted — scene is rendering`
+            : '0 — loop has not submitted a frame yet')
+        : 'n/a (WebGL path)',
+    ],
   ];
 
   return (

@@ -18,7 +18,7 @@ import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import GlobeScene from './GlobeScene';
 import WebGpuErrorBoundary from './WebGpuErrorBoundary';
 import type { EarthStatus } from './earthConfig';
-import { probeWebGpuSupport } from '@/lib/webgpu';
+import { probeWebGpuSupport, getForcedRenderer, decideRendererMode } from '@/lib/webgpu';
 
 // Lazy: `three/webgpu` + TSL nodes ship in a separate chunk that only
 // downloads on WebGPU-capable browsers. The WebGL fallback never pays
@@ -32,6 +32,12 @@ export interface RendererInfo {
   /** 'ok' when the active renderer is ready, otherwise a short reason. */
   detail: string;
   textures: { loaded: number; total: number };
+  /**
+   * Frames submitted by the WebGPU loop. `undefined` before the first
+   * frame or on the WebGL path. Session 5: the badge must reflect actual
+   * rendering, never init alone.
+   */
+  frames?: number;
 }
 
 interface EarthRendererProps {
@@ -56,7 +62,10 @@ export default function EarthRenderer({
   sunDirection,
   onActiveRenderer,
 }: EarthRendererProps) {
-  const [mode, setMode] = useState<'pending' | RendererKind>('pending');
+  // Session 5 A/B test: `?renderer=webgl` / `?renderer=webgpu` resolves
+  // synchronously at mount (no probe, no cascading render).
+  // Test B: https://kimi-earth-sentinel-3d.vercel.app/?renderer=webgl
+  const [mode, setMode] = useState<'pending' | RendererKind>(() => getForcedRenderer() ?? 'pending');
   const [webgpuStatus, setWebgpuStatus] = useState<EarthStatus | null>(null);
   const callbackRef = useRef(onActiveRenderer);
   useEffect(() => {
@@ -64,10 +73,13 @@ export default function EarthRenderer({
   });
 
   useEffect(() => {
+    // A forced `?renderer=` value is already the mounted mode — only probe
+    // when the URL leaves the choice to capability detection.
+    if (getForcedRenderer()) return;
     let cancelled = false;
     probeWebGpuSupport().then((support) => {
       if (cancelled) return;
-      setMode(support.supported ? 'webgpu' : 'webgl');
+      setMode(decideRendererMode(null, support));
     });
     return () => {
       cancelled = true;
@@ -115,6 +127,8 @@ export default function EarthRenderer({
   }, [mode, webgpuStatus?.phase]);
 
   useEffect(() => {
+    const forced = getForcedRenderer();
+    const forcedSuffix = forced ? ` (forced ?renderer=${forced})` : '';
     const info: RendererInfo =
       mode === 'pending'
         ? { active: 'loading', detail: 'probing WebGPU support…', textures: { loaded: 0, total: 0 } }
@@ -123,13 +137,18 @@ export default function EarthRenderer({
               active: 'webgpu',
               detail:
                 webgpuStatus?.phase === 'ready'
-                  ? 'ready'
+                  ? `ready · ${webgpuStatus.frames ?? 0} frames${forcedSuffix}`
                   : webgpuStatus?.phase === 'error'
                     ? (webgpuStatus.error ?? 'initialization failed')
-                    : 'initializing…',
+                    : `initializing…${forcedSuffix}`,
               textures: webgpuStatus?.textures ?? { loaded: 0, total: 0 },
+              frames: webgpuStatus?.frames,
             }
-          : { active: 'webgl', detail: 'fallback active', textures: { loaded: 0, total: 0 } };
+          : {
+              active: 'webgl',
+              detail: forced === 'webgl' ? 'forced WebGL (?renderer=webgl)' : 'fallback active',
+              textures: { loaded: 0, total: 0 },
+            };
     callbackRef.current?.(info);
   }, [mode, webgpuStatus]);
 
