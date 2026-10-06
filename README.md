@@ -1,6 +1,13 @@
 # Kimi Earth Sentinel 3D
 
-Interactive 3D Earth environmental-intelligence dashboard: a React + Three.js globe fed by a Flask API that aggregates live environmental data (USGS, NASA EONET/FIRMS, Open-Meteo, AirNow) with clearly-labelled simulated fallbacks when providers are unreachable.
+Interactive 3D Earth environmental-intelligence dashboard: a React + Three.js globe fed by a Next.js API (App Router Route Handlers) that aggregates live environmental data (USGS, NASA EONET/FIRMS, Open-Meteo, AirNow) with clearly-labelled simulated fallbacks when providers are unreachable.
+
+> **Backend migration (Flask → Next.js) complete.** The Python/Flask backend
+> (`backend/`, formerly on Render) is retired and archived. The production
+> backend is now TypeScript Route Handlers under `src/app/api/*` with server
+> modules in `src/server/*`, deployed as part of the single Vercel Next.js
+> application. Same-origin API base: `/api/v1`. See “Deployment” below and
+> `backend/README.md` for the retirement notice.
 
 ## Live Demo
 
@@ -9,9 +16,9 @@ The project is deployed and publicly accessible:
 | Service | URL | Hosting |
 |---|---|---|
 | Live Frontend | https://kimi-earth-sentinel-3d.vercel.app/ | Vercel (Hobby) |
-| Backend API | https://kimi-earth-sentinel-3d.onrender.com | Render (Free) |
+| Backend API | https://kimi-earth-sentinel-3d.vercel.app/api/v1 | Vercel (same Next.js app, no Render) |
 
-The React + TypeScript frontend is hosted on Vercel and communicates over HTTPS with the Flask backend hosted on Render. Both services deploy from this GitHub repository. Hosting uses free tiers (Vercel Hobby for the frontend, Render Free Web Service for the backend), so the backend may respond slowly after idle periods.
+The React + TypeScript frontend and the Next.js API Route Handlers deploy together from this GitHub repository as one Vercel project. There is no Render service anymore (`render.yaml` deleted).
 
 ## Overview
 
@@ -23,8 +30,10 @@ This is a modular monorepo-style project with two siblings that are never nested
 
 ```text
 Kimi-Earth-Sentinel-3D/
-├── frontend/   # React client (deploys to Vercel)
-└── backend/    # Flask API (deploys to Render)
+├── src/app/api/  # Next.js Route Handlers (Vercel deployment root)
+├── src/server/   # providers, services, cache, validation (server-only)
+├── frontend/     # React/Vite app (transitional; see Deployment)
+└── backend/      # RETIRED Flask API (archived reference, not deployed)
 ```
 
 ## Key Features
@@ -40,7 +49,7 @@ Kimi-Earth-Sentinel-3D/
 - Keyboard shortcuts (1–8 layers, Space pause, Esc back/close)
 - Per-layer HTTP caching with honest `fetched_at` / `cache_hit` metadata
 - Gridded heatmap endpoint with a simulated provider behind a swappable interface
-- Production configs: Vercel (frontend) + Render + Gunicorn (backend)
+- Production configs: single Vercel project (Next.js app + `/api/*` Route Handlers)
 
 ## Tech Stack
 
@@ -55,44 +64,45 @@ Kimi-Earth-Sentinel-3D/
 | Styling           | Tailwind CSS                       | ^3.4                 |
 | UI                | Radix UI / shadcn-style components | assorted ^1/^2      |
 | Icons             | Lucide React                       | ^0.562               |
-| Backend           | Python                             | 3.12 (see below)     |
-| API               | Flask                              | 3.0.3                |
-| HTTP Client       | Requests                           | 2.32.3               |
-| Cache             | Process-local InMemoryCache        | — (no server needed) |
-| Scheduler         | APScheduler                        | 3.10.4               |
-| Logging           | structlog                          | 24.4.0               |
-| Production Server | Gunicorn                           | 22.0.0               |
+| Backend           | Next.js Route Handlers (App Router)  | 15                   |
+| Language (API)    | TypeScript                           | ~5.9                 |
+| HTTP Client (API) | native `fetch` + `AbortController`   | Node 20+             |
+| Cache             | Per-instance in-memory TTL + stale fallback | — (no server needed) |
+| Scheduler         | None (request-time caching; APScheduler retired) | —            |
+| Logging           | Structured `console.warn/error` (server-only) | —               |
+| Production Server | Vercel serverless functions          | —                    |
+| API Testing       | Vitest (root `src/**/*.test.ts`)      | Vitest ^2            |
 | Frontend Testing  | Vitest + Testing Library           | Vitest ^5            |
-| Backend Testing   | pytest                             | 8.3.4                |
+| Backend Testing   | Vitest (root)                      | Vitest ^2            |
 | CI                | GitHub Actions                     | source control + CI                |
 | Frontend Hosting  | Vercel (Hobby)                     | https://kimi-earth-sentinel-3d.vercel.app/ |
-| Backend Hosting   | Render (Free)                      | https://kimi-earth-sentinel-3d.onrender.com |
+| Backend Hosting   | Vercel (same Next.js app, `/api/*`) | no separate backend host |
 
 Supporting frontend libraries (forms, charts, utilities — not core stack): `react-hook-form`, `zod`, `recharts`, `date-fns`, `clsx` / `tailwind-merge` / `class-variance-authority`, `cmdk`, `embla-carousel-react`, `input-otp`, `next-themes`, `react-day-picker`, `react-resizable-panels`, `sonner`, `vaul`. State is local React state (`useState` + hooks); there is no Redux, Zustand store, or React Router in the application code.
 
-Python runtime is pinned to `python-3.12.7` in `backend/runtime.txt`; local development requires Python 3.12+ and Node.js 24+.
+Local development requires Node.js 24+ (Python is no longer required; `backend/` is retired).
 
 ## System Architecture
 
 ```text
 User
  ↓
-React frontend (frontend/src)
- ↓ JSON (/api/v1/*, centralized client in services/api.ts)
-Flask REST API (backend/app)
+Next.js app on Vercel (single deployment)
+ ↓ JSON (/api/v1/*, same-origin)
+Route Handlers (src/app/api)
  ↓ dispatch
 Routes (validation + JSON) → application/service layer → provider adapters
  ↓ HTTPS
 External environmental APIs (USGS, NASA EONET/FIRMS/GIBS, Open-Meteo, AirNow)
 ```
 
-- **Frontend (`frontend/src`)** — globe scene, markers, panels, search, and a single centralized API client (`services/api.ts`). Components never construct backend URLs directly. One layer is active at a time (`activeLayer` in `App.tsx`).
-- **Flask API (`backend/app`)** — route validation, per-layer TTL caching, `data_status` provenance envelope, predictable JSON error handlers.
-- **Application/service layer (`backend/app/services/layer_service.py`, `event_detail.py`)** — owns provider dispatch, cache lookup/store, and stale-fallback semantics. Shared by HTTP routes and the optional cache-warming scheduler.
-- **Provider adapters (`backend/app/services/usgs.py`, `nasa_eonet.py`, `nasa_firms.py`, `open_meteo.py`, `airnow.py`, plus `heatmap.py`, `imagery.py`, `geocode.py`, `fallback.py`)** — each fetches from one upstream API and normalizes to the canonical payload. Adapters hold no Flask `request` objects and touch no cache directly.
-- **Routes (`backend/app/routes/`)** — thin HTTP controllers: validate query params, call the service layer, render JSON. Provider-specific logic belongs in service/provider modules, never in routes.
-- **Utilities (`backend/app/utils/`)** — `validation.py` (query-param parsing; malformed input yields `400`, never `500`) and `provenance.py` (the `data_status` envelope, per-layer TTLs).
-- **Cache (`backend/app/cache_service.py`)** — `CacheService` interface with an `InMemoryCache` implementation (process-local, thread-safe, bounded, TTL-based).
+- **Frontend (`frontend/src`)** — globe scene, markers, panels, search, and a single centralized API client (`services/api.ts`). Components never construct backend URLs directly. One layer is active at a time (`activeLayer` in `App.tsx`). **Transition required:** point `VITE_API_BASE_URL` at the same-origin `/api/v1` (see Deployment).
+- **Next.js API (`src/app/api`, `src/server`)** — route validation, per-layer TTL caching, `data_status` provenance envelope, predictable JSON error handlers.
+- **Application/service layer (`src/server/services/layers.ts`, `event-detail.ts`)** — owns provider dispatch, cache lookup/store, and stale-fallback semantics. Shared by all Route Handlers (no background scheduler; APScheduler retired).
+- **Provider adapters (`src/server/providers/usgs.ts`, `nasa-eonet.ts`, `nasa-firms.ts`, `open-meteo.ts`, `airnow.ts`, plus `heatmap.ts`, `imagery.ts`, `geocode.ts`, `fallback.ts`)** — each fetches from one upstream API and normalizes to the canonical payload. Adapters hold no request objects and touch no cache directly.
+- **Routes (`src/app/api/`)** — thin HTTP controllers: validate query params, call the service layer, render JSON. Provider-specific logic belongs in service/provider modules, never in routes.
+- **Utilities (`src/server/`)** — `validation.ts` (query-param parsing; malformed input yields `400`, never `500`) and `provenance.ts` (the `data_status` envelope, per-layer TTLs).
+- **Cache (`src/server/cache.ts`)** — per-instance in-memory TTL store with stale fallback (Vercel serverless: best-effort per instance, never the source of truth).
 
 ## Data Architecture / Request Flow
 
@@ -107,7 +117,7 @@ Request
 
 On refresh failure with an expired `LIVE` entry still in memory, the expired entry is served once more with its status rewritten to `STALE` and the original `fetched_at` preserved, so the UI reports true age instead of claiming real-time data.
 
-There is no database, no Redis, no PostgreSQL/PostGIS, no persistent environmental data store, and no production background worker. The application visualizes externally-owned provider data rather than persisting its own dataset, so a short-lived process-local cache is sufficient. Cache warming via the in-process APScheduler exists but is disabled in production (see below).
+There is no database, no Redis, no PostgreSQL/PostGIS, no persistent environmental data store, and no production background worker. The application visualizes externally-owned provider data rather than persisting its own dataset, so a short-lived per-instance cache is sufficient. There is no cache-warming scheduler (the old in-process APScheduler was retired with the Flask backend); request-time caching + stale fallback cover production.
 
 ## Environmental Data Sources
 
@@ -150,9 +160,16 @@ Event details: earthquake ids resolve live against the USGS detail feed; `eonet-
 ```text
 Kimi-Earth-Sentinel-3D/
 ├── README.md                      # this file
-├── render.yaml                    # Render backend deployment (rootDir: backend)
-├── .github/workflows/ci.yml       # Frontend (lint/test/build) + backend (pytest) jobs
-├── frontend/                      # React/Vite app (Vercel Root Directory)
+├── package.json                   # Next.js API app (root: typecheck/test/build)
+├── next.config.mjs / vercel.json  # Vercel deployment (single project)
+├── .env.example                   # API env template (server-only, no secrets)
+├── src/
+│   ├── app/api/                   # Route Handlers: health, v1/{health,layers,events,search,stats,geocode,timezones,imagery}
+│   ├── app/page.tsx               # status page
+│   └── server/                    # config, provenance, validation, cache, http,
+│                                  # models/layers, providers/*, services/*, health
+├── .github/workflows/ci.yml       # Frontend (lint/test/build) + API (typecheck/test/build)
+├── frontend/                      # React/Vite app (transition to same-origin /api/v1 pending)
 │   ├── package.json
 │   ├── vite.config.ts             # dev server on :3000, "@" alias, dev-only inspect plugin
 │   ├── vitest.config.ts           # jsdom + setup file, src/**/*.test.{ts,tsx}
@@ -172,25 +189,7 @@ Kimi-Earth-Sentinel-3D/
 │   │   └── types/                 # DataPoint, LayerData, DataStatus, …
 │   ├── .env.example               # VITE_API_BASE_URL template
 │   └── README.md                  # frontend quick-start
-├── backend/                       # Flask API (Render rootDir)
-│   ├── wsgi.py                    # Gunicorn entrypoint (honours $PORT, defaults to 5001)
-│   ├── requirements.txt           # production deps
-│   ├── requirements-dev.txt       # pytest
-│   ├── runtime.txt                # Python version for Render (python-3.12.7)
-│   ├── .env.example               # backend env template
-│   ├── README.md                  # backend quick-start
-│   ├── app/
-│   │   ├── __init__.py            # app factory: CORS allow-list, JSON errors, /api/health
-│   │   ├── config.py              # central config (URLs/keys/timeouts from env)
-│   │   ├── cache_service.py       # CacheService interface + InMemoryCache (process-local)
-│   │   ├── routes/                # layers, events, search, stats, geocode, imagery, health
-│   │   ├── services/              # layer_service, event_detail, usgs, nasa_eonet,
-│   │   │                          # nasa_firms, open_meteo, airnow, heatmap,
-│   │   │                          # fallback, imagery, geocode
-│   │   ├── models/                # layer metadata
-│   │   ├── utils/                 # validation (400s, never 500s) + provenance (data_status)
-│   │   └── scheduler/jobs.py      # opt-in cache warming (disabled in production)
-│   └── tests/                     # pytest contract + unit tests
+├── backend/                       # RETIRED Flask API (archived reference, not deployed)
 └── docs/
     ├── development.md             # practical dev guide (setup, env, tests, deploy)
     └── prompts/                   # briefs from prior foundation passes
@@ -198,30 +197,28 @@ Kimi-Earth-Sentinel-3D/
 
 ## Local Development
 
-Prerequisites: Node.js 24+, Python 3.12+.
+Prerequisites: Node.js 24+ (Python no longer required).
 
-Backend (serves on `http://localhost:5001` by default; `PORT` wins, `FLASK_PORT` is the local fallback):
+API (Next.js dev server on `http://localhost:3000`):
 
 ```bash
-cd backend
-python -m venv .venv
-# Windows: .venv\Scripts\activate | macOS/Linux: source .venv/bin/activate
-pip install -r requirements.txt
-copy .env.example .env        # or: cp .env.example .env
-# FLASK_PORT defaults to 5001; provider keys optional (see below)
-python wsgi.py
+npm install
+copy .env.example .env        # then set AIRNOW_API_KEY / NASA_FIRMS_API_KEY if needed
+npm run dev                   # Next.js on http://localhost:3000
 ```
 
-Frontend (Vite dev server on `http://localhost:3000`):
+`GET /api/health` and `GET /api/v1/layers` verify the API. Provider keys are optional (affected layers return labelled simulated data without them).
+
+Frontend (Vite dev server on `http://localhost:3000` — run on another port if the API dev server already uses 3000):
 
 ```bash
 cd frontend
 npm install
 copy .env.example .env        # then set VITE_API_BASE_URL if needed
-npm run dev                   # Vite on http://localhost:3000
+npm run dev
 ```
 
-Open `http://localhost:3000`, pick a layer (or press `5` for earthquakes). The client defaults to `http://localhost:5001/api/v1`; in production `VITE_API_BASE_URL` points at the Render backend (`https://kimi-earth-sentinel-3d.onrender.com/api/v1`).
+Open the Vite dev server, pick a layer (or press `5` for earthquakes). The client defaults to `http://localhost:5001/api/v1` (legacy Flask dev default); point `VITE_API_BASE_URL` at the Next.js API (`http://localhost:3000/api/v1` locally, same-origin `/api/v1` in production).
 
 ## Environment Variables
 
@@ -232,22 +229,19 @@ Frontend (`frontend/.env`):
 | `VITE_API_BASE_URL` | Yes (prod) | `http://localhost:5001/api/v1` (dev only) | Backend base URL incl. `/api/v1`. A production build without it fails loudly with a configuration error instead of silently calling localhost |
 | `VITE_API_URL` | No | — | Legacy alias, used only if the above is unset |
 
-Use `GET /api/v1/health` (or Settings → Diagnostics in the UI) to verify the deployed frontend reaches the Render backend. Diagnostics shows the configured API base, backend health + latency, current layer/provenance, WebGPU support, and the active renderer — never secrets.
+Use `GET /api/v1/health` (or Settings → Diagnostics in the UI) to verify the deployed frontend reaches the API backend. Diagnostics shows the configured API base, backend health + latency, current layer/provenance, WebGPU support, and the active renderer — never secrets.
 
-Backend (`backend/.env`):
+API (root `.env` — all server-only, never `NEXT_PUBLIC_`):
 
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
-| `FLASK_ENV` | No | `production` | `development` enables verbose 500s |
-| `SECRET_KEY` | Yes (prod) | dev placeholder | Flask secret; warning logged if default in prod |
-| `PORT` / `FLASK_PORT` | No | `5001` | Listen port (`PORT` wins; Render injects it) |
-| `CORS_ORIGINS` | Yes (prod) | `https://kimi-earth-sentinel-3d.vercel.app,http://localhost:3000,http://localhost:5173` | Allowed browser origins, comma-separated (trailing slashes ignored) |
 | `CACHE_DEFAULT_TIMEOUT` | No | `300` | Fallback cache TTL (s); per-layer TTLs in code |
 | `USGS_API_URL` / `NASA_EONET_URL` / `NASA_FIRMS_URL` / `NASA_GIBS_URL` / `OPEN_METEO_URL` / `AIRNOW_API_URL` | No | provider defaults | Upstream base URLs (override for tests/proxies) |
 | `AIRNOW_API_KEY` | For live AQI | — | Server-side only; air quality is simulated without it |
 | `NASA_FIRMS_API_KEY` | For live fires | — | Server-side only; wildfires are simulated without it |
 | `REQUEST_TIMEOUT` | No | `15` | Upstream HTTP timeout (seconds) |
-| `SCHEDULER_ENABLED` | No | `true` (local) / `false` (Render) | Opt-in cache warming toggle (`false` disables; production stays `false`) |
+
+(Retired with Flask: `FLASK_ENV`, `SECRET_KEY`, `PORT`/`FLASK_PORT`, `CORS_ORIGINS`, `SCHEDULER_ENABLED` — no equivalents needed. Same-origin API needs no CORS allow-list; there is no background scheduler.)
 
 Never commit `.env` files or keys; both are git-ignored with `.env.example` templates provided.
 
@@ -283,66 +277,76 @@ npm test              # vitest run (jsdom; src/**/*.test.{ts,tsx})
 npm run build         # tsc -b && vite build → dist/
 ```
 
-Backend (`cd backend`):
+API (repo root):
 
 ```bash
-pip install -r requirements.txt -r requirements-dev.txt
-python -m pytest tests/ -q
+npm run typecheck   # tsc --noEmit
+npm test            # vitest run (node; src/**/*.test.ts)
+npm run build       # next build (all /api routes type-checked)
 ```
 
-CI (`.github/workflows/ci.yml`) runs both on pushes to `main` and on all pull requests: frontend `npm ci` → `lint` → `test` → `build` (Node 24), and backend `pip install -r requirements.txt -r requirements-dev.txt` → `pytest` (Python 3.12, scheduler disabled via `DISABLE_SCHEDULER=1`).
+CI (`.github/workflows/ci.yml`) runs both on pushes to `main` and on all pull requests: frontend `npm ci` → `lint` → `test` → `build` (Node 24), and API `npm ci` → `typecheck` → `test` → `build` (Node 24).
 
 ## Deployment
 
-The project is live in production:
+Single Vercel project (Next.js frontend + API):
 
 ```text
-GitHub
-├── frontend/ → Vercel (React/TypeScript frontend)
-└── backend/  → Render (Flask backend via Gunicorn)
+GitHub Repository (root = Next.js app)
+        │
+        ▼
+      Vercel
+        │
+        ├── Next.js frontend (this repo root; status page at /)
+        │
+        └── /api/* Route Handlers (src/app/api, src/server)
 ```
+
+There is **no Render dependency**: `render.yaml` is deleted, and `backend/`
+(Flask/Gunicorn/APScheduler) is retired and archived — never deployed.
 
 ### Production URLs
 
 | Service | URL |
 |---|---|
-| Frontend (Vercel) | https://kimi-earth-sentinel-3d.vercel.app/ |
-| Backend API (Render) | https://kimi-earth-sentinel-3d.onrender.com |
-| API base | https://kimi-earth-sentinel-3d.onrender.com/api/v1 |
-| Health check | https://kimi-earth-sentinel-3d.onrender.com/api/health |
+| App (Vercel) | https://kimi-earth-sentinel-3d.vercel.app/ |
+| API base (same origin) | https://kimi-earth-sentinel-3d.vercel.app/api/v1 |
+| Health check | https://kimi-earth-sentinel-3d.vercel.app/api/health |
 
 ### Production request flow
 
 ```text
 User
  ↓
-Vercel-hosted React frontend
- ↓ HTTPS
-Render-hosted Flask API (Gunicorn, /api/v1/*)
+Vercel Next.js app
+ ↓ same-origin
+/api/* Route Handlers
  ↓
-Provider adapters/services
+Server service layer
+ ↓
+Provider adapters
  ↓
 USGS / NASA EONET / NASA FIRMS / Open-Meteo / AirNow / NASA GIBS
 ```
 
-Both services run on free-tier hosting: Vercel Hobby for the frontend and a Render Free Web Service for the backend. External data providers keep their own access requirements (AirNow and NASA FIRMS need server-side keys; without them the affected layers return labelled simulated data — see Environmental Data Sources below).
+External data providers keep their own access requirements (AirNow and NASA FIRMS need server-side keys; without them the affected layers return labelled simulated data — see Environmental Data Sources below).
 
-Backend → Render (see `render.yaml` at repo root):
+Backend → Vercel (root Next.js app):
 
-- Root Directory `backend`, build `pip install -r requirements.txt`, start via Gunicorn (`wsgi:app`, honours `$PORT`), health check `/api/health`, Python pinned in `runtime.txt`.
-- `CORS_ORIGINS` includes the Vercel frontend origin (`https://kimi-earth-sentinel-3d.vercel.app`), plus `SECRET_KEY` and any provider keys. The backend uses an explicit allow-list — never `*`.
-- `SCHEDULER_ENABLED` is `false` in production: with multiple Gunicorn workers each process would run its own scheduler against its own process-local cache — duplicate provider traffic with no shared benefit. Request-time cache + stale fallback need no warming.
+- No Root Directory override (repo root), framework Next.js, build `npm run build`.
+- Server-only env vars: `AIRNOW_API_KEY`, `NASA_FIRMS_API_KEY` (never `NEXT_PUBLIC_`), plus optional upstream URL overrides and `REQUEST_TIMEOUT` (see root `.env.example`).
+- No scheduler/cron: request-time caching + stale fallback need no warming (the old `SCHEDULER_ENABLED=false` production posture is now structural).
+- No CORS configuration: browser requests are same-origin.
 
-Frontend → Vercel:
+Frontend → Vercel transition (still required in `frontend/`):
 
-- Root Directory `frontend`, framework Vite, build `npm run build`, output `dist`.
-- `VITE_API_BASE_URL` is set to `https://kimi-earth-sentinel-3d.onrender.com/api/v1`. No localhost URL is baked into the client; all calls go through the centralized `API_BASE`.
+- `frontend/src/services/api.ts` currently resolves `VITE_API_BASE_URL` (legacy alias `VITE_API_URL`, dev fallback `http://localhost:5001/api/v1`).
+- To switch to same-origin: set `VITE_API_BASE_URL` to `/api/v1` (or the deployed `https://<app>.vercel.app/api/v1`) in the frontend hosting env, or serve the Vite build from this Next.js app. Files: `frontend/src/services/api.ts`, `frontend/.env.example`, Vercel env dashboard.
+- Until then, the new API is fully usable at `/api/v1` with the identical JSON contract (verified endpoint-by-endpoint; see migration notes in `docs/`).
 
 CORS:
 
-- The Flask API enables CORS only for `/api/*` against the explicit `CORS_ORIGINS` allow-list (exact origins, comma-separated). There is no wildcard mode.
-- Local development default covers the Vite dev server (`http://localhost:3000`, `http://localhost:5173`).
-- Production: `CORS_ORIGINS` includes the deployed Vercel frontend origin (`https://kimi-earth-sentinel-3d.vercel.app`). After renaming the Vercel project or adding a custom domain, update this variable — otherwise browsers block API requests. Preview deployments with distinct URLs need their own entries.
+- None. The Flask `CORS_ORIGINS` allow-list is gone with the Flask backend; same-origin `/api/*` requests need no cross-origin configuration.
 
 ## Earth Renderer (WebGPU + TSL)
 
@@ -379,7 +383,7 @@ Validate the real renderer manually in a Chromium browser with WebGPU (day/night
 
 1. Fork and branch from `main`.
 2. Frontend: `cd frontend && npm install && npm run dev` — keep `npm run lint` and `npm run build` clean.
-3. Backend: `cd backend && pip install -r requirements.txt -r requirements-dev.txt && python -m pytest tests` — new endpoints need validation tests and `data_status` coverage.
+3. API: `npm install && npm test` — new endpoints need validation tests and `data_status` coverage.
 4. Never commit secrets, `__pycache__`, or `node_modules`; simulated data must always stay labelled.
 
 ## License

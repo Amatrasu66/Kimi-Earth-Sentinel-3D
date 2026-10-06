@@ -1,4 +1,10 @@
-# Kimi Earth Sentinel — backend
+# Kimi Earth Sentinel — backend (RETIRED)
+
+> **Retired.** The Flask API in this directory is no longer deployed (Render
+> removed, `render.yaml` deleted). The production backend is now the Next.js
+> App Router API at the repository root (`src/app/api/*` + `src/server/*`),
+> deployed to Vercel as part of the single Next.js application. This directory
+> is kept as an archived reference only — do not deploy it.
 
 Flask API that aggregates live environmental data (USGS, NASA EONET/FIRMS/GIBS, Open-Meteo, AirNow) with clearly-labelled simulated fallbacks. See the repository-root `README.md` for the full architecture and `docs/development.md` for the practical dev guide.
 

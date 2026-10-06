@@ -1,8 +1,13 @@
 # Dependencies
 node_modules
+.next/
 dist
 dist-ssr
 *.local
+
+# Next.js
+next-env.d.ts
+*.tsbuildinfo
 
 # Environment / secrets — never commit real values
 .env
