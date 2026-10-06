@@ -227,7 +227,7 @@ function SentinelApp() {
       {/* Skip link for keyboard users */}
       <a
         href="#sentinel-data-panel"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-16 focus:z-[300] focus:rounded-md focus:bg-[#FFC31F] focus:px-3 focus:py-1.5 focus:text-xs focus:font-semibold focus:text-black"
+         className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-16 focus:z-[300] focus:rounded-md focus:bg-sentinel-accent focus:px-3 focus:py-1.5 focus:text-xs focus:font-semibold focus:text-black"
       >
         Skip to data panel
       </a>

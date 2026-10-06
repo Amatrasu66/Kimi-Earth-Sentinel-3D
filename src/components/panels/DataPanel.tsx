@@ -148,7 +148,7 @@ function EventLiveDetails({ detail, showMagnitude }: { detail: EventDetail; show
                   href={s.url}
                   target="_blank"
                   rel="noreferrer noopener"
-                  className="text-[#FFC31F]/90 hover:text-[#FFC31F] hover:underline"
+                  className="text-sentinel-accent/90 hover:text-sentinel-accent hover:underline"
                 >
                   {s.id} ↗
                 </a>
@@ -275,7 +275,7 @@ export default function DataPanel({
           {loading ? (
             <div className="space-y-2.5" role="status" aria-label="Loading layer data">
               <div className="flex items-center gap-2 text-xs text-white/40">
-                <Radio className="h-3.5 w-3.5 animate-pulse text-[#FFC31F]/70" aria-hidden /> Fetching {layerMeta?.name || 'layer'}…
+                <Radio className="h-3.5 w-3.5 animate-pulse text-sentinel-accent/70" aria-hidden /> Fetching {layerMeta?.name || 'layer'}…
               </div>
               {[1, 2, 3].map((i) => (
                 <div key={i} className="space-y-2 rounded-lg border border-white/[0.05] bg-white/[0.02] p-3">
@@ -326,22 +326,22 @@ export default function DataPanel({
                 <>
                   <div className="grid grid-cols-2 gap-2">
                     {selectedEvent.magnitude !== undefined && (
-                      <StatCard label="Magnitude" value={selectedEvent.magnitude} icon={<TrendingUp className="h-3.5 w-3.5 text-[#FFC31F]" />} />
+                      <StatCard label="Magnitude" value={selectedEvent.magnitude} icon={<TrendingUp className="h-3.5 w-3.5 text-sentinel-accent" />} />
                     )}
                     {selectedEvent.value !== undefined && (
                       <StatCard
                         label={metricLabelForLayer(activeLayer)}
                         value={formatPointValue(selectedEvent, activeLayer) ?? selectedEvent.value}
-                        icon={<TrendingUp className="h-3.5 w-3.5 text-[#FFC31F]" />}
+                        icon={<TrendingUp className="h-3.5 w-3.5 text-sentinel-accent" />}
                       />
                     )}
                     {selectedEvent.depth !== undefined && (
-                      <StatCard label="Depth" value={`${selectedEvent.depth} km`} icon={<MapPin className="h-3.5 w-3.5 text-[#FFC31F]" />} />
+                      <StatCard label="Depth" value={`${selectedEvent.depth} km`} icon={<MapPin className="h-3.5 w-3.5 text-sentinel-accent" />} />
                     )}
                     <StatCard
                       label="Time"
                       value={selectedEvent.timestamp ? formatRelativeTime(selectedEvent.timestamp) : 'N/A'}
-                      icon={<Clock className="h-3.5 w-3.5 text-[#FFC31F]" />}
+                      icon={<Clock className="h-3.5 w-3.5 text-sentinel-accent" />}
                     />
                   </div>
 
@@ -378,7 +378,7 @@ export default function DataPanel({
                           href={eventDetail.source.url}
                           target="_blank"
                           rel="noreferrer noopener"
-                          className="text-xs text-[#FFC31F]/90 hover:text-[#FFC31F] hover:underline"
+                          className="text-xs text-sentinel-accent/90 hover:text-sentinel-accent hover:underline"
                         >
                           {eventDetail.source.name} ↗
                         </a>
@@ -423,7 +423,7 @@ export default function DataPanel({
               {/* Stats */}
               {dataPoints.length > 0 && (
                 <div className="grid grid-cols-2 gap-2">
-                  <StatCard label="Total Events" value={dataPoints.length} icon={<Satellite className="h-3.5 w-3.5 text-[#FFC31F]" />} />
+                  <StatCard label="Total Events" value={dataPoints.length} icon={<Satellite className="h-3.5 w-3.5 text-sentinel-accent" />} />
                   <StatCard
                     label="Critical"
                     value={severityCounts['critical'] || 0}
@@ -446,7 +446,7 @@ export default function DataPanel({
                         className={cn(
                           'sentinel-mono rounded-md px-2.5 py-1 text-[11px] capitalize transition-colors duration-150',
                           pressed
-                            ? 'border border-[rgba(255,195,31,0.35)] bg-[rgba(255,195,31,0.14)] text-[#FFC31F]'
+                            ? 'border border-sentinel-accent/35 bg-sentinel-accent/[0.14] text-sentinel-accent'
                             : 'border border-transparent bg-white/[0.04] text-white/40 hover:bg-white/[0.08] hover:text-white/75',
                         )}
                       >

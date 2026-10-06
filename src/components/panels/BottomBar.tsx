@@ -17,11 +17,11 @@ interface BottomBarProps {
 }
 
 const STATUS_DOT: Record<string, string> = {
-  live: '#34D399',
-  simulated: '#FFC31F',
-  stale: '#FB923C',
-  unavailable: '#F87171',
-  unknown: '#9CA3AF',
+  live: 'var(--status-live)',
+  simulated: 'var(--status-simulated)',
+  stale: 'var(--status-stale)',
+  unavailable: 'var(--status-unavailable)',
+  unknown: 'var(--status-neutral)',
 };
 
 export default function BottomBar({ coordinates, activeLayer, dataCount, dataStatus = null, rendererInfo = null }: BottomBarProps) {
@@ -77,7 +77,7 @@ export default function BottomBar({ coordinates, activeLayer, dataCount, dataSta
         <Separator orientation="vertical" className="hidden h-4 bg-white/10 sm:block" />
 
         {activeLayer ? (
-          <Badge variant="secondary" className="sentinel-mono hidden max-w-[220px] truncate border-[rgba(255,195,31,0.25)] bg-[rgba(255,195,31,0.08)] text-[11px] text-[#FFC31F] sm:inline-flex" title={`Active layer: ${activeLayer}`}>
+          <Badge variant="secondary" className="sentinel-mono hidden max-w-[220px] truncate border-sentinel-accent/25 bg-sentinel-accent/[0.08] text-[11px] text-sentinel-accent sm:inline-flex" title={`Active layer: ${activeLayer}`}>
             {activeLayer} · {dataCount}
           </Badge>
         ) : (
@@ -117,7 +117,7 @@ export default function BottomBar({ coordinates, activeLayer, dataCount, dataSta
           <span className="flex shrink-0 cursor-default items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-2 py-1" role="status" aria-label={`Renderer: ${rendererLabel}`}>
             <Cpu className="h-3.5 w-3.5 text-white/40" aria-hidden />
             <span className="sentinel-micro hidden sm:inline">{rendererShort}</span>
-            <span className={cn('h-1.5 w-1.5 rounded-full', rendererInfo?.active === 'webgpu' && 'sentinel-live-dot')} style={{ background: rendererInfo?.active === 'webgpu' ? '#34D399' : rendererInfo?.active === 'webgl' ? '#FFC31F' : '#9CA3AF' }} aria-hidden />
+            <span className={cn('h-1.5 w-1.5 rounded-full', rendererInfo?.active === 'webgpu' && 'sentinel-live-dot')} style={{ background: rendererInfo?.active === 'webgpu' ? 'var(--status-live)' : rendererInfo?.active === 'webgl' ? 'var(--status-simulated)' : 'var(--status-neutral)' }} aria-hidden />
           </span>
         </TooltipTrigger>
         <TooltipContent side="top" className="border-white/10 bg-[#14171d] text-xs text-white">

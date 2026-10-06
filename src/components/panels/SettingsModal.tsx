@@ -128,14 +128,14 @@ export default function SettingsModal({ isOpen, onClose, isRotating, onToggleRot
         <Tabs defaultValue="globe" className="min-h-0 gap-0">
           <div className="border-b border-white/[0.07] px-4 pt-2.5">
             <TabsList className="h-8 border border-white/10 bg-white/[0.04] p-0.5">
-              <TabsTrigger value="globe" className="h-7 px-3 text-xs data-[state=active]:bg-[rgba(255,195,31,0.15)] data-[state=active]:text-[#FFC31F]">Globe</TabsTrigger>
-              <TabsTrigger value="shortcuts" className="h-7 px-3 text-xs data-[state=active]:bg-[rgba(255,195,31,0.15)] data-[state=active]:text-[#FFC31F]">
+              <TabsTrigger value="globe" className="h-7 px-3 text-xs data-[state=active]:bg-sentinel-accent/15 data-[state=active]:text-sentinel-accent">Globe</TabsTrigger>
+              <TabsTrigger value="shortcuts" className="h-7 px-3 text-xs data-[state=active]:bg-sentinel-accent/15 data-[state=active]:text-sentinel-accent">
                 <Keyboard className="h-3.5 w-3.5" /> Shortcuts
               </TabsTrigger>
-              <TabsTrigger value="diagnostics" className="h-7 px-3 text-xs data-[state=active]:bg-[rgba(255,195,31,0.15)] data-[state=active]:text-[#FFC31F]">
+              <TabsTrigger value="diagnostics" className="h-7 px-3 text-xs data-[state=active]:bg-sentinel-accent/15 data-[state=active]:text-sentinel-accent">
                 <Activity className="h-3.5 w-3.5" /> Diagnostics
               </TabsTrigger>
-              <TabsTrigger value="about" className="h-7 px-3 text-xs data-[state=active]:bg-[rgba(255,195,31,0.15)] data-[state=active]:text-[#FFC31F]">
+              <TabsTrigger value="about" className="h-7 px-3 text-xs data-[state=active]:bg-sentinel-accent/15 data-[state=active]:text-sentinel-accent">
                 <Info className="h-3.5 w-3.5" /> About
               </TabsTrigger>
             </TabsList>
@@ -145,13 +145,13 @@ export default function SettingsModal({ isOpen, onClose, isRotating, onToggleRot
             <TabsContent value="globe" className="mt-0 space-y-3">
               <div className="sentinel-inset flex items-center justify-between gap-3 rounded-lg p-3">
                 <div className="flex items-start gap-2.5">
-                  <RotateCw className="mt-0.5 h-4 w-4 shrink-0 text-[#FFC31F]" aria-hidden />
+                  <RotateCw className="mt-0.5 h-4 w-4 shrink-0 text-sentinel-accent" aria-hidden />
                   <div>
                     <Label htmlFor="sentinel-rotate" className="text-[13px] font-medium text-white">Auto-rotate</Label>
                     <p className="sentinel-micro mt-0.5">Globe rotates when idle. Also toggled with <Kbd className="border-white/10 bg-white/10 text-white/60">Space</Kbd>.</p>
                   </div>
                 </div>
-                <Switch id="sentinel-rotate" checked={isRotating} onCheckedChange={onToggleRotation} aria-label="Toggle globe auto-rotation" className="data-[state=checked]:bg-[#FFC31F]" />
+                <Switch id="sentinel-rotate" checked={isRotating} onCheckedChange={onToggleRotation} aria-label="Toggle globe auto-rotation" className="data-[state=checked]:bg-sentinel-accent" />
               </div>
               <div className="sentinel-inset rounded-lg p-3">
                 <p className="sentinel-micro leading-relaxed">
@@ -163,7 +163,7 @@ export default function SettingsModal({ isOpen, onClose, isRotating, onToggleRot
                     {rendererInfo ? `${rendererInfo.active} · ${rendererInfo.detail}` : 'renderer…'}
                   </Badge>
                   {activeLayer && (
-                    <Badge variant="secondary" className="border-[rgba(255,195,31,0.25)] bg-[rgba(255,195,31,0.08)] text-[11px] text-[#FFC31F]">
+                    <Badge variant="secondary" className="border-sentinel-accent/25 bg-sentinel-accent/[0.08] text-[11px] text-sentinel-accent">
                       {activeLayer}
                     </Badge>
                   )}

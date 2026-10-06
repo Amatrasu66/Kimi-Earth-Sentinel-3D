@@ -53,13 +53,13 @@ export default function LayerPanel({ activeLayer, onLayerToggle, shortcutLayers 
                   className={cn(
                     'sentinel-spot group relative flex h-10 w-10 items-center justify-center rounded-lg transition-colors duration-150',
                     isActive
-                      ? 'sentinel-active-ring bg-[rgba(255,195,31,0.13)] text-[#FFC31F]'
+                      ? 'sentinel-active-ring bg-sentinel-accent/[0.13] text-sentinel-accent'
                       : 'border border-transparent text-white/45 hover:bg-white/[0.07] hover:text-white/90',
                   )}
                 >
                   {layer.icon}
                   {isActive && (
-                    <span className="absolute -left-[7px] top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-[#FFC31F]" aria-hidden />
+                    <span className="absolute -left-[7px] top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-sentinel-accent" aria-hidden />
                   )}
                 </button>
               </TooltipTrigger>
@@ -105,8 +105,8 @@ export default function LayerPanel({ activeLayer, onLayerToggle, shortcutLayers 
               className={cn(
                 'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-150',
                 isActive
-                  ? 'sentinel-active-ring bg-[rgba(255,195,31,0.13)] text-[#FFC31F]'
-                  : 'border border-transparent text-white/45 hover:bg-white/[0.07] hover:text-white/90',
+                ? 'sentinel-active-ring bg-sentinel-accent/[0.13] text-sentinel-accent'
+                : 'border border-transparent text-white/45 hover:bg-white/[0.07] hover:text-white/90',
               )}
             >
               {layer.icon}

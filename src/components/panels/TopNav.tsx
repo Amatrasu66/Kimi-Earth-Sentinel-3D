@@ -21,11 +21,11 @@ interface TopNavProps {
 }
 
 const STATUS_DOT: Record<string, string> = {
-  live: '#34D399',
-  simulated: '#FFC31F',
-  stale: '#FB923C',
-  unavailable: '#F87171',
-  unknown: '#9CA3AF',
+  live: 'var(--status-live)',
+  simulated: 'var(--status-simulated)',
+  stale: 'var(--status-stale)',
+  unavailable: 'var(--status-unavailable)',
+  unknown: 'var(--status-neutral)',
 };
 
 export default function TopNav({ onSearchResultClick, onSettingsClick, dataStatus = null, activeLayerName = null }: TopNavProps) {
@@ -154,10 +154,10 @@ export default function TopNav({ onSearchResultClick, onSettingsClick, dataStatu
       <div className="flex min-w-0 flex-shrink-0 items-center gap-2.5">
         <span
           className="flex h-8 w-8 items-center justify-center rounded-lg"
-          style={{ background: 'rgba(255,195,31,0.12)', border: '1px solid rgba(255,195,31,0.28)' }}
+          style={{ background: 'var(--sentinel-accent-soft)', border: '1px solid var(--sentinel-accent-border)' }}
           aria-hidden
         >
-          <Globe className="h-[18px] w-[18px] text-[#FFC31F]" />
+          <Globe className="h-[18px] w-[18px] text-sentinel-accent" />
         </span>
         <span className="hidden min-w-0 flex-col leading-none md:flex">
           <span className="sentinel-app-title truncate text-white">Earth Sentinel 3D</span>
@@ -169,7 +169,7 @@ export default function TopNav({ onSearchResultClick, onSettingsClick, dataStatu
       {activeLayerName && (
         <Badge
           variant="secondary"
-          className="hidden max-w-[160px] truncate border-[rgba(255,195,31,0.3)] bg-[rgba(255,195,31,0.1)] text-[#FFC31F] lg:inline-flex"
+          className="hidden max-w-[160px] truncate border-sentinel-accent/30 bg-sentinel-accent/10 text-sentinel-accent lg:inline-flex"
           title={`Active layer: ${activeLayerName}`}
         >
           {activeLayerName}
@@ -181,7 +181,7 @@ export default function TopNav({ onSearchResultClick, onSettingsClick, dataStatu
         <div
           className={cn(
             'flex h-9 items-center gap-2 rounded-lg border px-2.5 transition-colors duration-150',
-            open ? 'border-[rgba(255,195,31,0.45)] bg-[rgba(255,255,255,0.06)]' : 'border-white/10 bg-white/[0.04] hover:bg-white/[0.06]',
+            open ? 'border-sentinel-accent/45 bg-[rgba(255,255,255,0.06)]' : 'border-white/10 bg-white/[0.04] hover:bg-white/[0.06]',
           )}
         >
           {loading ? <Spinner className="h-4 w-4 shrink-0 text-white/50" /> : <Search className="h-4 w-4 shrink-0 text-white/40" aria-hidden />}
@@ -258,24 +258,24 @@ export default function TopNav({ onSearchResultClick, onSettingsClick, dataStatu
                       onClick={() => choose(result)}
                       className={cn(
                         'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors duration-150',
-                        active ? 'bg-[rgba(255,195,31,0.12)]' : 'hover:bg-white/[0.05]',
+                        active ? 'bg-sentinel-accent/[0.12]' : 'hover:bg-white/[0.05]',
                       )}
                     >
                       <span
                         className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md"
                         style={{
-                          background: result.type === 'location' ? 'rgba(255,195,31,0.12)' : 'rgba(255,69,0,0.12)',
-                          border: `1px solid ${result.type === 'location' ? 'rgba(255,195,31,0.25)' : 'rgba(255,69,0,0.25)'}`,
+                          background: result.type === 'location' ? 'var(--sentinel-accent-soft)' : 'rgba(255,69,0,0.12)',
+                          border: `1px solid ${result.type === 'location' ? 'var(--sentinel-accent-border)' : 'rgba(255,69,0,0.25)'}`,
                         }}
                         aria-hidden
                       >
-                        {result.type === 'location' ? <MapPin className="h-3.5 w-3.5 text-[#FFC31F]" /> : <AlertTriangle className="h-3.5 w-3.5 text-orange-400" />}
+                        {result.type === 'location' ? <MapPin className="h-3.5 w-3.5 text-sentinel-accent" /> : <AlertTriangle className="h-3.5 w-3.5 text-orange-400" />}
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[13px] font-medium text-white">{result.name}</span>
                         <span className="sentinel-micro block truncate">{result.snippet ?? `${result.lat.toFixed(2)}, ${result.lon.toFixed(2)}`}</span>
                       </span>
-                      {active && <CornerDownLeft className="h-3.5 w-3.5 shrink-0 text-[#FFC31F]/70" aria-hidden />}
+                      {active && <CornerDownLeft className="h-3.5 w-3.5 shrink-0 text-sentinel-accent/70" aria-hidden />}
                     </button>
                   );
                 })
