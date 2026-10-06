@@ -15,6 +15,8 @@ module.exports = {
         // resolve against the single --sentinel-accent-rgb source.
         sentinel: {
           accent: "rgb(var(--sentinel-accent-rgb) / <alpha-value>)",
+          panel: "var(--sentinel-panel-solid)",
+          elev: "var(--sentinel-elev)",
         },
         // Semantic provenance colors (mirror --status-* tokens).
         status: {

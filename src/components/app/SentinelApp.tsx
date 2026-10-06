@@ -9,15 +9,15 @@
 // set-state-in-effect, which targets derived-state syncs.
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, memo } from 'react';
 import EarthRenderer from '@/components/globe/EarthRenderer';
 import type { RendererInfo } from '@/components/globe/EarthRenderer';
-import TopNav from '@/components/panels/TopNav';
-import LayerPanel from '@/components/panels/LayerPanel';
+import AppHeader from '@/components/shell/AppHeader';
+import LayerRail from '@/components/shell/LayerRail';
+import StatusDock from '@/components/shell/StatusDock';
 import DataPanel from '@/components/panels/DataPanel';
-import BottomBar from '@/components/panels/BottomBar';
 import SettingsModal from '@/components/panels/SettingsModal';
-import Tooltip from '@/components/overlays/Tooltip';
+import MarkerHoverCard from '@/components/overlays/MarkerHoverCard';
 import { useLayers, useLayerData } from '@/hooks/useLayers';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { api } from '@/services/api';
@@ -40,13 +40,18 @@ const SHORTCUT_LAYERS: LayerId[] = [
   'wildfires',
 ];
 
+// Memoized renderer boundary: hover/selection state in this shell must never
+// re-render the 3D scene. Props are referentially stable (data array identity
+// only changes when fetched layer data changes; callbacks below are stable),
+// so GlobeScene/WebGPUEarth skip re-renders on shell-only state updates.
+const StableEarthRenderer = memo(EarthRenderer);
+
 function SentinelApp() {
   const [activeLayer, setActiveLayer] = useState<LayerId | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<DataPoint | null>(null);
   const [eventDetail, setEventDetail] = useState<EventDetail | null>(null);
   const [eventDetailLoading, setEventDetailLoading] = useState(false);
   const [hoveredPoint, setHoveredPoint] = useState<DataPoint | null>(null);
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isRotating, setIsRotating] = useState(true);
   const [allDataPoints, setAllDataPoints] = useState<DataPoint[]>([]);
@@ -104,6 +109,13 @@ function SentinelApp() {
   // Handle marker click — race-safe: a slower response for event A can
   // never overwrite the details of a newer selection B (Phase 15).
   // In-flight detail fetches are aborted so rapid clicks don't pile up.
+  // Stable identity (activeLayer via ref) so the memoized renderer subtree
+  // never re-renders just because this callback was recreated.
+  const activeLayerRef = useRef(activeLayer);
+  useEffect(() => {
+    activeLayerRef.current = activeLayer;
+  }, [activeLayer]);
+
   const handleMarkerClick = useCallback(
     async (point: DataPoint) => {
       const id = ++eventRequestId.current;
@@ -124,8 +136,8 @@ function SentinelApp() {
         // If API fails, create detail from point data
         setEventDetail({
           id: point.id,
-          layer_id: activeLayer || 'unknown',
-          type: point.type || activeLayer || 'event',
+          layer_id: activeLayerRef.current || 'unknown',
+          type: point.type || activeLayerRef.current || 'event',
           title: point.title || 'Unknown Event',
           lat: point.lat,
           lon: point.lon,
@@ -139,32 +151,14 @@ function SentinelApp() {
         if (eventRequestId.current === id) setEventDetailLoading(false);
       }
     },
-    [activeLayer],
+    [],
   );
 
-  // Handle marker hover
+  // Handle marker hover — hovered data stays in shell state (status dock
+  // coordinates + hover card content); cursor-follow position now lives
+  // inside MarkerHoverCard so pointer movement never re-renders this tree.
   const handleMarkerHover = useCallback((point: DataPoint | null) => {
     setHoveredPoint(point);
-  }, []);
-
-  // Tooltip position: throttle window mousemove through rAF so hovering
-  // the globe doesn't re-render the whole app on every pointer event.
-  useEffect(() => {
-    let raf = 0;
-    let latest = { x: 0, y: 0 };
-    const flush = () => {
-      raf = 0;
-      setMousePos(latest);
-    };
-    const handleMouseMove = (e: MouseEvent) => {
-      latest = { x: e.clientX, y: e.clientY };
-      if (raf === 0) raf = requestAnimationFrame(flush);
-    };
-    window.addEventListener('mousemove', handleMouseMove);
-    return () => {
-      if (raf !== 0) cancelAnimationFrame(raf);
-      window.removeEventListener('mousemove', handleMouseMove);
-    };
   }, []);
 
   // Handle search result click — fly the globe to the location (Phase 4).
@@ -232,7 +226,7 @@ function SentinelApp() {
         Skip to data panel
       </a>
       {/* 3D Globe - Full viewport background (WebGPU Earth, WebGL fallback) */}
-      <EarthRenderer
+      <StableEarthRenderer
         activeLayer={activeLayer}
         dataPoints={allDataPoints}
         onMarkerClick={handleMarkerClick}
@@ -243,14 +237,14 @@ function SentinelApp() {
       />
 
       {/* UI Overlays */}
-      <TopNav
+      <AppHeader
         onSearchResultClick={handleSearchResultClick}
         onSettingsClick={() => setIsSettingsOpen(true)}
         dataStatus={dataStatus}
         activeLayerName={activeLayerMeta?.name ?? null}
       />
 
-      <LayerPanel activeLayer={activeLayer} onLayerToggle={handleLayerToggle} shortcutLayers={SHORTCUT_LAYERS} />
+      <LayerRail activeLayer={activeLayer} onLayerToggle={handleLayerToggle} shortcutLayers={SHORTCUT_LAYERS} />
 
       <DataPanel
         activeLayer={activeLayer}
@@ -268,7 +262,7 @@ function SentinelApp() {
         onRefresh={refetch}
       />
 
-      <BottomBar
+      <StatusDock
         coordinates={hoveredPoint ? { lat: hoveredPoint.lat, lon: hoveredPoint.lon } : null}
         activeLayer={activeLayer}
         dataCount={allDataPoints.length}
@@ -286,7 +280,7 @@ function SentinelApp() {
         dataStatus={dataStatus}
       />
 
-      <Tooltip point={hoveredPoint} mousePos={mousePos} activeLayer={activeLayer} />
+      <MarkerHoverCard point={hoveredPoint} activeLayer={activeLayer} />
     </div>
   );
 }

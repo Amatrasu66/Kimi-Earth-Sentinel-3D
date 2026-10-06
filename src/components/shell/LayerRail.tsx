@@ -1,3 +1,5 @@
+"use client";
+
 import { Thermometer, CloudRain, Cloud, Wind, Activity, AlertTriangle, Sparkles, Flame } from 'lucide-react';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Kbd } from '@/components/ui/kbd';
@@ -5,7 +7,7 @@ import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import type { LayerId } from '@/types';
 
-interface LayerPanelProps {
+interface LayerRailProps {
   activeLayer: LayerId | null;
   onLayerToggle: (layerId: LayerId) => void;
   /** Keyboard shortcut order — index i maps to number key i+1. */
@@ -28,7 +30,13 @@ const LAYER_CONFIG: Array<{
   { id: 'wildfires', icon: <Flame className="h-[18px] w-[18px]" />, label: 'Wildfires', hint: 'Active fire detections' },
 ];
 
-export default function LayerPanel({ activeLayer, onLayerToggle, shortcutLayers = [] }: LayerPanelProps) {
+/**
+ * Compact instrumentation rail for environmental layers. Accent marks
+ * selection only — idle icons stay neutral so the globe keeps priority.
+ */
+export default function LayerRail({ activeLayer, onLayerToggle, shortcutLayers = [] }: LayerRailProps) {
+  const activeLabel = activeLayer ? LAYER_CONFIG.find((l) => l.id === activeLayer)?.label : null;
+
   return (
     <>
       {/* Desktop: vertical command rail, vertically centered */}
@@ -66,7 +74,7 @@ export default function LayerPanel({ activeLayer, onLayerToggle, shortcutLayers 
               <TooltipContent
                 side="right"
                 sideOffset={10}
-                className="border-white/10 bg-[#14171d] px-2.5 py-1.5 text-white"
+                className="border-white/10 bg-sentinel-elev px-2.5 py-1.5 text-white"
               >
                 <span className="block text-xs font-semibold">{layer.label}</span>
                 <span className="block max-w-[200px] text-[11px] text-white/50">{layer.hint}</span>
@@ -80,8 +88,8 @@ export default function LayerPanel({ activeLayer, onLayerToggle, shortcutLayers 
           );
         })}
         <Separator className="my-1 bg-white/[0.07]" />
-        <p className="sentinel-micro sentinel-mono px-2 py-1 text-center">
-          {activeLayer ? LAYER_CONFIG.find((l) => l.id === activeLayer)?.label.slice(0, 4).toUpperCase() : '— —'}
+        <p className="sentinel-micro sentinel-mono px-2 py-1 text-center" aria-live="off">
+          {activeLabel ? activeLabel.slice(0, 4).toUpperCase() : '— —'}
         </p>
       </nav>
 
@@ -103,10 +111,10 @@ export default function LayerPanel({ activeLayer, onLayerToggle, shortcutLayers 
               aria-pressed={isActive}
               title={layer.label}
               className={cn(
-                'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-150',
+                'flex h-10 w-10 shrink-0 snap-start items-center justify-center rounded-lg transition-colors duration-150',
                 isActive
-                ? 'sentinel-active-ring bg-sentinel-accent/[0.13] text-sentinel-accent'
-                : 'border border-transparent text-white/45 hover:bg-white/[0.07] hover:text-white/90',
+                  ? 'sentinel-active-ring bg-sentinel-accent/[0.13] text-sentinel-accent'
+                  : 'border border-transparent text-white/45 active:bg-white/[0.07] active:text-white/90',
               )}
             >
               {layer.icon}
