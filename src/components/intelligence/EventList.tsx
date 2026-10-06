@@ -29,7 +29,7 @@ export default function EventList({
         <button
           key={point.id}
           onClick={() => onEventSelect(point)}
-          className="sentinel-spot w-full rounded-lg border border-white/[0.05] bg-white/[0.015] p-2.5 text-left transition-colors duration-150 hover:border-white/[0.12] hover:bg-white/[0.05]"
+          className="sentinel-spot row-enter w-full rounded-lg border border-white/[0.05] bg-white/[0.015] p-2.5 text-left transition-colors duration-150 hover:border-white/[0.12] hover:bg-white/[0.05]"
         >
           <div className="mb-1 flex items-center justify-between gap-2">
             <span className="flex-1 truncate text-[13px] font-medium text-white">{eventTitleForPoint(point, activeLayer)}</span>
