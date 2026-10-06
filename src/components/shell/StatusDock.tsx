@@ -23,9 +23,17 @@ interface StatusDockProps {
  * the header owns it below that, the data banner owns it in context.
  */
 export default function StatusDock({ coordinates, activeLayer, dataCount, dataStatus = null, rendererInfo = null }: StatusDockProps) {
-  const [time, setTime] = useState(() => new Date());
+  // Null until client mount: SSR and the first client render must produce
+  // identical markup, so the live clock starts only inside useEffect (after
+  // hydration) — never from `new Date()` during render.
+  const [time, setTime] = useState<Date | null>(null);
 
   useEffect(() => {
+    // Mount-only client clock start (wall-clock time is external state, and
+    // starting it here — never during render — is what keeps SSR markup
+    // deterministic). Same exemption as hooks/use-mobile.ts.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTime(new Date());
     const interval = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(interval);
   }, []);
@@ -100,9 +108,9 @@ export default function StatusDock({ coordinates, activeLayer, dataCount, dataSt
         )}
       </div>
 
-      {/* Center: UTC clock */}
+      {/* Center: UTC clock (placeholder until client mount — see above) */}
       <div className="sentinel-micro sentinel-mono hidden whitespace-nowrap lg:block" aria-label="Current UTC time" aria-live="off">
-        {time.toISOString().replace('T', ' ').slice(0, 19)} UTC
+        {time ? `${time.toISOString().replace('T', ' ').slice(0, 19)} UTC` : '— —'}
       </div>
 
       {/* Right: renderer state */}
