@@ -257,6 +257,34 @@ export default function WebGPUEarth({
       canvas.style.height = '100%';
       container.appendChild(canvas);
 
+      // Session 6: install the debug handle EARLY — before adapter init
+      // and texture loads — so `window.__SENTINEL_WEBGPU__` exists whenever
+      // the WebGPU component is mounted, even mid-initialization. The full
+      // stats (frames, camera, frustum) replace this stub once the loop
+      // starts. Diagnostic-only; never touches rendering.
+      const installDebugHandle = (stats: () => Record<string, unknown>) => {
+        try {
+          (window as unknown as { __SENTINEL_WEBGPU__?: unknown }).__SENTINEL_WEBGPU__ = {
+            stats,
+          };
+        } catch {
+          /* debug handle is best-effort */
+        }
+      };
+      const canvasStats = (extra?: Record<string, unknown>) => ({
+        phase: 'initializing',
+        framesSubmitted: 0,
+        canvas: {
+          width: canvas.width,
+          height: canvas.height,
+          clientWidth: canvas.clientWidth,
+          clientHeight: canvas.clientHeight,
+          isConnected: canvas.isConnected,
+        },
+        ...(extra ?? {}),
+      });
+      installDebugHandle(() => canvasStats());
+
       const base = import.meta.env.BASE_URL || './';
       const tex = (file: string) => `${base}textures/${file}`;
       const loader = new THREE.TextureLoader();
@@ -616,53 +644,47 @@ export default function WebGPUEarth({
         }
       });
 
-      // Live debug handle for real-browser A/B inspection (Session 5):
+      // Live debug handle for real-browser A/B inspection (Session 5+6):
       // `__SENTINEL_WEBGPU__.stats()` returns frame count, canvas geometry,
       // camera state and scene child count without noisy per-frame logging.
-      try {
-        const debugHandle = {
-          stats: () => ({
-            framesSubmitted,
-            readyEmitted,
-            canvas: {
-              width: canvas.width,
-              height: canvas.height,
-              clientWidth: canvas.clientWidth,
-              clientHeight: canvas.clientHeight,
-              isConnected: canvas.isConnected,
-              rect: canvas.getBoundingClientRect().toJSON(),
-              computedStyle: {
-                display: getComputedStyle(canvas).display,
-                visibility: getComputedStyle(canvas).visibility,
-                opacity: getComputedStyle(canvas).opacity,
-              },
-            },
-            renderer: {
-              width: activeRenderer.domElement?.width ?? null,
-              height: activeRenderer.domElement?.height ?? null,
-            },
-            camera: {
-              position: camera.position.toArray(),
-              near: camera.near,
-              far: camera.far,
-              aspect: camera.aspect,
-            },
-            sceneChildren: scene.children.length,
-            earthInFrustum: new THREE.Frustum()
-              .setFromProjectionMatrix(
-                new THREE.Matrix4().multiplyMatrices(
-                  camera.projectionMatrix,
-                  camera.matrixWorldInverse,
-                ),
-              )
-              .intersectsObject(earth),
-          }),
-        };
-        (window as unknown as { __SENTINEL_WEBGPU__?: unknown }).__SENTINEL_WEBGPU__ =
-          debugHandle;
-      } catch {
-        /* debug handle is best-effort */
-      }
+      // Upgrades the early initializing stub installed at mount.
+      installDebugHandle(() => ({
+        phase: readyEmitted ? 'ready' : 'running',
+        framesSubmitted,
+        readyEmitted,
+        canvas: {
+          width: canvas.width,
+          height: canvas.height,
+          clientWidth: canvas.clientWidth,
+          clientHeight: canvas.clientHeight,
+          isConnected: canvas.isConnected,
+          rect: canvas.getBoundingClientRect().toJSON(),
+          computedStyle: {
+            display: getComputedStyle(canvas).display,
+            visibility: getComputedStyle(canvas).visibility,
+            opacity: getComputedStyle(canvas).opacity,
+          },
+        },
+        renderer: {
+          width: activeRenderer.domElement?.width ?? null,
+          height: activeRenderer.domElement?.height ?? null,
+        },
+        camera: {
+          position: camera.position.toArray(),
+          near: camera.near,
+          far: camera.far,
+          aspect: camera.aspect,
+        },
+        sceneChildren: scene.children.length,
+        earthInFrustum: new THREE.Frustum()
+          .setFromProjectionMatrix(
+            new THREE.Matrix4().multiplyMatrices(
+              camera.projectionMatrix,
+              camera.matrixWorldInverse,
+            ),
+          )
+          .intersectsObject(earth),
+      }));
 
       // Teardown for THIS successful init (overwrites the outer cleanup).
       teardown.current = () => {
@@ -730,6 +752,13 @@ export default function WebGPUEarth({
         teardown.current();
       } catch {
         /* unmount must never throw */
+      }
+      // Always drop the debug handle on unmount — including the init-failure
+      // path where the success teardown never installed its own cleanup.
+      try {
+        delete (window as unknown as { __SENTINEL_WEBGPU__?: unknown }).__SENTINEL_WEBGPU__;
+      } catch {
+        /* best-effort */
       }
       syncMarkersRef.current = () => {};
       requestFlightRef.current = () => {};

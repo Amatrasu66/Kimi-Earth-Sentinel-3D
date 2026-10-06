@@ -33,11 +33,18 @@ export default function BottomBar({ coordinates, activeLayer, dataCount, dataSta
   }, []);
 
   const statusKind = dataStatus?.status ?? 'unknown';
+  // Session 6: badge reads e.g. "WebGL · forced" vs "WebGPU · automatic"
+  // so a `?renderer=` override is impossible to misunderstand.
+  const sourceSuffix = rendererInfo?.source === 'forced' ? ' · forced' : ' · automatic';
+  const rendererShort =
+    rendererInfo?.active === 'loading' || !rendererInfo
+      ? 'Starting…'
+      : `${rendererInfo.active === 'webgpu' ? 'WebGPU' : 'WebGL'}${sourceSuffix}`;
   const rendererLabel =
     rendererInfo?.active === 'webgpu'
-      ? `WebGPU · ${rendererInfo.detail}`
+      ? `WebGPU${sourceSuffix} · ${rendererInfo.detail}`
       : rendererInfo?.active === 'webgl'
-        ? `WebGL fallback · ${rendererInfo.detail}`
+        ? `WebGL${sourceSuffix} · ${rendererInfo.detail}`
         : 'Renderer…';
 
   return (
@@ -109,7 +116,7 @@ export default function BottomBar({ coordinates, activeLayer, dataCount, dataSta
         <TooltipTrigger asChild>
           <span className="flex shrink-0 cursor-default items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-2 py-1" role="status" aria-label={`Renderer: ${rendererLabel}`}>
             <Cpu className="h-3.5 w-3.5 text-white/40" aria-hidden />
-            <span className="sentinel-micro hidden sm:inline">{rendererInfo?.active === 'loading' || !rendererInfo ? 'Starting…' : rendererInfo.active === 'webgpu' ? 'WebGPU' : 'WebGL'}</span>
+            <span className="sentinel-micro hidden sm:inline">{rendererShort}</span>
             <span className={cn('h-1.5 w-1.5 rounded-full', rendererInfo?.active === 'webgpu' && 'sentinel-live-dot')} style={{ background: rendererInfo?.active === 'webgpu' ? '#34D399' : rendererInfo?.active === 'webgl' ? '#FFC31F' : '#9CA3AF' }} aria-hidden />
           </span>
         </TooltipTrigger>

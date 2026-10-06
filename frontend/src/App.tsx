@@ -42,6 +42,7 @@ function App() {
     active: 'loading',
     detail: 'probing WebGPU support…',
     textures: { loaded: 0, total: 0 },
+    source: 'automatic',
   });
   const { layers } = useLayers();
   const {

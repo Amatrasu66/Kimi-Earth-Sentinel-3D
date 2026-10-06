@@ -81,6 +81,7 @@ function DiagnosticsPanel({
     ['Data status', dataStatus ? `${statusLabel(dataStatus)} · ${dataStatus.source}` : 'no layer data'],
     ['WebGPU', `${hasNavigatorGpu() ? 'navigator.gpu present' : 'no navigator.gpu'} · probe ${webgpuProbe}`],
     ['Active renderer', rendererInfo ? `${rendererInfo.active} · ${rendererInfo.detail}` : 'unknown'],
+    ['Renderer source', rendererInfo ? rendererInfo.source : '—'],
     ['Earth textures', rendererInfo ? `${rendererInfo.textures.loaded}/${rendererInfo.textures.total} loaded` : '—'],
     [
       'WebGPU frames',

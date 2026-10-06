@@ -38,6 +38,12 @@ export interface RendererInfo {
    * rendering, never init alone.
    */
   frames?: number;
+  /**
+   * Session 6: how the active renderer was chosen. `'forced'` means a
+   * `?renderer=` URL override decided it; `'automatic'` means probe /
+   * fallback logic decided. Makes `?renderer=webgl` recognition obvious.
+   */
+  source: 'forced' | 'automatic';
 }
 
 interface EarthRendererProps {
@@ -128,10 +134,11 @@ export default function EarthRenderer({
 
   useEffect(() => {
     const forced = getForcedRenderer();
+    const source: RendererInfo['source'] = forced ? 'forced' : 'automatic';
     const forcedSuffix = forced ? ` (forced ?renderer=${forced})` : '';
     const info: RendererInfo =
       mode === 'pending'
-        ? { active: 'loading', detail: 'probing WebGPU support…', textures: { loaded: 0, total: 0 } }
+        ? { active: 'loading', detail: 'probing WebGPU support…', textures: { loaded: 0, total: 0 }, source }
         : mode === 'webgpu'
           ? {
               active: 'webgpu',
@@ -143,11 +150,13 @@ export default function EarthRenderer({
                     : `initializing…${forcedSuffix}`,
               textures: webgpuStatus?.textures ?? { loaded: 0, total: 0 },
               frames: webgpuStatus?.frames,
+              source,
             }
           : {
               active: 'webgl',
               detail: forced === 'webgl' ? 'forced WebGL (?renderer=webgl)' : 'fallback active',
               textures: { loaded: 0, total: 0 },
+              source,
             };
     callbackRef.current?.(info);
   }, [mode, webgpuStatus]);
