@@ -4,6 +4,7 @@ import MetricCard from '@/components/intelligence/MetricCard';
 import SeverityFilter from '@/components/intelligence/SeverityFilter';
 import SeverityDistribution from '@/components/intelligence/SeverityDistribution';
 import EventList from '@/components/intelligence/EventList';
+import ValueHistogram from '@/components/charts/ValueHistogram';
 import type { DataPoint, LayerId, LayerMetadata } from '@/types';
 
 function LayerLegend({ layerMeta }: { layerMeta: LayerMetadata }) {
@@ -75,6 +76,8 @@ export default function LayerOverview({
       )}
 
       {dataPoints.length > 0 && <SeverityDistribution counts={severityCounts} total={dataPoints.length} />}
+
+      {dataPoints.length > 0 && <ValueHistogram points={dataPoints} activeLayer={activeLayer} />}
 
       {dataPoints.length > 0 && (
         <SeverityFilter counts={severityCounts} total={dataPoints.length} value={filter} onChange={setFilter} />
