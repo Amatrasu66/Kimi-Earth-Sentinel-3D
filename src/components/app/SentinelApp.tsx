@@ -14,6 +14,7 @@ import EarthRenderer from '@/components/globe/EarthRenderer';
 import type { RendererInfo } from '@/components/globe/EarthRenderer';
 import AppHeader from '@/components/shell/AppHeader';
 import LayerRail from '@/components/shell/LayerRail';
+import LayerHint from '@/components/shell/LayerHint';
 import StatusDock from '@/components/shell/StatusDock';
 import DataPanel from '@/components/intelligence/DataPanel';
 import SettingsModal from '@/components/panels/SettingsModal';
@@ -54,6 +55,7 @@ function SentinelApp() {
   const [hoveredPoint, setHoveredPoint] = useState<DataPoint | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isRotating, setIsRotating] = useState(true);
+  const [hintDismissed, setHintDismissed] = useState(false);
   const [allDataPoints, setAllDataPoints] = useState<DataPoint[]>([]);
   const [flyTo, setFlyTo] = useState<{ lat: number; lon: number; key: number } | null>(null);
   const [rendererInfo, setRendererInfo] = useState<RendererInfo>({
@@ -217,7 +219,7 @@ function SentinelApp() {
   }, []);
 
   return (
-    <div className="dark h-dvh w-screen overflow-hidden" style={{ background: '#050607' }}>
+    <div className="dark h-dvh w-screen overflow-hidden" style={{ background: 'var(--sentinel-bg)' }}>
       {/* Skip link for keyboard users */}
       <a
         href="#sentinel-data-panel"
@@ -245,6 +247,8 @@ function SentinelApp() {
       />
 
       <LayerRail activeLayer={activeLayer} onLayerToggle={handleLayerToggle} shortcutLayers={SHORTCUT_LAYERS} />
+
+      {!activeLayer && !hintDismissed && <LayerHint onDismiss={() => setHintDismissed(true)} />}
 
       <DataPanel
         activeLayer={activeLayer}
