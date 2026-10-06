@@ -15,7 +15,7 @@ import type { RendererInfo } from '@/components/globe/EarthRenderer';
 import AppHeader from '@/components/shell/AppHeader';
 import LayerRail from '@/components/shell/LayerRail';
 import StatusDock from '@/components/shell/StatusDock';
-import DataPanel from '@/components/panels/DataPanel';
+import DataPanel from '@/components/intelligence/DataPanel';
 import SettingsModal from '@/components/panels/SettingsModal';
 import MarkerHoverCard from '@/components/overlays/MarkerHoverCard';
 import { useLayers, useLayerData } from '@/hooks/useLayers';
