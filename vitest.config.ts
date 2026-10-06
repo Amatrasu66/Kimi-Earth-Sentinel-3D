@@ -14,16 +14,13 @@ export default defineConfig({
   },
   test: {
     // Single project (vitest 2.1 `projects` handling is unreliable here).
-    // jsdom for the ported component/hook/lib tests; the backend API tests
+    // jsdom for the component/hook/lib tests; the backend API tests
     // are DOM-independent pure logic and run fine in the same environment.
-    // frontend/ is archived reference until the cleanup phase — never tested.
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
     exclude: [
       "**/node_modules/**",
-      "**/frontend/**",
-      "**/backend/**",
       "**/dist/**",
       "**/.next/**",
     ],

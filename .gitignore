@@ -4,6 +4,8 @@ node_modules
 dist
 dist-ssr
 *.local
+coverage/
+.vercel/
 
 # Next.js
 next-env.d.ts

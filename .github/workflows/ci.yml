@@ -1,4 +1,4 @@
-# Minimal CI: frontend (Vite) + Next.js API backend (typecheck, tests, build).
+# CI: single Next.js app (lint, typecheck, test, build).
 # Runs on pushes to main and on all pull requests.
 name: CI
 
@@ -12,32 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  frontend:
-    name: Frontend (lint, test, build)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - run: npm ci
-      - run: npm run lint
-      - run: npm test
-      - run: npm run build
-        env:
-          # Build must succeed without real secrets; the client falls back
-          # to the local dev URL when the variable is unset.
-          VITE_API_BASE_URL: http://localhost:5001/api/v1
-
-  backend:
+  app:
     name: App (Next.js: lint, typecheck, test, build)
     runs-on: ubuntu-latest
     timeout-minutes: 15

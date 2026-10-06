@@ -10,8 +10,6 @@ Kimi-Earth-Sentinel-3D/
 ├── src/server/      # config, provenance, validation, cache, providers, services
 ├── src/components/  # app shell, globe (WebGPU ssr:false + WebGL fallback), panels, ui
 ├── src/hooks|lib|types|shaders|services/  # incl. same-origin api.ts (/api/v1)
-├── frontend/        # ARCHIVED Vite app (reference only, not deployed)
-├── backend/         # RETIRED Flask API (archived reference, not deployed)
 ├── docs/
 │   ├── development.md   # this file
 │   └── prompts/         # briefs from prior foundation passes
@@ -22,7 +20,7 @@ Kimi-Earth-Sentinel-3D/
 └── .env.example         # API env template (server-only)
 ```
 
-`src/` is the single application (UI + API). `frontend/` and `backend/` are archived siblings — never nest code inside them, and never deploy them.
+`src/` is the single application (UI + API).
 
 ## Start the app
 
