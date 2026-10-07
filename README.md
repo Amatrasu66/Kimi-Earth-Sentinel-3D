@@ -183,12 +183,12 @@ Kimi-Earth-Sentinel-3D/
 
 ## Local Development
 
-Prerequisites: Node.js 24+ (Python no longer required).
+Prerequisites: Node.js 24+ (`nvm use` picks it up from `.nvmrc`).
 
 One dev server serves both the globe UI and the API:
 
 ```bash
-npm install
+npm ci
 copy .env.example .env        # then set AIRNOW_API_KEY / NASA_FIRMS_API_KEY if needed
 npm run dev                   # Next.js on http://localhost:3000
 ```
@@ -345,7 +345,7 @@ Validate the real renderer manually in a Chromium browser with WebGPU (day/night
 ## Contributing
 
 1. Fork and branch from `main`.
-2. `npm install && npm run dev` — keep `npm run lint`, `npm run typecheck`, and `npm run build` clean.
+2. `npm ci && npm run dev` — keep `npm run lint`, `npm run typecheck`, and `npm run build` clean.
 3. New endpoints need validation tests and `data_status` coverage (`npm test` covers API + UI).
 4. Never commit secrets or `node_modules`; simulated data must always stay labelled.
 

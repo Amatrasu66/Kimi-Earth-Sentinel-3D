@@ -24,8 +24,10 @@ Kimi-Earth-Sentinel-3D/
 
 ## Start the app
 
+Prerequisites: Node.js 24 (`nvm use` picks it up from `.nvmrc`).
+
 ```bash
-npm install
+npm ci
 copy .env.example .env        # then set AIRNOW_API_KEY / NASA_FIRMS_API_KEY if needed
 npm run dev                   # http://localhost:3000 — globe UI at /, API at /api/*
 ```
