@@ -171,7 +171,7 @@ Kimi-Earth-Sentinel-3D/
 │   ├── components/
 │   │   ├── app/SentinelApp.tsx    # app shell ("use client")
 │   │   ├── globe/                 # EarthRenderer + WebGPUEarth (ssr:false) + WebGL fallback
-│   │   ├── panels/ overlays/ ui/  # HUD, shadcn/Radix primitives
+│   │   ├── shell/ intelligence/ charts/ overlays/ panels/ ui/  # command bar+rail+dock, data surface, Bklit visuals, hover+provenance, settings, shadcn/Radix primitives
 │   ├── hooks/ lib/ types/ shaders/ services/  # incl. same-origin api.ts (/api/v1)
 │   └── server/                    # config, provenance, validation, cache, http,
 │                                  # models/layers, providers/*, services/*, health
