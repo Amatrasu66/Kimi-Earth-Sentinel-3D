@@ -1,11 +1,20 @@
 import { useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { Satellite, AlertCircle } from 'lucide-react';
 import MetricCard from '@/components/intelligence/MetricCard';
 import SeverityFilter from '@/components/intelligence/SeverityFilter';
 import SeverityDistribution from '@/components/intelligence/SeverityDistribution';
 import EventList from '@/components/intelligence/EventList';
-import ValueHistogram from '@/components/charts/ValueHistogram';
+import { Skeleton } from '@/components/ui/skeleton';
 import type { DataPoint, LayerId, LayerMetadata } from '@/types';
+
+// Code-split: visx + motion (~80 kB) load only when a layer panel with
+// numeric data opens — never in the initial globe route chunk. SVG output
+// is client-safe; the skeleton preserves panel layout while loading.
+const ValueHistogram = dynamic(() => import('@/components/charts/ValueHistogram'), {
+  ssr: false,
+  loading: () => <Skeleton className="h-[118px] rounded-lg bg-white/[0.05]" />,
+});
 
 function LayerLegend({ layerMeta }: { layerMeta: LayerMetadata }) {
   if (!layerMeta.color_scale || layerMeta.color_scale.length === 0) return null;
