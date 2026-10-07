@@ -13,13 +13,7 @@ import {
   withStatus,
   type DataStatus,
 } from "../provenance";
-import { getAirQualityData } from "../providers/airnow";
 import { generateMockLayerData } from "../providers/fallback";
-import { getHeatmap } from "../providers/heatmap";
-import { getEonetEvents } from "../providers/nasa-eonet";
-import { getFireData } from "../providers/nasa-firms";
-import { getWeatherData } from "../providers/open-meteo";
-import { getEarthquakeData } from "../providers/usgs";
 
 type LayerPayload = Record<string, unknown> & { data_status?: DataStatus };
 
@@ -35,16 +29,52 @@ type ServiceFn = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ) => Promise<any>;
 
-const SERVICE_MAP: Record<string, ServiceFn> = {
-  earthquakes: (bbox, limit, minSeverity) => getEarthquakeData(bbox, limit, minSeverity),
-  disasters: (bbox, limit, minSeverity) => getEonetEvents(bbox, limit, minSeverity),
-  temperature: (bbox, limit, minSeverity) => getWeatherData("temperature", bbox, limit, minSeverity, "temperature"),
-  precipitation: (bbox, limit, minSeverity) =>
-    getWeatherData("precipitation", bbox, limit, minSeverity, "precipitation"),
-  clouds: (bbox, limit, minSeverity) => getWeatherData("cloudcover", bbox, limit, minSeverity, "clouds"),
-  wind: (bbox, limit, minSeverity) => getWeatherData("wind", bbox, limit, minSeverity, "wind"),
-  air_quality: (bbox, limit, minSeverity) => getAirQualityData(bbox, limit, minSeverity),
-  wildfires: (bbox, limit, minSeverity) => getFireData(bbox, limit, minSeverity),
+// Per-layer lazy provider loaders. The previous static SERVICE_MAP pulled
+// every adapter (USGS, EONET, FIRMS, Open-Meteo, AirNow, heatmap) into each
+// route's server module graph; now a data request for layer X compiles and
+// loads only provider X. Same functions, same caching/provenance/error
+// semantics — only the import timing changes.
+type ServiceLoader = () => Promise<ServiceFn>;
+
+async function loadEarthquakes(): Promise<ServiceFn> {
+  const { getEarthquakeData } = await import("../providers/usgs");
+  return (bbox, limit, minSeverity) => getEarthquakeData(bbox, limit, minSeverity);
+}
+
+async function loadDisasters(): Promise<ServiceFn> {
+  const { getEonetEvents } = await import("../providers/nasa-eonet");
+  return (bbox, limit, minSeverity) => getEonetEvents(bbox, limit, minSeverity);
+}
+
+function loadWeather(
+  metric: "temperature" | "precipitation" | "cloudcover" | "wind",
+  layerId: string,
+): ServiceLoader {
+  return async () => {
+    const { getWeatherData } = await import("../providers/open-meteo");
+    return (bbox, limit, minSeverity) => getWeatherData(metric, bbox, limit, minSeverity, layerId);
+  };
+}
+
+async function loadAirQuality(): Promise<ServiceFn> {
+  const { getAirQualityData } = await import("../providers/airnow");
+  return (bbox, limit, minSeverity) => getAirQualityData(bbox, limit, minSeverity);
+}
+
+async function loadWildfires(): Promise<ServiceFn> {
+  const { getFireData } = await import("../providers/nasa-firms");
+  return (bbox, limit, minSeverity) => getFireData(bbox, limit, minSeverity);
+}
+
+const SERVICE_LOADERS: Record<string, ServiceLoader> = {
+  earthquakes: loadEarthquakes,
+  disasters: loadDisasters,
+  temperature: loadWeather("temperature", "temperature"),
+  precipitation: loadWeather("precipitation", "precipitation"),
+  clouds: loadWeather("cloudcover", "clouds"),
+  wind: loadWeather("wind", "wind"),
+  air_quality: loadAirQuality,
+  wildfires: loadWildfires,
 };
 
 export function layerCacheKey(
@@ -120,9 +150,12 @@ export function getLayerPayload(
   const layer = getLayer(layerId);
   const source = layer ? layer.source : layerId;
   const key = layerCacheKey(layerId, bbox, limit, minSeverity);
+  // Development-only timing: provider fetch duration. Set only on cache
+  // misses (fetchFn never runs for cache hits), so 0 means "served cached".
+  let providerMs = 0;
   const fetchFn = async (): Promise<LayerPayload> => {
-    const serviceFn = SERVICE_MAP[layerId];
-    if (!serviceFn) {
+    const loader = SERVICE_LOADERS[layerId];
+    if (!loader) {
       const mock = generateMockLayerData(layerId, bbox, limit, minSeverity);
       return withStatus(
         mock,
@@ -131,14 +164,36 @@ export function getLayerPayload(
         "No live provider for this layer — showing simulated fallback data.",
       ) as LayerPayload;
     }
-    return (await serviceFn(bbox, limit, minSeverity)) as LayerPayload;
+    const started = Date.now();
+    try {
+      const serviceFn = await loader();
+      return (await serviceFn(bbox, limit, minSeverity)) as LayerPayload;
+    } finally {
+      providerMs = Date.now() - started;
+    }
   };
-  return resolveWithCache(key, ttlForLayer(layerId), fetchFn);
+  const totalStarted = Date.now();
+  return resolveWithCache(key, ttlForLayer(layerId), fetchFn).then((result) => {
+    // Compact dev log: timings + provenance only. No payload data, no keys,
+    // no per-point logging. Silent in production.
+    if (process.env.NODE_ENV !== "production") {
+      const status = payloadStatus(result.data);
+      console.log(
+        `[earth-sentinel] [layer:${layerId}] total=${Date.now() - totalStarted}ms ` +
+          `provider=${providerMs}ms cache_hit=${result.cacheHit} stale=${result.stale} ` +
+          `status=${status ?? "unknown"}`,
+      );
+    }
+    return result;
+  });
 }
 
 export function getHeatmapPayload(layerId: string, resolution = 128, timeRange = "24h") {
   const key = heatmapCacheKey(layerId, resolution, timeRange);
-  return resolveWithCache(key, HEATMAP_TTL, async () => getHeatmap(layerId, resolution, timeRange));
+  return resolveWithCache(key, HEATMAP_TTL, async () => {
+    const { getHeatmap } = await import("../providers/heatmap");
+    return getHeatmap(layerId, resolution, timeRange);
+  });
 }
 
 export { utcnowIso };
