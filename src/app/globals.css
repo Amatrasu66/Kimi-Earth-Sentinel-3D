@@ -15,24 +15,51 @@
   :root {
     /* ——— Sentinel surfaces ——— */
     --sentinel-bg: #050607;
+    /* Header/dock chrome: translucent near-black shared by AppHeader/StatusDock. */
+    --sentinel-chrome: rgba(5, 6, 7, 0.72);
     --sentinel-panel: rgba(13, 15, 19, 0.82);
     --sentinel-panel-solid: #0d0f13;
     --sentinel-elev: rgba(20, 23, 29, 0.92);
     --sentinel-border: rgba(255, 255, 255, 0.08);
     --sentinel-border-strong: rgba(255, 255, 255, 0.14);
     --sentinel-accent: #ffc31f;
-    --sentinel-accent-soft: rgba(255, 195, 31, 0.12);
+    /* Space-separated triplet so Tailwind can apply <alpha-value>:
+       rgb(var(--sentinel-accent-rgb) / 0.12). Single source for amber. */
+    --sentinel-accent-rgb: 255 195 31;
+    --sentinel-accent-soft: rgb(var(--sentinel-accent-rgb) / 0.12);
+    --sentinel-accent-hover: rgb(var(--sentinel-accent-rgb) / 0.16);
+    --sentinel-accent-border: rgb(var(--sentinel-accent-rgb) / 0.3);
+    --sentinel-accent-glow: rgb(var(--sentinel-accent-rgb) / 0.18);
+    --sentinel-accent-ring: rgb(var(--sentinel-accent-rgb) / 0.7);
     --sentinel-text: #f4f5f6;
     --sentinel-text-2: rgba(244, 245, 246, 0.62);
     --sentinel-text-3: rgba(244, 245, 246, 0.38);
 
     /* ——— Semantic status (single source of truth) ——— */
     --status-live: #34d399;
+    --status-live-rgb: 52 211 153;
     --status-simulated: #ffc31f;
+    --status-simulated-rgb: 255 195 31;
     --status-stale: #fb923c;
+    --status-stale-rgb: 251 146 60;
     --status-unavailable: #f87171;
+    --status-unavailable-rgb: 248 113 113;
     --status-info: #60a5fa;
+    --status-info-rgb: 96 165 250;
     --status-neutral: #9ca3af;
+    --status-neutral-rgb: 156 163 175;
+    /* Provenance surface washes — banner/badge backgrounds. Abnormal
+       states carry stronger washes so simulated can never read as live. */
+    --status-live-bg: rgb(var(--status-live-rgb) / 0.07);
+    --status-live-border: rgb(var(--status-live-rgb) / 0.3);
+    --status-simulated-bg: rgb(var(--status-simulated-rgb) / 0.07);
+    --status-simulated-border: rgb(var(--status-simulated-rgb) / 0.3);
+    --status-stale-bg: rgb(var(--status-stale-rgb) / 0.07);
+    --status-stale-border: rgb(var(--status-stale-rgb) / 0.3);
+    --status-unavailable-bg: rgb(var(--status-unavailable-rgb) / 0.07);
+    --status-unavailable-border: rgb(var(--status-unavailable-rgb) / 0.3);
+    --status-unknown-bg: rgb(var(--status-neutral-rgb) / 0.07);
+    --status-unknown-border: rgb(var(--status-neutral-rgb) / 0.3);
 
     /* ——— shadcn tokens (dark-first) ——— */
     --background: 220 12% 4%;
@@ -54,12 +81,23 @@
     --border: 220 9% 15%;
     --input: 220 9% 15%;
     --ring: 45 100% 56%;
-    --chart-1: 45 100% 56%;
-    --chart-2: 160 70% 45%;
-    --chart-3: 210 80% 60%;
-    --chart-4: 25 90% 55%;
-    --chart-5: 0 75% 55%;
+    --chart-1: oklch(0.32 0 none);
+    --chart-2: oklch(0.41 0 none);
+    --chart-3: oklch(0.54 0 none);
+    --chart-4: oklch(0.71 0 none);
+    --chart-5: oklch(0.89 0 none);
     --radius: 0.625rem;
+
+    /* ——— Sentinel motion vocabulary ———
+       fast     150ms — micro-interactions (hover, focus, toggles)
+       normal   220ms — standard UI transitions (panels, lists, search)
+       emphasis 300ms — larger state changes (drawers, layout shifts)
+       Panels use ease-out; nothing loops except spinners/pulses.
+       The globe owns ambient motion — UI motion stays subordinate. */
+    --motion-fast: 150ms;
+    --motion-normal: 220ms;
+    --motion-emphasis: 300ms;
+    --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 
     --sidebar-background: 220 12% 5%;
     --sidebar-foreground: 0 0% 96%;
@@ -69,11 +107,56 @@
     --sidebar-accent-foreground: 0 0% 96%;
     --sidebar-border: 220 9% 15%;
     --sidebar-ring: 45 100% 56%;
+    --chart-background: oklch(1 0 0);
+    --chart-foreground: oklch(0.145 0.004 285);
+    --chart-foreground-muted: oklch(0.55 0.014 260);
+    --chart-line-primary: var(--chart-1);
+    --chart-line-secondary: var(--chart-2);
+    --chart-crosshair: rgba(255, 255, 255, 0.35);
+    --chart-grid: oklch(0.9 0 0);
+    --chart-brush-border: var(--chart-grid);
+    --chart-tooltip-background: oklch(0.21 0.006 285 / 0.8);
+    --chart-tooltip-foreground: oklch(0.985 0 0);
+    --chart-tooltip-muted: oklch(0.65 0.01 260);
+    --chart-marker-background: oklch(0.97 0.005 260);
+    --chart-marker-border: oklch(0.85 0.01 260);
+    --chart-marker-foreground: oklch(0.3 0.01 260);
+    --chart-label: oklch(0.45 0.01 260);
+    --chart-scale-01: oklch(0.98 0.003 106);
+    --chart-scale-02: oklch(0.92 0.008 106);
+    --chart-scale-03: oklch(0.82 0.015 106);
+    --chart-scale-04: oklch(0.68 0.02 106);
+    --chart-scale-05: oklch(0.55 0.025 106);
+    --chart-scale-pattern-color: oklch(0.96 0.005 106);
   }
 
   .dark {
     --background: 220 12% 4%;
     --foreground: 0 0% 96%;
+    --chart-1: oklch(1 0 none);
+    --chart-2: oklch(0.73 0 none);
+    --chart-3: oklch(0.51 0 none);
+    --chart-4: oklch(0.39 0 none);
+    --chart-5: oklch(0.32 0 none);
+    --chart-background: oklch(0.145 0 0);
+    --chart-foreground: oklch(0.45 0 0);
+    --chart-foreground-muted: oklch(0.65 0.01 260);
+    --chart-crosshair: rgba(255, 255, 255, 0.35);
+    --chart-grid: rgba(255, 255, 255, 0.08);
+    --chart-brush-border: var(--chart-grid);
+    --chart-tooltip-background: rgba(20, 23, 29, 0.95);
+    --chart-tooltip-foreground: #f4f5f6;
+    --chart-tooltip-muted: rgba(244, 245, 246, 0.55);
+    --chart-marker-background: oklch(0.25 0.01 260);
+    --chart-marker-border: oklch(0.4 0.01 260);
+    --chart-marker-foreground: oklch(0.9 0 0);
+    --chart-label: oklch(0.75 0.01 260);
+    --chart-scale-01: oklch(0.28 0.03 270);
+    --chart-scale-02: oklch(0.38 0.04 270);
+    --chart-scale-03: oklch(0.48 0.05 270);
+    --chart-scale-04: oklch(0.58 0.06 270);
+    --chart-scale-05: oklch(0.68 0.07 270);
+    --chart-scale-pattern-color: oklch(0.145 0 0);
   }
 
   * {
@@ -108,6 +191,12 @@
 
 @layer components {
   /* Surface hierarchy: background → floating → panel → elevated → active */
+  .sentinel-chrome {
+    background: var(--sentinel-chrome);
+    backdrop-filter: blur(20px) saturate(1.2);
+    -webkit-backdrop-filter: blur(20px) saturate(1.2);
+  }
+
   .sentinel-floating {
     background: var(--sentinel-panel);
     backdrop-filter: blur(20px) saturate(1.2);
@@ -145,7 +234,7 @@
     position: absolute;
     inset: -1px;
     border-radius: inherit;
-    background: radial-gradient(120px circle at var(--spot-x, 50%) var(--spot-y, 0%), rgba(255, 195, 31, 0.14), transparent 70%);
+    background: radial-gradient(120px circle at var(--spot-x, 50%) var(--spot-y, 0%), rgb(var(--sentinel-accent-rgb) / 0.14), transparent 70%);
     opacity: 0;
     transition: opacity 200ms ease;
     pointer-events: none;
@@ -157,8 +246,8 @@
 
   /* Subtle animated border for the selected/active surface only */
   .sentinel-active-ring {
-    border: 1px solid rgba(255, 195, 31, 0.45) !important;
-    box-shadow: 0 0 0 1px rgba(255, 195, 31, 0.18), 0 0 16px rgba(255, 195, 31, 0.18);
+    border: 1px solid rgb(var(--sentinel-accent-rgb) / 0.45) !important;
+    box-shadow: 0 0 0 1px rgb(var(--sentinel-accent-rgb) / 0.18), 0 0 16px var(--sentinel-accent-glow);
   }
 
   /* Typography scale */
@@ -227,7 +316,7 @@ canvas:active {
 
 /* Visible focus that matches the command theme */
 :focus-visible {
-  outline: 2px solid rgba(255, 195, 31, 0.7);
+  outline: 2px solid var(--sentinel-accent-ring);
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -253,8 +342,8 @@ canvas:active {
 .loading-ring {
   width: 36px;
   height: 36px;
-  border: 2px solid rgba(255, 195, 31, 0.18);
-  border-top-color: #ffc31f;
+  border: 2px solid var(--sentinel-accent-soft);
+  border-top-color: var(--sentinel-accent);
   border-radius: 50%;
   animation: sentinel-spin 0.9s linear infinite;
 }
@@ -303,6 +392,23 @@ canvas:active {
 
 .modal-enter {
   animation: sentinel-fade-in 180ms ease-out both;
+}
+
+/* List rows: 150ms rise on mount only (stable keys mean filter changes reuse
+   nodes — no re-animation churn). Covered by the reduced-motion kill-switch. */
+@keyframes sentinel-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.row-enter {
+  animation: sentinel-row-in var(--motion-fast) ease-out both;
 }
 
 .rail-enter {

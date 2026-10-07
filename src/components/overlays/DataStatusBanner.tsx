@@ -4,11 +4,11 @@ import { cn } from '@/lib/utils';
 import type { DataStatus } from '@/types';
 
 const STATUS_STYLES: Record<string, { dot: string; text: string; border: string; bg: string }> = {
-  live: { dot: '#34D399', text: '#34D399', border: 'rgba(52,211,153,0.3)', bg: 'rgba(52,211,153,0.07)' },
-  simulated: { dot: '#FFC31F', text: '#FFC31F', border: 'rgba(255,195,31,0.3)', bg: 'rgba(255,195,31,0.07)' },
-  stale: { dot: '#FB923C', text: '#FB923C', border: 'rgba(251,146,60,0.3)', bg: 'rgba(251,146,60,0.07)' },
-  unavailable: { dot: '#F87171', text: '#F87171', border: 'rgba(248,113,113,0.3)', bg: 'rgba(248,113,113,0.07)' },
-  unknown: { dot: '#9CA3AF', text: '#9CA3AF', border: 'rgba(156,163,175,0.3)', bg: 'rgba(156,163,175,0.07)' },
+  live: { dot: 'var(--status-live)', text: 'var(--status-live)', border: 'var(--status-live-border)', bg: 'var(--status-live-bg)' },
+  simulated: { dot: 'var(--status-simulated)', text: 'var(--status-simulated)', border: 'var(--status-simulated-border)', bg: 'var(--status-simulated-bg)' },
+  stale: { dot: 'var(--status-stale)', text: 'var(--status-stale)', border: 'var(--status-stale-border)', bg: 'var(--status-stale-bg)' },
+  unavailable: { dot: 'var(--status-unavailable)', text: 'var(--status-unavailable)', border: 'var(--status-unavailable-border)', bg: 'var(--status-unavailable-bg)' },
+  unknown: { dot: 'var(--status-neutral)', text: 'var(--status-neutral)', border: 'var(--status-unknown-border)', bg: 'var(--status-unknown-bg)' },
 };
 
 /**

@@ -105,3 +105,22 @@ export function statusLabel(status: DataStatus | undefined): string {
       return 'UNKNOWN';
   }
 }
+
+/** Display title for an event row/detail — marker facts first, never blank. */
+export function eventTitleForPoint(point: DataPoint, layerId: LayerId | null): string {
+  if (point.title) return point.title;
+
+  if (layerId === 'earthquakes' && point.magnitude !== undefined) {
+    return `M${point.magnitude} - ${point.location || 'Unknown location'}`;
+  }
+
+  if (layerId === 'wildfires' && point.value !== undefined) {
+    return `Fire (brightness: ${point.value}) - ${point.location || 'Unknown'}`;
+  }
+
+  if (layerId === 'air_quality' && point.value !== undefined) {
+    return `AQI ${point.value} - ${point.location || 'Unknown'}`;
+  }
+
+  return point.location || `${layerId || 'Event'} at ${point.lat.toFixed(1)}, ${point.lon.toFixed(1)}`;
+}

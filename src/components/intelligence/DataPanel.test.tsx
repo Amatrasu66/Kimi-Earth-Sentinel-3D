@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import DataPanel from '@/components/panels/DataPanel';
+import DataPanel from '@/components/intelligence/DataPanel';
 import type { DataPoint, DataStatus, EventDetail, LayerMetadata } from '@/types';
 
 const layerMeta: LayerMetadata = {

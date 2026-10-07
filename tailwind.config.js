@@ -10,6 +10,23 @@ module.exports = {
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
+        // Sentinel accent — rgb triplet + <alpha-value> so opacity
+        // modifiers (text-sentinel-accent/70, bg-sentinel-accent/15)
+        // resolve against the single --sentinel-accent-rgb source.
+        sentinel: {
+          accent: "rgb(var(--sentinel-accent-rgb) / <alpha-value>)",
+          panel: "var(--sentinel-panel-solid)",
+          elev: "var(--sentinel-elev)",
+        },
+        // Semantic provenance colors (mirror --status-* tokens).
+        status: {
+          live: "rgb(var(--status-live-rgb) / <alpha-value>)",
+          simulated: "rgb(var(--status-simulated-rgb) / <alpha-value>)",
+          stale: "rgb(var(--status-stale-rgb) / <alpha-value>)",
+          unavailable: "rgb(var(--status-unavailable-rgb) / <alpha-value>)",
+          info: "rgb(var(--status-info-rgb) / <alpha-value>)",
+          neutral: "rgb(var(--status-neutral-rgb) / <alpha-value>)",
+        },
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",

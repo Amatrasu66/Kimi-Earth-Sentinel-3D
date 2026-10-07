@@ -24,9 +24,12 @@ interface GlobeProps {
 }
 
 function Atmosphere({ radius = 5 }: { radius?: number }) {
+  // Steel-blue rim at low gain — separation from space without a neon ring.
+  // Gain/falloff live in the atmosphere shaders; keep in step with the
+  // WebGPU-path rim in WebGPUEarth.
   const uniforms = useMemo(
     () => ({
-      color: { value: new THREE.Color(0.3, 0.6, 1.0) },
+      color: { value: new THREE.Color(0.36, 0.56, 0.9) },
     }),
     [],
   );
