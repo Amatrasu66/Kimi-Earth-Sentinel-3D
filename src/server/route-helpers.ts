@@ -4,6 +4,7 @@
  */
 import { NextResponse } from "next/server";
 import { errorBody, successResponse } from "./provenance";
+import { redact, redactText } from "./redact";
 
 export function ok<T extends Record<string, unknown>>(
   data: T,
@@ -28,9 +29,12 @@ export function notFound(message = "Not found.") {
 
 export function internalError(err: unknown) {
   const isDev = process.env.NODE_ENV !== "production";
-  const message = isDev && err instanceof Error ? err.message : "An unexpected error occurred.";
+  // T1.4: dev surfaces echo err.message, which can embed a credential-bearing
+  // upstream URL — redact before it reaches the response or the server log.
   // Never leak stack traces / env in production.
-  console.error("[earth-sentinel] unhandled route error", isDev ? err : "");
+  const message =
+    isDev && err instanceof Error ? redactText(err.message) : "An unexpected error occurred.";
+  console.error("[earth-sentinel] unhandled route error", isDev ? redact(err) : "");
   return NextResponse.json(errorBody("INTERNAL_ERROR", message), { status: 500 });
 }
 

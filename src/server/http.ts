@@ -3,6 +3,7 @@
  * Uses AbortController so upstream requests can never hang indefinitely.
  */
 import { serverConfig } from "./config";
+import { redact, redactText } from "./redact";
 
 export class UpstreamTimeoutError extends Error {
   constructor(message = "Upstream request timed out") {
@@ -46,7 +47,10 @@ export async function fetchJsonWithTimeout(
   } catch (err: unknown) {
     if (err instanceof Error && err.name === "AbortError") {
       if (opts.signal?.aborted) throw err; // caller cancelled — propagate
-      throw new UpstreamTimeoutError(`Upstream request timed out after ${timeoutMs}ms: ${url}`);
+      // T1.4: `url` can embed a credential (FIRMS key is a path segment),
+      // so the timeout message is redacted at construction — before it can
+      // reach any log call or dev error response via String(err).
+      throw new UpstreamTimeoutError(`Upstream request timed out after ${timeoutMs}ms: ${redactText(url)}`);
     }
     throw err;
   } finally {
@@ -79,11 +83,11 @@ export function buildUrl(base: string, params?: Record<string, string | number |
   return qs ? `${base}?${qs}` : base;
 }
 
-/** Minimal structured server log (never logs secrets or full payloads). */
+/** Minimal structured server log. `detail` is redacted — never logs secrets. */
 export function logWarn(message: string, detail?: unknown) {
-  console.warn(`[earth-sentinel] ${message}`, detail ?? "");
+  console.warn(`[earth-sentinel] ${message}`, redact(detail) ?? "");
 }
 
 export function logError(message: string, detail?: unknown) {
-  console.error(`[earth-sentinel] ${message}`, detail ?? "");
+  console.error(`[earth-sentinel] ${message}`, redact(detail) ?? "");
 }
