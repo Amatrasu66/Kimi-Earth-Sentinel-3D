@@ -145,11 +145,11 @@ export default function CommandSearch({ onResultClick, className }: CommandSearc
   }, [safeHighlight]);
 
   return (
-    <div ref={searchRef} className={cn('relative mx-auto w-full max-w-[300px] flex-1 sm:max-w-[420px]', className)}>
+    <div ref={searchRef} className={cn('relative w-full min-w-0 flex-1', className)}>
       <div
         className={cn(
-          'flex h-9 items-center gap-2 rounded-lg border px-2.5 transition-colors duration-150',
-          open ? 'border-sentinel-accent/45 bg-white/[0.06]' : 'border-white/10 bg-white/[0.04] hover:bg-white/[0.06]',
+          'flex h-9 items-center gap-2 rounded-[7px] border px-2.5 transition-colors duration-150',
+          open ? 'border-sentinel-accent/40 bg-white/[0.06]' : 'border-white/10 bg-white/[0.04] hover:bg-white/[0.06]',
         )}
       >
         {loading ? <Spinner className="h-4 w-4 shrink-0 text-white/50" /> : <Search className="h-4 w-4 shrink-0 text-white/40" aria-hidden />}
@@ -185,7 +185,7 @@ export default function CommandSearch({ onResultClick, className }: CommandSearc
 
       {open && (
         <div
-          className="sentinel-elev panel-enter absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-xl"
+          className="sentinel-elev panel-enter absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-[10px]"
           style={{ maxHeight: 380 }}
         >
           <div className="flex items-center justify-between px-3 pb-1 pt-2.5">

@@ -13,6 +13,30 @@
 
 @layer base {
   :root {
+    /* ——— Sentinel shell layout (single source of truth) ———
+       The shell owns header/rail/panel/dock geometry. Children consume
+       these tokens instead of guessing offsets. Fixed overlays are banned;
+       AppShell grid places every major element on one alignment system. */
+    --header-height: 56px;
+    --rail-width: 68px;
+    --panel-width: 348px;
+    --status-height: 38px;
+    --workspace-gap: 12px;
+    --shell-padding: 12px;
+    --panel-padding: 16px;
+    --hairline: rgba(255, 255, 255, 0.08);
+    --surface-0: #060708;
+    --surface-1: rgba(12, 14, 18, 0.88);
+    --surface-2: rgba(19, 22, 28, 0.94);
+    --text-primary: #f2f3f4;
+    --text-secondary: rgba(242, 243, 244, 0.6);
+    --text-muted: rgba(242, 243, 244, 0.38);
+    --accent: #ffc31f;
+    /* Radius discipline: shell 10px, panel 12px, controls 6-8px,
+       pills only for semantic status. No 16-24px bubbles. */
+    --radius-shell: 10px;
+    --radius-panel: 12px;
+    --radius-control: 7px;
     /* ——— Sentinel surfaces ——— */
     --sentinel-bg: #050607;
     /* Header/dock chrome: translucent near-black shared by AppHeader/StatusDock. */
@@ -244,17 +268,30 @@
     opacity: 1;
   }
 
-  /* Subtle animated border for the selected/active surface only */
+  /* Restrained active state: thin accent border + quiet tonal shift.
+     No outer glow — the globe owns atmosphere, not the chrome. */
   .sentinel-active-ring {
-    border: 1px solid rgb(var(--sentinel-accent-rgb) / 0.45) !important;
-    box-shadow: 0 0 0 1px rgb(var(--sentinel-accent-rgb) / 0.18), 0 0 16px var(--sentinel-accent-glow);
+    border: 1px solid rgb(var(--sentinel-accent-rgb) / 0.4) !important;
+    box-shadow: none;
   }
 
-  /* Typography scale */
+  /* Typography scale — weight and size carry hierarchy, never raw brightness.
+     Product identity > layer name > primary values > section labels > metadata. */
   .sentinel-app-title {
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 650;
     letter-spacing: -0.01em;
+  }
+  .sentinel-layer-name {
+    font-size: 13px;
+    font-weight: 550;
+    letter-spacing: -0.005em;
+  }
+  .sentinel-metric-value {
+    font-size: 22px;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
   }
   .sentinel-section-title {
     font-size: 13px;
@@ -287,6 +324,180 @@
   .sentinel-mono {
     font-variant-numeric: tabular-nums;
     font-family: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+  }
+
+  /* ——— Sentinel shell: one grid owns all composition ———
+     Rows: header / workspace / status. Workspace: rail / stage / panel.
+     The 3D canvas stays fixed behind (z 1); this grid overlays (z 10)
+     with pointer-events-none so the globe stage keeps full interaction
+     except on real controls (pointer-events-auto per island). */
+  .sentinel-shell {
+    position: relative;
+    z-index: 10;
+    height: 100dvh;
+    width: 100vw;
+    display: grid;
+    grid-template-rows: var(--header-height) minmax(0, 1fr) var(--status-height);
+    grid-template-areas: 'header' 'workspace' 'status';
+    background: transparent;
+    pointer-events: none;
+  }
+  .sentinel-shell-header {
+    grid-area: header;
+    pointer-events: auto;
+  }
+  .sentinel-shell-status {
+    grid-area: status;
+    pointer-events: auto;
+  }
+  .sentinel-workspace {
+    grid-area: workspace;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: var(--rail-width) minmax(0, 1fr) var(--panel-width);
+    grid-template-areas: 'rail stage panel';
+    gap: var(--workspace-gap);
+    padding: var(--workspace-gap) var(--shell-padding);
+    pointer-events: none;
+  }
+  .sentinel-rail-cell {
+    grid-area: rail;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    pointer-events: auto;
+  }
+  .sentinel-stage-cell {
+    grid-area: stage;
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    pointer-events: none;
+  }
+  .sentinel-panel-cell {
+    grid-area: panel;
+    min-height: 0;
+    display: flex;
+    pointer-events: auto;
+  }
+  .sentinel-workspace--no-panel {
+    grid-template-columns: var(--rail-width) minmax(0, 1fr);
+    grid-template-areas: 'rail stage';
+  }
+
+  /* Globe stage framing: one faint radial anchor + corner ticks.
+     pointer-events-none always — it never intercepts globe drag. */
+  .globe-stage-frame {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .globe-stage-frame::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: min(72vmin, 100%);
+    aspect-ratio: 1;
+    transform: translate(-50%, -50%);
+    border-radius: 9999px;
+    background: radial-gradient(closest-side, rgba(255, 255, 255, 0.045), transparent 72%);
+  }
+  .globe-stage-tick {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border-color: rgba(255, 255, 255, 0.16);
+    border-style: solid;
+    border-width: 0;
+  }
+  .globe-stage-tick[data-pos='tl'] { left: 10px; top: 10px; border-left-width: 1px; border-top-width: 1px; }
+  .globe-stage-tick[data-pos='tr'] { right: 10px; top: 10px; border-right-width: 1px; border-top-width: 1px; }
+  .globe-stage-tick[data-pos='bl'] { left: 10px; bottom: 10px; border-left-width: 1px; border-bottom-width: 1px; }
+  .globe-stage-tick[data-pos='br'] { right: 10px; bottom: 10px; border-right-width: 1px; border-bottom-width: 1px; }
+  .globe-stage-coords {
+    position: absolute;
+    left: 50%;
+    bottom: 8px;
+    transform: translateX(-50%);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    color: rgba(255, 255, 255, 0.28);
+    font-variant-numeric: tabular-nums;
+    font-family: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+    white-space: nowrap;
+  }
+
+  /* Intelligence instrument: one shell, hairline dividers, flat sections.
+     Sections separate by border-top + type, never nested cards. */
+  .intel-shell {
+    width: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--surface-1);
+    backdrop-filter: blur(20px) saturate(1.15);
+    -webkit-backdrop-filter: blur(20px) saturate(1.15);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-panel);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  }
+  .intel-section {
+    padding: 12px var(--panel-padding);
+  }
+  .intel-section + .intel-section {
+    border-top: 1px solid var(--hairline);
+  }
+  .intel-flat {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  /* Layer rail instrument: one vertical rail, single axis, quiet states. */
+  .layer-rail {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    background: var(--surface-1);
+    backdrop-filter: blur(20px) saturate(1.15);
+    -webkit-backdrop-filter: blur(20px) saturate(1.15);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-shell);
+    padding: 8px 0;
+  }
+
+  @media (max-width: 1023px) {
+    :root {
+      --panel-width: 308px;
+      --rail-width: 60px;
+    }
+  }
+  @media (max-width: 767px) {
+    .sentinel-workspace {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr) auto auto;
+      grid-template-areas: 'stage' 'panel' 'rail';
+      gap: 8px;
+      padding: 8px;
+      overflow-y: auto;
+    }
+    .sentinel-workspace--no-panel {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr) auto;
+      grid-template-areas: 'stage' 'rail';
+    }
+    .sentinel-rail-cell { order: 3; }
+    .sentinel-panel-cell { order: 2; }
+    .sentinel-stage-cell { order: 1; min-height: 38dvh; }
+    .sentinel-shell {
+      grid-template-rows: var(--header-height) minmax(0, 1fr) var(--status-height);
+    }
+    .globe-stage-coords { display: none; }
   }
 }
 

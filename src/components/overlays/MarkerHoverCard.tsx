@@ -59,12 +59,12 @@ export default function MarkerHoverCard({ point, activeLayer = null }: MarkerHov
       style={{ left, top, transform: 'translateY(-100%)' }}
     >
       <div
-        className="rounded-lg bg-sentinel-panel px-3 py-2"
+        className="rounded-[7px] bg-sentinel-panel px-3 py-2"
         style={{
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
           border: `1px solid ${severityColor}45`,
-          boxShadow: '0 8px 28px rgba(0,0,0,0.5)',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
           minWidth: 168,
           maxWidth: 248,
         }}

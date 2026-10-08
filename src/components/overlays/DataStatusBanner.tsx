@@ -1,5 +1,4 @@
 import { formatRelativeTime, statusLabel } from '@/lib/format';
-import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import type { DataStatus } from '@/types';
 
@@ -13,7 +12,9 @@ const STATUS_STYLES: Record<string, { dot: string; text: string; border: string;
 
 /**
  * Visible data-provenance indicator. Simulated data must never
- * look identical to live data — this banner travels with every data view.
+ * look identical to live data — this strip travels with every data view.
+ * Flat hairline surface with a status spine; washed backgrounds carry
+ * abnormal states so simulated can never read as live.
  */
 export default function DataStatusBanner({ status, compact = false }: { status: DataStatus | null; compact?: boolean }) {
   const kind = status?.status ?? 'unknown';
@@ -34,26 +35,27 @@ export default function DataStatusBanner({ status, compact = false }: { status: 
     <div
       role="status"
       aria-label={`Data status: ${statusLabel(status ?? undefined)}. ${headline}`}
-      className={compact ? 'rounded-lg px-2.5 py-1.5' : 'rounded-lg p-2.5'}
-      style={{ background: style.bg, border: `1px solid ${style.border}` }}
+      className="relative overflow-hidden rounded-[7px] border border-white/[0.07]"
+      style={{ background: style.bg }}
     >
-      <div className="flex items-center gap-2">
+      <span
+        className="absolute inset-y-0 left-0 w-[2px]"
+        style={{ background: style.dot }}
+        aria-hidden
+      />
+      <div className={cn('flex items-center gap-2 pl-3 pr-2.5', compact ? 'py-1.5' : 'py-2')}>
         <span
           className={cn('flex-shrink-0 rounded-full', kind === 'live' && 'sentinel-live-dot')}
-          style={{ width: 7, height: 7, background: style.dot }}
+          style={{ width: 6, height: 6, background: style.dot }}
           aria-hidden
         />
-        <Badge
-          variant="outline"
-          className="border-0 bg-transparent px-0 text-[11px] font-bold tracking-wider"
-          style={{ color: style.text }}
-        >
+        <span className="text-[11px] font-bold tracking-[0.08em]" style={{ color: style.text }}>
           {statusLabel(status ?? undefined)}
-        </Badge>
+        </span>
         <span className="truncate text-xs text-white/55">{headline}</span>
       </div>
       {!compact && status?.message && (
-        <p className="mt-1.5 text-xs leading-relaxed text-white/40">{status.message}</p>
+        <p className="py-0 pl-3 pr-2.5 pb-2 text-xs leading-relaxed text-white/40">{status.message}</p>
       )}
     </div>
   );

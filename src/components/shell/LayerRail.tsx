@@ -3,7 +3,6 @@
 import { Thermometer, CloudRain, Cloud, Wind, Activity, AlertTriangle, Sparkles, Flame } from 'lucide-react';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Kbd } from '@/components/ui/kbd';
-import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import type { LayerId } from '@/types';
 
@@ -20,24 +19,21 @@ const LAYER_CONFIG: Array<{
   label: string;
   hint: string;
 }> = [
-  { id: 'temperature', icon: <Thermometer className="h-[18px] w-[18px]" />, label: 'Temperature', hint: 'Surface temperature anomalies' },
-  { id: 'precipitation', icon: <CloudRain className="h-[18px] w-[18px]" />, label: 'Precipitation', hint: 'Rainfall & drought extent' },
-  { id: 'clouds', icon: <Cloud className="h-[18px] w-[18px]" />, label: 'Cloud Cover', hint: 'Live cloud coverage' },
-  { id: 'wind', icon: <Wind className="h-[18px] w-[18px]" />, label: 'Wind', hint: 'Wind speed & storm tracks' },
-  { id: 'earthquakes', icon: <Activity className="h-[18px] w-[18px]" />, label: 'Earthquakes', hint: 'USGS seismic events' },
-  { id: 'disasters', icon: <AlertTriangle className="h-[18px] w-[18px]" />, label: 'Disasters', hint: 'EONET natural events' },
-  { id: 'air_quality', icon: <Sparkles className="h-[18px] w-[18px]" />, label: 'Air Quality', hint: 'AQI & particulates' },
-  { id: 'wildfires', icon: <Flame className="h-[18px] w-[18px]" />, label: 'Wildfires', hint: 'Active fire detections' },
+  { id: 'temperature', icon: <Thermometer className="h-[17px] w-[17px]" />, label: 'Temperature', hint: 'Surface temperature anomalies' },
+  { id: 'precipitation', icon: <CloudRain className="h-[17px] w-[17px]" />, label: 'Precipitation', hint: 'Rainfall & drought extent' },
+  { id: 'clouds', icon: <Cloud className="h-[17px] w-[17px]" />, label: 'Cloud Cover', hint: 'Live cloud coverage' },
+  { id: 'wind', icon: <Wind className="h-[17px] w-[17px]" />, label: 'Wind', hint: 'Wind speed & storm tracks' },
+  { id: 'earthquakes', icon: <Activity className="h-[17px] w-[17px]" />, label: 'Earthquakes', hint: 'USGS seismic events' },
+  { id: 'disasters', icon: <AlertTriangle className="h-[17px] w-[17px]" />, label: 'Disasters', hint: 'EONET natural events' },
+  { id: 'air_quality', icon: <Sparkles className="h-[17px] w-[17px]" />, label: 'Air Quality', hint: 'AQI & particulates' },
+  { id: 'wildfires', icon: <Flame className="h-[17px] w-[17px]" />, label: 'Wildfires', hint: 'Active fire detections' },
 ];
 
 /**
- * Layer rail geometry (desktop):
- *
- *   8px padding │ 3px indicator gutter │ 8px gap │ 40px button column │ 8px padding
- *
- * Every row is the same grid — the active marker lives in its own gutter
- * cell, never absolutely positioned over borders. Header and footer labels
- * align to the button column.
+ * Layer rail geometry (desktop): one coherent vertical instrument.
+ * Every row shares a single grid — the active marker lives in its own
+ * gutter cell, never absolutely positioned. Active state is a thin
+ * accent line plus a quiet tonal shift, never a glowing capsule.
  */
 function RailButton({
   layer,
@@ -51,10 +47,10 @@ function RailButton({
   onToggle: (layerId: LayerId) => void;
 }) {
   return (
-    <div className="grid grid-cols-[3px_40px] items-center gap-2">
+    <div className="grid grid-cols-[3px_1fr] items-center gap-1.5 px-2">
       <span
         className={cn(
-          'h-5 w-[3px] rounded-full transition-colors duration-150',
+          'h-5 w-[2px] rounded-full transition-colors duration-150',
           isActive ? 'bg-sentinel-accent' : 'bg-transparent',
         )}
         aria-hidden
@@ -67,10 +63,10 @@ function RailButton({
             aria-pressed={isActive}
             data-active={isActive}
             className={cn(
-              'sentinel-spot flex h-10 w-10 items-center justify-center rounded-lg transition-colors duration-150',
+              'flex h-10 w-full items-center justify-center rounded-[7px] border transition-colors duration-150',
               isActive
-                ? 'sentinel-active-ring bg-sentinel-accent/[0.13] text-sentinel-accent'
-                : 'border border-transparent text-white/45 hover:bg-white/[0.07] hover:text-white/90',
+                ? 'border-sentinel-accent/30 bg-sentinel-accent/[0.1] text-sentinel-accent'
+                : 'border-transparent text-white/45 hover:bg-white/[0.06] hover:text-white/90',
             )}
           >
             {layer.icon}
@@ -99,15 +95,15 @@ export default function LayerRail({ activeLayer, onLayerToggle, shortcutLayers =
 
   return (
     <>
-      {/* Desktop: vertical command rail, vertically centered */}
+      {/* Desktop: vertical instrument, centered in its grid cell */}
       <nav
         role="toolbar"
         aria-label="Environmental layers"
         aria-orientation="vertical"
-        className="rail-enter sentinel-floating fixed left-3 top-1/2 z-50 hidden -translate-y-1/2 flex-col rounded-xl p-2 md:flex"
+        className="layer-rail rail-enter hidden max-h-full overflow-y-auto md:flex"
       >
-        <p className="sentinel-label flex h-7 items-center justify-center">Layers</p>
-        <div className="flex flex-col gap-1 py-1">
+        <p className="sentinel-label flex h-7 items-center justify-center">Layer</p>
+        <div className="flex flex-col gap-0.5 py-1">
           {LAYER_CONFIG.map((layer) => (
             <RailButton
               key={layer.id}
@@ -118,19 +114,18 @@ export default function LayerRail({ activeLayer, onLayerToggle, shortcutLayers =
             />
           ))}
         </div>
-        <Separator className="my-1 bg-white/[0.07]" />
+        <div className="mx-3 my-1 border-t border-white/[0.07]" aria-hidden />
         <p className="sentinel-micro sentinel-mono flex h-6 items-center justify-center" aria-live="off">
           {activeLabel ? activeLabel.slice(0, 4).toUpperCase() : '— —'}
         </p>
       </nav>
 
-      {/* Mobile / narrow: horizontal strip above the status bar.
-          Same fixed hitboxes and gaps as desktop, laid horizontally. */}
+      {/* Mobile: compact horizontal strip, in-flow above the status dock */}
       <nav
         role="toolbar"
         aria-label="Environmental layers"
         aria-orientation="horizontal"
-        className="sentinel-floating fixed bottom-[68px] left-3 right-3 z-50 flex items-center gap-1 overflow-x-auto rounded-xl p-1.5 md:hidden"
+        className="layer-rail flex-row items-center gap-1 overflow-x-auto p-1.5 md:hidden"
         style={{ scrollbarWidth: 'none' }}
       >
         {LAYER_CONFIG.map((layer) => {
@@ -143,10 +138,10 @@ export default function LayerRail({ activeLayer, onLayerToggle, shortcutLayers =
               aria-pressed={isActive}
               title={layer.label}
               className={cn(
-                'flex h-10 w-10 shrink-0 snap-start items-center justify-center rounded-lg transition-colors duration-150',
+                'flex h-10 min-w-10 flex-1 items-center justify-center rounded-[7px] border transition-colors duration-150',
                 isActive
-                  ? 'sentinel-active-ring bg-sentinel-accent/[0.13] text-sentinel-accent'
-                  : 'border border-transparent text-white/45 active:bg-white/[0.07] active:text-white/90',
+                  ? 'border-sentinel-accent/30 bg-sentinel-accent/[0.1] text-sentinel-accent'
+                  : 'border-transparent text-white/45 active:bg-white/[0.07] active:text-white/90',
               )}
             >
               {layer.icon}

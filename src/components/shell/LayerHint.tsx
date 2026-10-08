@@ -6,15 +6,15 @@ import { Kbd } from '@/components/ui/kbd';
 /**
  * First-run affordance: when no layer is active the globe stands alone and
  * newcomers may not discover the rail. One quiet hint, anchored to the rail
- * side on desktop and above the mobile strip on narrow screens. Vanishes on
- * first layer selection; dismissible for the session.
+ * cell on desktop and centered above the mobile strip on narrow screens.
+ * Vanishes on first layer selection; dismissible for the session.
  */
 export default function LayerHint({ onDismiss }: { onDismiss: () => void }) {
   return (
     <div
-      className="sentinel-floating panel-enter fixed z-40 flex max-w-[240px] items-start gap-2 rounded-xl p-3
+      className="panel-enter fixed z-40 flex max-w-[240px] items-start gap-2 rounded-[10px] border border-white/[0.08] bg-sentinel-panel p-3 shadow-[0_12px_40px_rgba(0,0,0,0.5)]
         bottom-[128px] left-1/2 -translate-x-1/2
-        md:bottom-auto md:left-[76px] md:top-1/2 md:-translate-x-0 md:-translate-y-1/2"
+        md:bottom-auto md:left-[88px] md:top-1/2 md:-translate-x-0 md:-translate-y-1/2"
       role="note"
       aria-label="Getting started hint"
     >

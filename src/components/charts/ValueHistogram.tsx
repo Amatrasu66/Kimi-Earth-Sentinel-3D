@@ -11,9 +11,10 @@ import { buildHistogram } from '@/lib/histogram';
 import type { DataPoint, LayerId } from '@/types';
 
 /**
- * Value spread rendered with the official Bklit bar chart, themed to Sentinel
- * tokens: neutral bars, subtle grid, compact tooltip — no library-default
- * blue, no decorative gradients. Honest current-state analysis only.
+ * Value spread rendered with the official Bklit bar chart, integrated
+ * into the panel hierarchy: no card border, minimal grid, title and
+ * value aligned to the panel content edge. Neutral bars — no
+ * library-default blue, no decorative gradients.
  */
 export default function ValueHistogram({
   points,
@@ -32,19 +33,18 @@ export default function ValueHistogram({
 
   return (
     <div
-      className="sentinel-inset rounded-lg p-3"
       role="img"
       aria-label={`${label} spread across ${model.count} current points, ranging ${model.min} to ${model.max}${unit ? ` ${unit}` : ''}`}
     >
-      <div className="sentinel-micro mb-1 flex items-baseline justify-between">
+      <div className="sentinel-label mb-1 flex items-baseline justify-between">
         <span>{label} spread</span>
-        <span className="sentinel-mono">n={model.count}</span>
+        <span className="sentinel-mono font-normal normal-case tracking-normal">n={model.count}</span>
       </div>
       <BarChart
         data={model.rows}
         xDataKey="bin"
         aspectRatio="3 / 1"
-        margin={{ top: 8, right: 4, bottom: 4, left: 4 }}
+        margin={{ top: 8, right: 2, bottom: 4, left: 2 }}
         animationDuration={reduceMotion ? 0 : 450}
       >
         <Grid horizontal numTicksRows={3} />

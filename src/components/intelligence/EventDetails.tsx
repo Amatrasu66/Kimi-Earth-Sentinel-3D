@@ -1,9 +1,7 @@
-import { TrendingUp, AlertCircle, Clock, MapPin } from 'lucide-react';
+import { TrendingUp, Clock, MapPin } from 'lucide-react';
 import DataStatusBanner from '@/components/overlays/DataStatusBanner';
-import MetricCard from '@/components/intelligence/MetricCard';
 import SeverityBadge from '@/components/intelligence/SeverityBadge';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { eventTitleForPoint, formatPointValue, formatRelativeTime, metricLabelForLayer } from '@/lib/format';
 import type { DataPoint, DataStatus, EventDetail, LayerId } from '@/types';
@@ -36,7 +34,7 @@ function EventLiveDetails({ detail, showMagnitude }: { detail: EventDetail; show
   return (
     <>
       {hasRows && (
-        <div className="sentinel-inset rounded-lg p-3">
+        <div className="intel-section">
           <div className="sentinel-label mb-1">Provider details</div>
           {showMagnitude && detail.magnitude != null && (
             <DetailRow label="Magnitude">
@@ -62,7 +60,7 @@ function EventLiveDetails({ detail, showMagnitude }: { detail: EventDetail; show
           {detail.categories && detail.categories.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1">
               {detail.categories.map((cat) => (
-                <Badge key={cat} variant="secondary" className="border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-normal text-white/60">
+                <Badge key={cat} variant="secondary" className="rounded-[5px] border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-normal text-white/60">
                   {cat}
                 </Badge>
               ))}
@@ -72,7 +70,7 @@ function EventLiveDetails({ detail, showMagnitude }: { detail: EventDetail; show
       )}
 
       {detail.sources && detail.sources.length > 0 && (
-        <div className="sentinel-inset rounded-lg p-3">
+        <div className="intel-section">
           <div className="sentinel-label mb-1">Sources</div>
           {detail.sources.map((s) => (
             <div key={s.id} className="py-0.5 text-xs">
@@ -110,9 +108,15 @@ export default function EventDetails({
   activeLayer: LayerId | null;
   dataStatus: DataStatus | null;
 }) {
+  const facts: Array<{ label: string; value: string; icon: React.ReactNode }> = [];
+  if (point.magnitude !== undefined) facts.push({ label: 'Magnitude', value: String(point.magnitude), icon: <TrendingUp className="h-3.5 w-3.5 text-sentinel-accent" aria-hidden /> });
+  if (point.value !== undefined) facts.push({ label: metricLabelForLayer(activeLayer), value: String(formatPointValue(point, activeLayer) ?? point.value), icon: <TrendingUp className="h-3.5 w-3.5 text-sentinel-accent" aria-hidden /> });
+  if (point.depth !== undefined) facts.push({ label: 'Depth', value: `${point.depth} km`, icon: <MapPin className="h-3.5 w-3.5 text-sentinel-accent" aria-hidden /> });
+  facts.push({ label: 'Time', value: point.timestamp ? formatRelativeTime(point.timestamp) : 'N/A', icon: <Clock className="h-3.5 w-3.5 text-sentinel-accent" aria-hidden /> });
+
   return (
-    <div className="space-y-3">
-      <div>
+    <>
+      <div className="intel-section">
         <h3 className="text-balance text-[15px] font-semibold leading-snug text-white">{eventTitleForPoint(point, activeLayer)}</h3>
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
           <SeverityBadge severity={point.severity} />
@@ -127,42 +131,37 @@ export default function EventDetails({
 
       {/* Provenance travels with the detail view: live provider
           records must never be visually identical to fallbacks. */}
-      <DataStatusBanner status={detail?.data_status ?? dataStatus} compact />
+      <div className="intel-section">
+        <DataStatusBanner status={detail?.data_status ?? dataStatus} compact />
+      </div>
 
       {loading ? (
-        <div className="space-y-2.5" role="status" aria-label="Loading event details">
-          <Skeleton className="h-[76px] rounded-lg bg-white/[0.06]" />
+        <div className="intel-section space-y-2.5" role="status" aria-label="Loading event details">
+          <Skeleton className="h-[76px] rounded-[7px] bg-white/[0.06]" />
           <div className="grid grid-cols-2 gap-2">
-            <Skeleton className="h-[64px] rounded-lg bg-white/[0.05]" />
-            <Skeleton className="h-[64px] rounded-lg bg-white/[0.05]" />
+            <Skeleton className="h-[64px] rounded-[7px] bg-white/[0.05]" />
+            <Skeleton className="h-[64px] rounded-[7px] bg-white/[0.05]" />
           </div>
-          <Skeleton className="h-[88px] rounded-lg bg-white/[0.05]" />
+          <Skeleton className="h-[88px] rounded-[7px] bg-white/[0.05]" />
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-2">
-            {point.magnitude !== undefined && (
-              <MetricCard label="Magnitude" value={point.magnitude} icon={<TrendingUp className="h-3.5 w-3.5 text-sentinel-accent" />} />
-            )}
-            {point.value !== undefined && (
-              <MetricCard
-                label={metricLabelForLayer(activeLayer)}
-                value={formatPointValue(point, activeLayer) ?? point.value}
-                icon={<TrendingUp className="h-3.5 w-3.5 text-sentinel-accent" />}
-              />
-            )}
-            {point.depth !== undefined && (
-              <MetricCard label="Depth" value={`${point.depth} km`} icon={<MapPin className="h-3.5 w-3.5 text-sentinel-accent" />} />
-            )}
-            <MetricCard
-              label="Time"
-              value={point.timestamp ? formatRelativeTime(point.timestamp) : 'N/A'}
-              icon={<Clock className="h-3.5 w-3.5 text-sentinel-accent" />}
-            />
+          <div className="intel-section">
+            <div className="grid grid-cols-2 gap-x-4">
+              {facts.map((fact) => (
+                <div key={fact.label} className="min-w-0 py-1">
+                  <div className="mb-0.5 flex items-center gap-1.5">
+                    {fact.icon}
+                    <span className="sentinel-micro truncate">{fact.label}</span>
+                  </div>
+                  <div className="sentinel-mono truncate text-[17px] font-semibold tracking-tight text-white">{fact.value}</div>
+                </div>
+              ))}
+            </div>
           </div>
 
-          <div className="sentinel-inset rounded-lg p-3">
-            <div className="mb-1.5 flex items-center gap-1.5">
+          <div className="intel-section">
+            <div className="mb-1 flex items-center gap-1.5">
               <MapPin className="h-3.5 w-3.5 text-white/40" aria-hidden />
               <span className="sentinel-label">Location</span>
             </div>
@@ -175,19 +174,16 @@ export default function EventDetails({
           </div>
 
           {detail?.description && (
-            <div className="sentinel-inset rounded-lg p-3">
-              <div className="mb-1.5 flex items-center gap-1.5">
-                <AlertCircle className="h-3.5 w-3.5 text-white/40" aria-hidden />
-                <span className="sentinel-label">Description</span>
-              </div>
-              <p className="sentinel-body text-white/70">{detail.description}</p>
+            <div className="intel-section">
+              <div className="sentinel-label mb-1">Description</div>
+              <p className="text-[13px] leading-relaxed text-white/70">{detail.description}</p>
             </div>
           )}
 
           {/* Attribution is independent of description: live provider
               records (e.g. USGS) often carry no description text. */}
           {detail?.source && (
-            <div className="sentinel-inset rounded-lg px-3 py-2.5">
+            <div className="intel-section">
               <span className="sentinel-micro">Source: </span>
               {detail.source.url ? (
                 <a
@@ -212,14 +208,10 @@ export default function EventDetails({
           )}
 
           {detail?.impact && (
-            <div
-              className="rounded-lg p-3"
-              style={{ background: 'rgba(255,69,0,0.05)', border: '1px solid rgba(255,69,0,0.16)' }}
-            >
-              <div className="mb-1.5 text-xs font-semibold text-orange-300">Impact Assessment</div>
-              <Separator className="mb-1 bg-orange-400/10" />
+            <div className="intel-section">
+              <div className="mb-1 text-xs font-semibold text-orange-300">Impact assessment</div>
               {Object.entries(detail.impact).map(([key, value]) => (
-                <div key={key} className="flex justify-between py-1 text-sm">
+                <div key={key} className="flex justify-between border-t border-white/[0.06] py-1 text-sm first:border-0">
                   <span className="capitalize text-white/40">{key.replace(/_/g, ' ')}</span>
                   <span className="text-white">{String(value)}</span>
                 </div>
@@ -228,6 +220,6 @@ export default function EventDetails({
           )}
         </>
       )}
-    </div>
+    </>
   );
 }

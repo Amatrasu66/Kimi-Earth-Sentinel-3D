@@ -12,8 +12,10 @@
 import { useState, useCallback, useEffect, useRef, memo } from 'react';
 import EarthRenderer from '@/components/globe/EarthRenderer';
 import type { RendererInfo } from '@/components/globe/EarthRenderer';
+import AppShell from '@/components/shell/AppShell';
 import AppHeader from '@/components/shell/AppHeader';
 import LayerRail from '@/components/shell/LayerRail';
+import GlobeStage from '@/components/shell/GlobeStage';
 import LayerHint from '@/components/shell/LayerHint';
 import StatusDock from '@/components/shell/StatusDock';
 import DataPanel from '@/components/intelligence/DataPanel';
@@ -238,41 +240,49 @@ function SentinelApp() {
         onActiveRenderer={setRendererInfo}
       />
 
-      {/* UI Overlays */}
-      <AppHeader
-        onSearchResultClick={handleSearchResultClick}
-        onSettingsClick={() => setIsSettingsOpen(true)}
-        dataStatus={dataStatus}
-        activeLayerName={activeLayerMeta?.name ?? null}
+      {/* Composition grid: header / rail+stage+panel / status share one system */}
+      <AppShell
+        header={
+          <AppHeader
+            onSearchResultClick={handleSearchResultClick}
+            onSettingsClick={() => setIsSettingsOpen(true)}
+            dataStatus={dataStatus}
+            activeLayerName={activeLayerMeta?.name ?? null}
+          />
+        }
+        rail={<LayerRail activeLayer={activeLayer} onLayerToggle={handleLayerToggle} shortcutLayers={SHORTCUT_LAYERS} />}
+        stage={<GlobeStage />}
+        panel={
+          activeLayer || selectedEvent ? (
+          <DataPanel
+            activeLayer={activeLayer}
+            layerMeta={activeLayerMeta}
+            dataPoints={allDataPoints}
+            selectedEvent={selectedEvent}
+            eventDetail={eventDetail}
+            eventDetailLoading={eventDetailLoading}
+            loading={layerLoading}
+            error={layerError}
+            dataStatus={dataStatus}
+            onClose={handleClosePanel}
+            onBackToLayer={handleBackToLayer}
+            onEventSelect={handleMarkerClick}
+            onRefresh={refetch}
+          />
+          ) : null
+        }
+        status={
+          <StatusDock
+            coordinates={hoveredPoint ? { lat: hoveredPoint.lat, lon: hoveredPoint.lon } : null}
+            activeLayer={activeLayer}
+            dataCount={allDataPoints.length}
+            dataStatus={dataStatus}
+            rendererInfo={rendererInfo}
+          />
+        }
       />
-
-      <LayerRail activeLayer={activeLayer} onLayerToggle={handleLayerToggle} shortcutLayers={SHORTCUT_LAYERS} />
 
       {!activeLayer && !hintDismissed && <LayerHint onDismiss={() => setHintDismissed(true)} />}
-
-      <DataPanel
-        activeLayer={activeLayer}
-        layerMeta={activeLayerMeta}
-        dataPoints={allDataPoints}
-        selectedEvent={selectedEvent}
-        eventDetail={eventDetail}
-        eventDetailLoading={eventDetailLoading}
-        loading={layerLoading}
-        error={layerError}
-        dataStatus={dataStatus}
-        onClose={handleClosePanel}
-        onBackToLayer={handleBackToLayer}
-        onEventSelect={handleMarkerClick}
-        onRefresh={refetch}
-      />
-
-      <StatusDock
-        coordinates={hoveredPoint ? { lat: hoveredPoint.lat, lon: hoveredPoint.lon } : null}
-        activeLayer={activeLayer}
-        dataCount={allDataPoints.length}
-        dataStatus={dataStatus}
-        rendererInfo={rendererInfo}
-      />
 
       <SettingsModal
         isOpen={isSettingsOpen}

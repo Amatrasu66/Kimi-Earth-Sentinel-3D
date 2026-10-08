@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { Crosshair, Cpu } from 'lucide-react';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
-import { Separator } from '@/components/ui/separator';
 import { formatCoordinates, statusLabel } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { DataStatus } from '@/types';
@@ -18,9 +17,9 @@ interface StatusDockProps {
 }
 
 /**
- * Bottom status dock: cursor coordinates, layer context, UTC clock,
- * renderer state. Provenance lives here only on wide screens (≥lg) —
- * the header owns it below that, the data banner owns it in context.
+ * System dock: one intentional baseline — cursor position · layer
+ * context · provenance (wide) · UTC · renderer state. In-flow footer
+ * row owned by AppShell, 38px, hairline top border, no pill chrome.
  */
 export default function StatusDock({ coordinates, activeLayer, dataCount, dataStatus = null, rendererInfo = null }: StatusDockProps) {
   // Null until client mount: SSR and the first client render must produce
@@ -56,11 +55,11 @@ export default function StatusDock({ coordinates, activeLayer, dataCount, dataSt
 
   return (
     <footer
-      className="sentinel-chrome fixed bottom-0 left-0 right-0 z-50 flex h-[52px] items-center justify-between gap-2 border-t border-white/[0.07] px-3 sm:px-4"
+      className="sentinel-chrome flex h-[var(--status-height)] items-center justify-between gap-3 border-t border-white/[0.07] px-3 sm:px-4"
       aria-label="Status bar"
     >
       {/* Left: position + layer + provenance (wide screens) */}
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex min-w-0 items-center gap-2.5">
         <Tooltip delayDuration={200}>
           <TooltipTrigger asChild>
             <span className="flex shrink-0 cursor-default items-center gap-1.5" aria-label={coordinates ? `Cursor coordinates ${formatCoordinates(coordinates.lat, coordinates.lon)}` : 'No hovered coordinate'}>
@@ -75,7 +74,7 @@ export default function StatusDock({ coordinates, activeLayer, dataCount, dataSt
           </TooltipContent>
         </Tooltip>
 
-        <Separator orientation="vertical" className="hidden h-4 bg-white/10 sm:block" />
+        <span className="hidden h-3 w-px bg-white/10 sm:block" aria-hidden />
 
         {activeLayer ? (
           <span className="sentinel-mono hidden max-w-[220px] truncate text-[11px] sm:block" title={`Active layer: ${activeLayer}`}>
@@ -95,7 +94,7 @@ export default function StatusDock({ coordinates, activeLayer, dataCount, dataSt
                 aria-label={`Data status: ${statusLabel(dataStatus)} · ${dataStatus.source}`}
               >
                 <span className={cn('h-1.5 w-1.5 rounded-full', statusKind === 'live' && 'sentinel-live-dot')} style={{ background: statusColor }} aria-hidden />
-                <span className="text-[11px] font-semibold tracking-wide" style={{ color: statusColor }}>
+                <span className="text-[11px] font-semibold tracking-[0.08em]" style={{ color: statusColor }}>
                   {statusLabel(dataStatus)}
                 </span>
                 <span className="sentinel-micro max-w-[180px] truncate">{dataStatus.source}</span>
@@ -109,14 +108,14 @@ export default function StatusDock({ coordinates, activeLayer, dataCount, dataSt
       </div>
 
       {/* Center: UTC clock (placeholder until client mount — see above) */}
-      <div className="sentinel-micro sentinel-mono hidden whitespace-nowrap lg:block" aria-label="Current UTC time" aria-live="off">
+      <div className="sentinel-micro sentinel-mono hidden whitespace-nowrap md:block" aria-label="Current UTC time" aria-live="off">
         {time ? `${time.toISOString().replace('T', ' ').slice(0, 19)} UTC` : '— —'}
       </div>
 
-      {/* Right: renderer state */}
+      {/* Right: renderer state — text + dot, no pill */}
       <Tooltip delayDuration={200}>
         <TooltipTrigger asChild>
-          <span className="flex shrink-0 cursor-default items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-2 py-1" role="status" aria-label={`Renderer: ${rendererLabel}`}>
+          <span className="flex shrink-0 cursor-default items-center gap-1.5" role="status" aria-label={`Renderer: ${rendererLabel}`}>
             <Cpu className="h-3.5 w-3.5 text-white/40" aria-hidden />
             <span className="sentinel-micro hidden sm:inline">{rendererShort}</span>
             <span className={cn('h-1.5 w-1.5 rounded-full', rendererInfo?.active === 'webgpu' && 'sentinel-live-dot')} style={{ background: rendererInfo?.active === 'webgpu' ? 'var(--status-live)' : rendererInfo?.active === 'webgl' ? 'var(--status-simulated)' : 'var(--status-neutral)' }} aria-hidden />
