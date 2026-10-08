@@ -215,7 +215,7 @@ Use `GET /api/v1/health` (or Settings → Diagnostics in the UI) to verify the a
 
 ## API Overview
 
-Base URL `/api/v1` (plus unversioned `GET /api/health` for deployment checks). All success responses use `{ success: true, data, meta }`; errors use `{ success: false, error: { code, message } }` with meaningful status codes (400 validation, 404 unknown layer/route, 405 wrong method).
+Base URL `/api/v1` (plus unversioned `GET /api/health` for deployment checks). All success responses use `{ success: true, data, meta }`; errors use `{ success: false, error: { code, message } }` with meaningful status codes (400 validation, 404 unknown layer/route, 405 wrong method, 429 rate limited with `Retry-After`).
 
 | Endpoint | Description |
 |---|---|
@@ -234,6 +234,16 @@ Base URL `/api/v1` (plus unversioned `GET /api/health` for deployment checks). A
 | `GET /api/v1/imagery/gibs/tile/<layer>/<z>/<x>/<y>` | Redirect to NASA GIBS tile (allow-listed layers only) |
 
 Only the endpoints above exist; no other API surface is implemented.
+
+### Rate limits (per client IP, per 60 s window)
+
+| Class | Limit | Routes |
+|---|---|---|
+| Light | 120 | `/api/v1`, `/api/v1/layers`, `/api/v1/health`, GIBS capabilities |
+| Standard | 60 | event detail, stats, historical stats, timezones, other `/api/v1/*` |
+| Heavy | 20 | layer data, heatmaps, search, reverse geocode, GIBS tiles |
+
+Excess requests get `429` with the standard error envelope (`code: "RATE_LIMITED"`) and a `Retry-After` header — before any upstream provider call, so throttling never burns key quota and never changes fallback semantics. The limiter is best-effort per serverless instance (see `docs/development.md`); use a Vercel Firewall rate-limit rule as global enforcement when the plan allows it.
 
 ## Testing
 

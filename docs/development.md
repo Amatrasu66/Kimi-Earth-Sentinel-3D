@@ -78,3 +78,14 @@ npm run build           # next build
 ## Current caching approach
 
 Per-instance in-memory TTL store with stale fallback (`src/server/cache.ts`, `FALLBACK_TTL=60`, `STALE` re-serve of expired live entries on refresh failure). Vercel serverless instances are ephemeral, so the cache is a best-effort per-instance optimization, never the source of truth. **No database or Redis is required** — the app visualizes externally-owned provider data rather than persisting its own dataset.
+
+## Rate limiting (T1.3)
+
+Enforced in `src/middleware.ts` (matcher `/api/v1/:path*`) via the token bucket in `src/server/rate-limit.ts` — light 120 / standard 60 / heavy 20 requests per 60 s per client IP (route classes in `classifyRoute()`). Throttled callers get `429` + the standard `{ success: false, error: { code: "RATE_LIMITED", … } }` envelope + `Retry-After`, before any provider call. The store is hard-bounded (`MAX_ENTRIES=2000`, expiry + oldest-first eviction) and Edge-safe (no Node APIs).
+
+Know the limits of this layer — it is per isolate/region, not global:
+
+1. **Prefer Vercel-native enforcement when the plan allows it.** There is no `vercel.json` firewall config in this repo (WAF/rate-limit rules are plan-gated and dashboard-managed, not code). Recommended rule once available: match `/api/v1/layers/*/data`, `/heatmap`, `/search`, `/geocode/*`, `/imagery/gibs/tile/*` with a stricter threshold than the metadata routes, action `rate_limit`/`block`, and keep this in-process limiter as defense-in-depth. No paid upgrade was made for T1.3.
+2. **Do not trust `x-forwarded-for` blindly off-platform.** On Vercel it is platform-appended (first entry = client). Direct-to-origin traffic could spoof it — the bounded store caps the blast radius to slot churn, not memory growth.
+3. **Unidentifiable clients share one `unknown` bucket** — they are limited together, never exempt.
+4. No Redis/Upstash/database was added; none is needed for this abuse-control tier.
