@@ -13,6 +13,12 @@ export async function GET(
     const { eventId } = await params;
     if (!eventId || !eventId.trim()) return fail("event_id must not be empty.");
     if (eventId.length > 128) return fail("event_id must be at most 128 characters.");
+    // Path-segment traversal guard: the charset below already excludes `/`
+    // and `\`, but `.` / `..` alone would otherwise pass and fall through to
+    // provider-shaped lookups. Reject before any network work.
+    if (eventId === "." || eventId === ".." || eventId.includes("/") || eventId.includes("\\")) {
+      return fail(`Invalid event_id ${JSON.stringify(eventId)}: must match [A-Za-z0-9_.-].`);
+    }
     if (!EVENT_ID_RE.test(eventId)) {
       return fail(`Invalid event_id ${JSON.stringify(eventId)}: must match [A-Za-z0-9_.-].`);
     }

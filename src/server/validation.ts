@@ -16,20 +16,35 @@ export const DEFAULT_LIMIT = 500;
 export const MAX_HEATMAP_RESOLUTION = 512;
 export const DEFAULT_HEATMAP_RESOLUTION = 128;
 
+/**
+ * Strict decimal-integer shape for count-like params. `Number()` alone
+ * accepts hex (`0x10`), scientific (`1e3`), and float spellings (`5.0`) —
+ * none of which are legitimate counts, and all of which complicate reasoning
+ * about fan-out/allocation caps. Plain ASCII digits only (after trim).
+ */
+function parseStrictInt(
+  raw: string,
+  kind: string,
+  maximum: number,
+): { value: number | null; error: string | null } {
+  const text = raw.trim();
+  if (!/^\d+$/.test(text)) {
+    return { value: null, error: `Invalid ${kind} ${JSON.stringify(raw)}: must be an integer between 1 and ${maximum}.` };
+  }
+  const value = Number(text);
+  if (!Number.isSafeInteger(value) || value < 1 || value > maximum) {
+    return { value: null, error: `Invalid ${kind} ${value}: must be between 1 and ${maximum}.` };
+  }
+  return { value, error: null };
+}
+
 export function parseLimit(
   raw: string | null | undefined,
   defaultValue = DEFAULT_LIMIT,
   maximum = MAX_LIMIT,
 ): { value: number | null; error: string | null } {
   if (raw === null || raw === undefined || raw === "") return { value: defaultValue, error: null };
-  const value = Number(raw);
-  if (!Number.isInteger(value)) {
-    return { value: null, error: `Invalid limit ${JSON.stringify(raw)}: must be an integer between 1 and ${maximum}.` };
-  }
-  if (value < 1 || value > maximum) {
-    return { value: null, error: `Invalid limit ${value}: must be between 1 and ${maximum}.` };
-  }
-  return { value, error: null };
+  return parseStrictInt(raw, "limit", maximum);
 }
 
 export interface Bbox {
@@ -44,6 +59,9 @@ export function parseBbox(raw: string | null | undefined): { value: Bbox | null;
   const parts = raw.split(",");
   if (parts.length !== 4) {
     return { value: null, error: "Invalid bbox: expected 'minLon,minLat,maxLon,maxLat'." };
+  }
+  if (parts.some((p) => p.trim() === "")) {
+    return { value: null, error: "Invalid bbox: all four values must be non-empty numbers." };
   }
   const nums = parts.map((p) => Number(p));
   if (nums.some((n) => Number.isNaN(n))) {
@@ -88,14 +106,7 @@ export function parseResolution(
   maximum = MAX_HEATMAP_RESOLUTION,
 ): { value: number | null; error: string | null } {
   if (raw === null || raw === undefined || raw === "") return { value: defaultValue, error: null };
-  const value = Number(raw);
-  if (!Number.isInteger(value)) {
-    return { value: null, error: `Invalid resolution ${JSON.stringify(raw)}: must be an integer between 1 and ${maximum}.` };
-  }
-  if (value < 1 || value > maximum) {
-    return { value: null, error: `Invalid resolution ${value}: must be between 1 and ${maximum}.` };
-  }
-  return { value, error: null };
+  return parseStrictInt(raw, "resolution", maximum);
 }
 
 export function parseTimeRange(
@@ -141,4 +152,29 @@ export function isValidCoordinate(lat: unknown, lon: unknown): boolean {
   if (Number.isNaN(lat) || Number.isNaN(lon)) return false;
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
   return lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
+}
+
+/**
+ * Free-text search query contract (T1.5). The 200-character cap is retained:
+ * nothing in the client, docs, or tests depends on a different value, and no
+ * security finding justifies shrinking it — the hardening here is trim +
+ * control-character rejection. Unicode/location names pass through untouched.
+ */
+export const MAX_QUERY_LENGTH = 200;
+
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARS_RE = /[\u0000-\u001F\u007F]/;
+
+export function parseSearchQuery(
+  raw: string | null | undefined,
+  maximum = MAX_QUERY_LENGTH,
+): { value: string | null; error: string | null } {
+  const query = (raw ?? "").trim();
+  if (query.length > maximum) {
+    return { value: null, error: `Query must be at most ${maximum} characters.` };
+  }
+  if (CONTROL_CHARS_RE.test(query)) {
+    return { value: null, error: "Query must not contain control characters." };
+  }
+  return { value: query, error: null };
 }
