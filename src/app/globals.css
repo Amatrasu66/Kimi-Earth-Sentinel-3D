@@ -350,6 +350,17 @@
     grid-area: status;
     pointer-events: auto;
   }
+  /* Rail-safe header: brand starts exactly at the stage edge — the rail
+     lives in the workspace row below and can never sit over header
+     content. Inset = shell padding + rail column + workspace gap, so the
+     brand left edge shares the stage's alignment anchor. Right side keeps
+     16px so system state aligns to the right content edge. */
+  @media (min-width: 768px) {
+    .sentinel-shell-header > header {
+      padding-left: calc(var(--shell-padding) + var(--rail-width) + var(--workspace-gap));
+      padding-right: 16px;
+    }
+  }
   .sentinel-workspace {
     grid-area: workspace;
     min-height: 0;
@@ -385,7 +396,8 @@
     grid-template-areas: 'rail stage';
   }
 
-  /* Globe stage framing: one faint radial anchor + corner ticks.
+  /* Globe stage framing: drafting-notation corner ticks + a whisper
+     locator. Subordinate by design — the globe is the dominant object.
      pointer-events-none always — it never intercepts globe drag. */
   .globe-stage-frame {
     position: absolute;
@@ -393,29 +405,18 @@
     pointer-events: none;
     overflow: hidden;
   }
-  .globe-stage-frame::before {
-    content: '';
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: min(72vmin, 100%);
-    aspect-ratio: 1;
-    transform: translate(-50%, -50%);
-    border-radius: 9999px;
-    background: radial-gradient(closest-side, rgba(255, 255, 255, 0.045), transparent 72%);
-  }
   .globe-stage-tick {
     position: absolute;
-    width: 14px;
-    height: 14px;
-    border-color: rgba(255, 255, 255, 0.16);
+    width: 10px;
+    height: 10px;
+    border-color: rgba(255, 255, 255, 0.1);
     border-style: solid;
     border-width: 0;
   }
-  .globe-stage-tick[data-pos='tl'] { left: 10px; top: 10px; border-left-width: 1px; border-top-width: 1px; }
-  .globe-stage-tick[data-pos='tr'] { right: 10px; top: 10px; border-right-width: 1px; border-top-width: 1px; }
-  .globe-stage-tick[data-pos='bl'] { left: 10px; bottom: 10px; border-left-width: 1px; border-bottom-width: 1px; }
-  .globe-stage-tick[data-pos='br'] { right: 10px; bottom: 10px; border-right-width: 1px; border-bottom-width: 1px; }
+  .globe-stage-tick[data-pos='tl'] { left: 12px; top: 12px; border-left-width: 1px; border-top-width: 1px; }
+  .globe-stage-tick[data-pos='tr'] { right: 12px; top: 12px; border-right-width: 1px; border-top-width: 1px; }
+  .globe-stage-tick[data-pos='bl'] { left: 12px; bottom: 12px; border-left-width: 1px; border-bottom-width: 1px; }
+  .globe-stage-tick[data-pos='br'] { right: 12px; bottom: 12px; border-right-width: 1px; border-bottom-width: 1px; }
   .globe-stage-coords {
     position: absolute;
     left: 50%;
@@ -423,7 +424,7 @@
     transform: translateX(-50%);
     font-size: 10px;
     letter-spacing: 0.14em;
-    color: rgba(255, 255, 255, 0.28);
+    color: rgba(255, 255, 255, 0.18);
     font-variant-numeric: tabular-nums;
     font-family: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
     white-space: nowrap;
@@ -481,7 +482,7 @@
     .sentinel-workspace {
       grid-template-columns: minmax(0, 1fr);
       grid-template-rows: minmax(0, 1fr) auto auto;
-      grid-template-areas: 'stage' 'panel' 'rail';
+      grid-template-areas: 'stage' 'rail' 'panel';
       gap: 8px;
       padding: 8px;
       overflow-y: auto;
@@ -491,9 +492,7 @@
       grid-template-rows: minmax(0, 1fr) auto;
       grid-template-areas: 'stage' 'rail';
     }
-    .sentinel-rail-cell { order: 3; }
-    .sentinel-panel-cell { order: 2; }
-    .sentinel-stage-cell { order: 1; min-height: 38dvh; }
+    .sentinel-stage-cell { min-height: 38dvh; }
     .sentinel-shell {
       grid-template-rows: var(--header-height) minmax(0, 1fr) var(--status-height);
     }
@@ -586,17 +585,6 @@ canvas:active {
   }
 }
 
-@keyframes sentinel-rail-in {
-  from {
-    opacity: 0;
-    transform: translateY(-50%) translateX(-6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(-50%) translateX(0);
-  }
-}
-
 .panel-enter {
   animation: sentinel-panel-in 220ms ease-out both;
 }
@@ -620,23 +608,6 @@ canvas:active {
 
 .row-enter {
   animation: sentinel-row-in var(--motion-fast) ease-out both;
-}
-
-.rail-enter {
-  animation: sentinel-rail-in 220ms ease-out both;
-}
-
-@media (max-width: 767px) {
-  @keyframes sentinel-rail-in {
-    from {
-      opacity: 0;
-      transform: translateY(6px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
 }
 
 /* Shimmer for skeletons (uses shadcn Skeleton base + this sheen) */

@@ -44,7 +44,7 @@ import {
 import { SEVERITY_COLORS } from '@/types';
 import type { DataPoint, SeverityLevel } from '@/types';
 
-import { DEFAULT_SUN_DIRECTION, EARTH_RADIUS } from './earthConfig';
+import { DEFAULT_CAMERA_DISTANCE, DEFAULT_SUN_DIRECTION, EARTH_RADIUS } from './earthConfig';
 import type { EarthStatus } from './earthConfig';
 
 /** Marker lift above the surface — small vs. radius, avoids z-fighting. */
@@ -305,7 +305,7 @@ export default function WebGPUEarth({
 
       const scene = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
-      camera.position.set(0, 0, 14);
+      camera.position.set(0, 0, DEFAULT_CAMERA_DISTANCE);
 
       const controls = track(
         new OrbitControls(camera, canvas),
@@ -405,20 +405,20 @@ export default function WebGPUEarth({
       group.add(clouds);
 
       // ---- Atmosphere: TSL Fresnel rim shell (BackSide, additive) ----
-      // Restrained rim matching the WebGL path: tight falloff (pow 4.5),
-      // low gain (0.55), close shell (1.07×) — edge separation from space,
-      // not a neon ring. See src/shaders/atmosphere.ts.
+      // Physical planetary edge, not a glow: tight falloff (pow 4.5),
+      // low gain (0.45), close shell (1.05×) — edge separation from space.
+      // See src/shaders/atmosphere.ts for the matching WebGL-path params.
       const atmosphereMaterial = track(new THREE.MeshBasicNodeMaterial());
       {
         const viewDir = normalize(cameraPosition.sub(positionWorld));
         const rim = pow(saturate(float(1).sub(dot(normalize(normalWorld), viewDir))), float(4.5));
-        atmosphereMaterial.colorNode = vec3(0.36, 0.56, 0.9).mul(rim).mul(float(0.55));
+        atmosphereMaterial.colorNode = vec3(0.36, 0.56, 0.9).mul(rim).mul(float(0.45));
         atmosphereMaterial.transparent = true;
         atmosphereMaterial.blending = THREE.AdditiveBlending;
         atmosphereMaterial.side = THREE.BackSide;
         atmosphereMaterial.depthWrite = false;
       }
-      const atmosphereGeometry = track(new THREE.SphereGeometry(EARTH_RADIUS * 1.07, 64, 64));
+      const atmosphereGeometry = track(new THREE.SphereGeometry(EARTH_RADIUS * 1.05, 64, 64));
       const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
       // Atmosphere stays camera-facing: added to the scene, not the group,
       // so globe rotation never carries the rim with it.

@@ -100,7 +100,7 @@ export default function LayerRail({ activeLayer, onLayerToggle, shortcutLayers =
         role="toolbar"
         aria-label="Environmental layers"
         aria-orientation="vertical"
-        className="layer-rail rail-enter hidden max-h-full overflow-y-auto md:flex"
+        className="layer-rail panel-enter hidden max-h-full overflow-y-auto md:flex"
       >
         <p className="sentinel-label flex h-7 items-center justify-center">Layer</p>
         <div className="flex flex-col gap-0.5 py-1">

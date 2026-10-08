@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import Globe from './Globe';
+import { DEFAULT_CAMERA_DISTANCE } from './earthConfig';
 import type { DataPoint, LayerId } from '@/types';
 
 interface GlobeSceneProps {
@@ -45,7 +46,7 @@ export default function GlobeScene({
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1 }}>
       <Canvas
-        camera={{ position: [0, 0, 14], fov: 45, near: 0.1, far: 1000 }}
+        camera={{ position: [0, 0, DEFAULT_CAMERA_DISTANCE], fov: 45, near: 0.1, far: 1000 }}
         dpr={dpr}
         gl={{
           antialias: true,

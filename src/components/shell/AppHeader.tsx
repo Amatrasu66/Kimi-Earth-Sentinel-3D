@@ -28,7 +28,7 @@ export default function AppHeader({ onSearchResultClick, onSettingsClick, dataSt
   const showStatus = dataStatus !== null && dataStatus !== undefined;
 
   return (
-    <header className="sentinel-chrome grid h-[var(--header-height)] grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-white/[0.07] px-3 sm:px-4">
+    <header className="sentinel-chrome grid h-[var(--header-height)] grid-cols-[minmax(32px,1fr)_minmax(0,420px)_minmax(32px,1fr)] items-center gap-3 border-b border-white/[0.07] px-3 sm:px-4">
       {/* LEFT — brand / active layer, separated by typography not pills */}
       <div className="flex min-w-0 items-center gap-2.5">
         <span
@@ -37,11 +37,11 @@ export default function AppHeader({ onSearchResultClick, onSettingsClick, dataSt
         >
           <Globe className="h-[17px] w-[17px] text-sentinel-accent" />
         </span>
-        <span className="hidden min-w-0 flex-col leading-none md:flex">
+        <span className="hidden min-w-0 flex-col leading-none lg:flex">
           <span className="sentinel-app-title truncate text-white">Earth Sentinel 3D</span>
           <span className="sentinel-micro mt-1 truncate">Environmental intelligence</span>
         </span>
-        <span className="sentinel-app-title hidden truncate text-white min-[480px]:block md:hidden">Sentinel</span>
+        <span className="sentinel-app-title hidden truncate text-white min-[480px]:block lg:hidden">Sentinel</span>
         {activeLayerName && (
           <span className="hidden min-w-0 items-center gap-1 lg:flex" aria-label={`Active layer: ${activeLayerName}`}>
             <ChevronRight className="h-3.5 w-3.5 shrink-0 text-white/25" aria-hidden />
@@ -54,7 +54,7 @@ export default function AppHeader({ onSearchResultClick, onSettingsClick, dataSt
 
       {/* CENTER — command search, integrated not floating */}
       <div className="flex min-w-0 justify-center">
-        <CommandSearch onResultClick={onSearchResultClick} className="mx-0 w-full min-w-0 sm:max-w-[420px]" />
+        <CommandSearch onResultClick={onSearchResultClick} className="mx-0 w-full min-w-0 max-w-[420px]" />
       </div>
 
       {/* RIGHT — system state / controls, right-aligned to the same baseline */}
