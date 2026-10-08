@@ -89,3 +89,11 @@ Know the limits of this layer — it is per isolate/region, not global:
 2. **Do not trust `x-forwarded-for` blindly off-platform.** On Vercel it is platform-appended (first entry = client). Direct-to-origin traffic could spoof it — the bounded store caps the blast radius to slot churn, not memory growth.
 3. **Unidentifiable clients share one `unknown` bucket** — they are limited together, never exempt.
 4. No Redis/Upstash/database was added; none is needed for this abuse-control tier.
+
+## Charts — why `@visx/*` stays on alpha (P1-1 decision)
+
+All seven `@visx/*` packages are pinned **exact** (`4.0.1-alpha.0`, no caret) in `package.json`. Rationale: the set is internally consistent, lockfile-pinned, `npm ls` peer-clean, and covered by `ValueHistogram` tests — while the newest stable (`4.0.0`) is OLDER than the installed alpha (a `4.0.1` prerelease), so "migrating to stable" would be a downgrade with unknown visual/API regressions. Do not replace visx (no Bklit migration) without a separate owner-approved product decision. Revisit only if a real incompatibility or a stable `≥4.0.1` appears.
+
+## Audit status (P1-1, 2026-10-08 — intentionally unfixed)
+
+`npm audit` reports 16 vulns (6 moderate / 8 high / 2 critical), ALL confined to dev/build-time chains: vitest→vite→esbuild/tinypool/`@vitest/mocker`, tailwind→postcss/braces/micromatch/chokidar, and `@next/eslint-plugin-next`'s bundled fast-glob. No flagged advisory touches the production runtime (Next server, React, three, route handlers). Every fix requires a breaking major (vitest 5, tailwind 4) — explicitly deferred by the alignment scope. Revisit in P2-11 (supply chain) alongside Dependabot setup; `npm audit --audit-level=high` stays informational until then.

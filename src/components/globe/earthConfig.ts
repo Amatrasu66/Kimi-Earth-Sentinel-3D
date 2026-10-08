@@ -2,8 +2,8 @@
  * Shared Earth renderer constants + status types.
  *
  * Kept in a component-free module so both `WebGPUEarth` (WebGPU/TSL)
- * and `EarthRenderer` (selector/diagnostics) can import them without
- * tripping the react-refresh only-export-components rule.
+ * and `EarthRenderer` (selector/diagnostics) can import constants without
+ * pulling component code into non-component modules.
  */
 
 /** Earth sphere radius — identical in both renderers so markers align. */
