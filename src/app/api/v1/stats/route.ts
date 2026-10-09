@@ -13,7 +13,10 @@ export async function GET() {
       "fallback",
       "Global stats are simulated in this build.",
     );
-    return NextResponse.json(successResponse(data, { cacheHit: false }));
+    // T2.1: simulated rollup (uses Math.random per request) — no-store.
+    return NextResponse.json(successResponse(data, { cacheHit: false }), {
+      headers: { "Cache-Control": "no-store" },
+    });
   } catch (e) {
     return internalError(e);
   }

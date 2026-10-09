@@ -5,6 +5,10 @@ import { fail, internalError } from "@/server/route-helpers";
 import { parseLimit, parseSearchQuery } from "@/server/validation";
 import { NextResponse } from "next/server";
 
+// T2.1: bundled-gazetteer results are labelled SIMULATED — no-store, so a
+// shared cache never extends fallback data.
+const noStoreInit = { headers: { "Cache-Control": "no-store" } };
+
 export const dynamic = "force-dynamic";
 
 const SEARCH_TYPES = ["all", "location", "event"] as const;
@@ -21,7 +25,7 @@ export async function GET(req: NextRequest) {
       return fail(`Invalid type ${JSON.stringify(searchType)}: must be one of ${SEARCH_TYPES.join(", ")}.`);
     }
     if (!query || query.length < 2) {
-      return NextResponse.json(successResponse({ query, results: [] }));
+      return NextResponse.json(successResponse({ query, results: [] }), noStoreInit);
     }
     const results = searchMockData(query, searchType, limit);
     const payload = withStatus(
@@ -30,7 +34,7 @@ export async function GET(req: NextRequest) {
       "fallback",
       "Search over a bundled gazetteer and event index — not a live lookup.",
     );
-    return NextResponse.json(successResponse(payload));
+    return NextResponse.json(successResponse(payload), noStoreInit);
   } catch (e) {
     return internalError(e);
   }

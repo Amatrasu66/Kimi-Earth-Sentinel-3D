@@ -90,7 +90,7 @@ export function heatmapCacheKey(layerId: string, resolution: number, timeRange: 
   return `heatmap:${layerId}:res=${resolution}:range=${timeRange}`;
 }
 
-function payloadStatus(data: unknown): string | null {
+export function payloadStatus(data: unknown): string | null {
   if (typeof data === "object" && data !== null) {
     return ((data as LayerPayload).data_status?.status as string | undefined) ?? null;
   }

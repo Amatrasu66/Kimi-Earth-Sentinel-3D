@@ -236,6 +236,8 @@ Base URL `/api/v1` (plus unversioned `GET /api/health` for deployment checks). A
 
 Only the endpoints above exist; no other API surface is implemented.
 
+Live and static-catalogue successes carry `Cache-Control: public, s-maxage=<TTL>, stale-while-revalidate=<2 × TTL>` (per-layer TTLs for layer data, 300 s event detail, 1 h catalogues, 60 s index); health, stale/simulated fallbacks, errors, and throttles carry `no-store`. Full policy table in `docs/development.md` → HTTP caching.
+
 `started_at` is the instance-local boot time (ISO 8601, captured when the server instance loads the health module) — not the deployment time. Serverless isolates boot on demand, so the value resets per instance; never read it as deploy age or global uptime. (It replaces the old `uptime_seconds`, which was always ~`0` on serverless.)
 
 ### Rate limits (per client IP, per 60 s window)

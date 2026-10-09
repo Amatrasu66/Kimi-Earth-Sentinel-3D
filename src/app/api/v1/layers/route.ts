@@ -1,11 +1,12 @@
 import { getAllLayers } from "@/server/models/layers";
-import { fail, internalError, ok } from "@/server/route-helpers";
+import { fail, internalError, ok, publicCacheControl, STATIC_CATALOG_TTL } from "@/server/route-helpers";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    return ok({ layers: getAllLayers() });
+    // T2.1: static code-defined catalogue — safe for a long shared policy.
+    return ok({ layers: getAllLayers() }, { cacheControl: publicCacheControl(STATIC_CATALOG_TTL) });
   } catch (e) {
     return internalError(e);
   }

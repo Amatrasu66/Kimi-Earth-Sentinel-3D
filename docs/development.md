@@ -79,6 +79,36 @@ npm run build           # next build
 
 Per-instance in-memory TTL store with stale fallback (`src/server/cache.ts`, `FALLBACK_TTL=60`, `STALE` re-serve of expired live entries on refresh failure). Vercel serverless instances are ephemeral, so the cache is a best-effort per-instance optimization, never the source of truth. **No database or Redis is required** — the app visualizes externally-owned provider data rather than persisting its own dataset.
 
+## HTTP caching (T2.1)
+
+Successful `LIVE` or static-catalogue responses carry `Cache-Control: public, s-maxage=<TTL>, stale-while-revalidate=<2 × TTL>` (helpers in `src/server/route-helpers.ts`). Everything else — errors, throttles, health, and stale/simulated fallbacks — carries `no-store`, so a shared cache never extends data that must stay current or was never live. Responses do not vary by request headers (no auth/cookies/content negotiation); query strings already differentiate shared-cache keys.
+
+| Endpoint / layer | TTL (s-maxage) | Stale-while-revalidate | Policy rationale |
+|---|---:|---:|---|
+| `GET /api/v1/layers/<id>/data` — LIVE | per-layer `LAYER_TTLS` (300 quakes/disasters, 600 wildfires, 1800 clouds/wind/air_quality, 3600 temp/precip) | 2 × TTL | mirrors the in-memory TTL for live provider data |
+| `GET /api/v1/events/<id>` — LIVE | 300 (`EVENT_DETAIL_TTL`) | 600 | live USGS/EONET detail, same TTL as the memory cache |
+| `GET /api/v1/layers` | 3600 | 7200 | static code-defined catalogue, changes only on deploy |
+| `GET /api/v1/imagery/gibs/capabilities` | 3600 | 7200 | static 3-layer catalogue |
+| `GET /api/v1` (index) | 60 | 120 | static version + links; short TTL keeps `meta.timestamp` fresh |
+| Health (`/api/health`, `/api/v1/health`) | `no-store` | — | per-isolate `started_at`/timestamp must remain current |
+| Layer data / heatmap / event detail when STALE or SIMULATED | `no-store` | — | never extend fallback data through a shared cache |
+| Search, stats, historical stats, reverse geocode, timezones | `no-store` | — | labelled SIMULATED (stats uses `Math.random` per request) |
+| GIBS tile 302 redirect | (unchanged, no policy) | — | `Location` embeds the current date; upstream owns tile caching |
+| 400 / 404 / 500 (`fail`/`notFound`/`internalError`) | `no-store` | — | invalid-input and internal errors are never public data |
+| 429 (middleware) | `no-store` (+ `Retry-After`) | — | per-client throttle decisions, never cached as success |
+
+How the layers interact:
+
+- **In-memory L1** (`MemoryCache`): per-instance, keyed by full query (`layerCacheKey`/`heatmapCacheKey`/`eventCacheKey`). Only `LIVE` payloads get the full TTL; simulated payloads get `min(60, TTL)`; expired `LIVE` entries are re-served as `STALE` when refresh yields simulated data. `meta.cache_hit` reports the L1 outcome (`true` on fresh hit or stale re-serve); `fetched_at` is the provider fetch time and never moves on cache hits.
+- **HTTP L2** (CDN/shared cache): applies only to the rows marked public above, with TTLs aligned to the L1 TTLs, so both layers expire together. `meta.timestamp` is the origin response time and legitimately lags on CDN-served responses.
+- **Upstream `fetch` revalidation was evaluated and rejected:** provider fetches (`src/server/http.ts`) use plain `fetch` with no `next: { revalidate }`. A fetch cache would duplicate the L1 (same per-instance scope) while losing stale-fallback and provenance semantics, so no second cache layer was added.
+
+Limitations (do not overclaim):
+
+- No Vercel cache hit is claimed without deployment evidence (`x-vercel-cache` headers); local `next start` verification below proves origin headers only.
+- Serverless isolates each hold their own L1; a cold isolate refetches from providers on first miss.
+- CDN-served responses bypass the origin handler entirely, so origin-side (T1.3) rate limiting is defense-in-depth, not a global abuse-control guarantee — pair with a Vercel Firewall rule when the plan allows it.
+
 ## Rate limiting (T1.3)
 
 Enforced in `src/middleware.ts` (matcher `/api/v1/:path*`) via the token bucket in `src/server/rate-limit.ts` — light 120 / standard 60 / heavy 20 requests per 60 s per client IP (route classes in `classifyRoute()`). Throttled callers get `429` + the standard `{ success: false, error: { code: "RATE_LIMITED", … } }` envelope + `Retry-After`, before any provider call. The store is hard-bounded (`MAX_ENTRIES=2000`, expiry + oldest-first eviction) and Edge-safe (no Node APIs).

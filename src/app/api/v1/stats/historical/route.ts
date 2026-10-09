@@ -31,7 +31,8 @@ export async function GET(req: NextRequest) {
       "fallback",
       "Historical series are simulated placeholders, not measured history.",
     );
-    return NextResponse.json(successResponse(data));
+    // T2.1: simulated placeholder with per-request timestamps — no-store.
+    return NextResponse.json(successResponse(data), { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return internalError(e);
   }

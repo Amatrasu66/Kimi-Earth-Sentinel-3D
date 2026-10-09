@@ -1,7 +1,8 @@
 import type { NextRequest } from "next/server";
 import { getLayer } from "@/server/models/layers";
-import { fail, internalError, ok } from "@/server/route-helpers";
-import { getHeatmapPayload } from "@/server/services/layers";
+import { LIVE } from "@/server/provenance";
+import { fail, internalError, NO_STORE, ok, publicCacheControl } from "@/server/route-helpers";
+import { getHeatmapPayload, HEATMAP_TTL, payloadStatus } from "@/server/services/layers";
 import { parseResolution, parseTimeRange } from "@/server/validation";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +23,13 @@ export async function GET(
     if (rangeErr || timeRange === null) return fail(rangeErr ?? "Invalid time_range.");
 
     const { data, cacheHit, stale } = await getHeatmapPayload(layerId, resolution, timeRange);
-    return ok(data, { cacheHit, stale });
+    // T2.1: heatmap grids are labelled SIMULATED today, so they stay
+    // no-store; the LIVE branch applies automatically if real grids land.
+    return ok(data, {
+      cacheHit,
+      stale,
+      cacheControl: payloadStatus(data) === LIVE ? publicCacheControl(HEATMAP_TTL) : NO_STORE,
+    });
   } catch (e) {
     return internalError(e);
   }

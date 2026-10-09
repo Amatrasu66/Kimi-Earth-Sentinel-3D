@@ -1,5 +1,7 @@
-import { EventNotFound, getEventDetail } from "@/server/services/event-detail";
-import { fail, internalError, ok } from "@/server/route-helpers";
+import { EventNotFound, EVENT_DETAIL_TTL, getEventDetail } from "@/server/services/event-detail";
+import { LIVE } from "@/server/provenance";
+import { fail, internalError, NO_STORE, ok, publicCacheControl } from "@/server/route-helpers";
+import { payloadStatus } from "@/server/services/layers";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +26,15 @@ export async function GET(
     }
     try {
       const { data, cacheHit, stale } = await getEventDetail(eventId);
-      return ok(data, { cacheHit, stale });
+      // T2.1: only LIVE detail gets the shared public policy. SIMULATED
+      // detail (wildfire markers, lookup-less ids, provider fallbacks)
+      // stays no-store — never extended through a shared cache.
+      return ok(data, {
+        cacheHit,
+        stale,
+        cacheControl:
+          payloadStatus(data) === LIVE ? publicCacheControl(EVENT_DETAIL_TTL) : NO_STORE,
+      });
     } catch (e) {
       if (e instanceof EventNotFound) return fail(e.message, "NOT_FOUND", 404);
       throw e;

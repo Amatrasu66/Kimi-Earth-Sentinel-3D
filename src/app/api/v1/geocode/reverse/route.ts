@@ -19,7 +19,8 @@ export async function GET(req: NextRequest) {
       "fallback",
       "Coarse region lookup, not a geocoding provider result.",
     );
-    return NextResponse.json(successResponse(result));
+    // T2.1: simulated lookup — no-store.
+    return NextResponse.json(successResponse(result), { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return internalError(e);
   }

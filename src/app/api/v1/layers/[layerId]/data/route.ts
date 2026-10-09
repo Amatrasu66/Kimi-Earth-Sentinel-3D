@@ -1,7 +1,8 @@
 import type { NextRequest } from "next/server";
 import { getLayer } from "@/server/models/layers";
-import { fail, internalError, ok } from "@/server/route-helpers";
-import { getLayerPayload } from "@/server/services/layers";
+import { LIVE, ttlForLayer } from "@/server/provenance";
+import { fail, internalError, NO_STORE, ok, publicCacheControl } from "@/server/route-helpers";
+import { getLayerPayload, payloadStatus } from "@/server/services/layers";
 import {
   checkSupportedParams,
   parseBbox,
@@ -37,7 +38,15 @@ export async function GET(
       limit,
       minSeverity,
     );
-    return ok(data, { cacheHit, stale });
+    // T2.1: only LIVE payloads get the shared public policy (mirroring the
+    // in-memory layer TTL). STALE / SIMULATED fallbacks stay no-store so a
+    // shared cache never extends data that was never live.
+    const ttl = ttlForLayer(layerId);
+    return ok(data, {
+      cacheHit,
+      stale,
+      cacheControl: payloadStatus(data) === LIVE ? publicCacheControl(ttl) : NO_STORE,
+    });
   } catch (e) {
     return internalError(e);
   }

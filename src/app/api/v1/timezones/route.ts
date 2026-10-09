@@ -19,7 +19,8 @@ export async function GET(req: NextRequest) {
       "fallback",
       "Approximate timezone from longitude only — not an authoritative lookup.",
     );
-    return NextResponse.json(successResponse(result));
+    // T2.1: simulated approximation — no-store.
+    return NextResponse.json(successResponse(result), { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return internalError(e);
   }

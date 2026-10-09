@@ -39,6 +39,9 @@ export function middleware(req: NextRequest) {
       headers: {
         "Retry-After": String(decision.retryAfterSec),
         "X-RateLimit-Remaining": "0",
+        // T2.1: throttles are per-client decisions — never shared-cache them
+        // as if they were successful data responses.
+        "Cache-Control": "no-store",
       },
     },
   );
