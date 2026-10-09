@@ -123,7 +123,7 @@ export async function getFireData(
   try {
     const res = await fetchTextWithTimeout(
       `${serverConfig.nasaFirmsUrl}/area/csv/VIIRS_NOAA20_NRT/${apiKey}/WORLD/1`,
-      { timeoutMs: serverConfig.requestTimeoutMs },
+      { timeoutMs: serverConfig.nasaFirmsTimeoutMs },
     );
     if (res.status >= 400) throw new Error(`FIRMS responded with status ${res.status}`);
     csvText = res.text;

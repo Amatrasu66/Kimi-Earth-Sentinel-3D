@@ -101,7 +101,7 @@ function normalizeUsgsEvent(feature: unknown, eventId: string): Record<string, u
 }
 
 async function liveUsgsDetail(eventId: string) {
-  const timeoutMs = serverConfig.requestTimeoutMs;
+  const timeoutMs = serverConfig.usgsTimeoutMs;
   let feature: unknown;
   try {
     feature = await fetchUsgsEvent(serverConfig.usgsApiUrl, eventId, timeoutMs);
@@ -205,7 +205,7 @@ function normalizeEonetEvent(event: unknown, markerId: string): Record<string, u
 
 async function liveEonetDetail(markerId: string) {
   const eonetId = markerId.slice("eonet-".length);
-  const timeoutMs = serverConfig.requestTimeoutMs;
+  const timeoutMs = serverConfig.nasaEonetTimeoutMs;
   let event: unknown;
   try {
     event = await fetchEonetEvent(serverConfig.nasaEonetUrl, eonetId, timeoutMs);

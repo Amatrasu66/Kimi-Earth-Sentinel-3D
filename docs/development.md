@@ -109,6 +109,22 @@ Limitations (do not overclaim):
 - Serverless isolates each hold their own L1; a cold isolate refetches from providers on first miss.
 - CDN-served responses bypass the origin handler entirely, so origin-side (T1.3) rate limiting is defense-in-depth, not a global abuse-control guarantee — pair with a Vercel Firewall rule when the plan allows it.
 
+## Provider timeouts + bounded concurrency (T2.2)
+
+- **Default upstream timeout: 8 s** (`REQUEST_TIMEOUT`, was 15 s). Every provider fetch goes through `fetchJsonWithTimeout` (`src/server/http.ts`), which aborts the request on the deadline, cleans up its timer and abort listener, and throws `UpstreamTimeoutError` — distinct from HTTP error statuses (returned, not thrown) and connection failures (propagated unwrapped). A pre-aborted caller signal propagates as cancellation without starting work. Timeout messages are redacted at construction (T1.4): configured key values are scrubbed even as URL path segments, query-param credentials by pattern.
+- **Per-provider overrides (seconds):** `USGS_TIMEOUT`, `EONET_TIMEOUT`, `OPEN_METEO_TIMEOUT`, `AIRNOW_TIMEOUT`, `FIRMS_TIMEOUT` — each falls back to the global default. Values are validated: malformed or `< 1` → default; `> 30` clamps to `MAX_UPSTREAM_TIMEOUT_SEC=30`, so no override can outrun the route ceilings below.
+- **Open-Meteo bounded concurrency:** the grid (108 points global 12×9, 100 per bbox 10×10) is sliced to `min(limit, MAX_FETCH_POINTS=200)` in 50-point batches (upstream batch contract, unchanged), dispatched through a 2-worker pool (`BATCH_CONCURRENCY=2`, `src/server/providers/open-meteo.ts`). No provider quota is claimed: 2 is a small multiple of the previous serial dispatch — worst case drops from 4 sequential batch timeouts to 2 waves (≤ ~16 s), while never fanning out unboundedly (at most 4 batches exist). Results re-associate by chunk index, so coordinate ordering is preserved; scheduling stops once a caller signal aborts; an optional `signal` is accepted by `getWeatherData` (routes do not wire one yet — client-disconnect cancellation is future work).
+- **Partial failures:** a failed batch keeps its successful siblings. Live-but-incomplete results stay `LIVE` with the same source/`fetched_at`, plus `warnings[]` and a `data_status.message` of the form "Partial live coverage: N of M grid points could not be fetched; …" — never presented as complete. Batches that omit a point's value are coverage gaps (counted, skipped), never invented zeros. All batches failing keeps the existing hierarchy: valid stale re-serve if allowed, else labelled `SIMULATED` (timeout → simulated + `no-store` per T2.1, since the policy keys on status).
+- **Route `maxDuration` inventory:**
+
+| Route | Upstream ops | Worst case by construction | Configured | Evidence |
+|---|---|---:|---:|---|
+| `GET /api/v1/layers/<id>/data` | weather: ≤4 batches @ conc. 2 × 8 s; others: 1 fetch ≤ 8 s | ~16 s + overhead | `maxDuration = 30` (~2× headroom) | Vercel docs 2026: Hobby Node.js functions 300 s default/maximum |
+| `GET /api/v1/events/<id>` | 1 detail fetch ≤ 8 s | ~8 s + normalize | `maxDuration = 15` (~2× headroom) | same Hobby cap |
+| heatmap, search, stats, geocode, timezones, layers, capabilities, tile, health, index | none (local compute / static / redirect) | < 1 s | none (platform default applies) | no upstream fan-out to bound |
+
+- **Known platform limits:** the 300 s Hobby cap is verified from Vercel's public docs (2026), not from dashboard access — plan-specific behavior (e.g., a future Pro move) must be re-verified by the owner. `maxDuration` is a backstop only; per-batch timeouts remain the primary bound. No Redis/workers/queues were added.
+
 ## Rate limiting (T1.3)
 
 Enforced in `src/middleware.ts` (matcher `/api/v1/:path*`) via the token bucket in `src/server/rate-limit.ts` — light 120 / standard 60 / heavy 20 requests per 60 s per client IP (route classes in `classifyRoute()`). Throttled callers get `429` + the standard `{ success: false, error: { code: "RATE_LIMITED", … } }` envelope + `Retry-After`, before any provider call. The store is hard-bounded (`MAX_ENTRIES=2000`, expiry + oldest-first eviction) and Edge-safe (no Node APIs).

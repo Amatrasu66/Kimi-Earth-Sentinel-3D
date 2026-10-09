@@ -60,7 +60,7 @@ export async function getAirQualityData(
         distance: 500,
         API_KEY: apiKey,
       },
-      timeoutMs: serverConfig.requestTimeoutMs,
+      timeoutMs: serverConfig.airnowTimeoutMs,
     });
     if (res.status >= 400) throw new Error(`AirNow responded with status ${res.status}`);
     if (!Array.isArray(res.json)) throw new Error("Unexpected AirNow response shape");

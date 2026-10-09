@@ -205,7 +205,7 @@ All server-only (root `.env`, never `NEXT_PUBLIC_`):
 | `USGS_API_URL` / `NASA_EONET_URL` / `NASA_FIRMS_URL` / `NASA_GIBS_URL` / `OPEN_METEO_URL` / `AIRNOW_API_URL` | No | provider defaults | Upstream base URLs (override for tests/proxies) |
 | `AIRNOW_API_KEY` | For live AQI | — | Server-side only; air quality is simulated without it |
 | `NASA_FIRMS_API_KEY` | For live fires | — | Server-side only; wildfires are simulated without it |
-| `REQUEST_TIMEOUT` | No | `15` | Upstream HTTP timeout (seconds) |
+| `REQUEST_TIMEOUT` | No | `8` | Upstream HTTP timeout (seconds, max 30; per-provider `USGS_TIMEOUT` / `EONET_TIMEOUT` / `OPEN_METEO_TIMEOUT` / `AIRNOW_TIMEOUT` / `FIRMS_TIMEOUT` override it) |
 
 (Retired with Flask: `FLASK_ENV`, `SECRET_KEY`, `PORT`/`FLASK_PORT`, `CORS_ORIGINS`, `SCHEDULER_ENABLED` — no equivalents needed. Same-origin API needs no CORS allow-list; there is no background scheduler.)
 

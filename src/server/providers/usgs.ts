@@ -80,7 +80,7 @@ export async function getEarthquakeData(
   limit = 500,
   minSeverity?: string | null,
 ): Promise<Record<string, unknown> & { data_status: unknown }> {
-  const timeoutMs = serverConfig.requestTimeoutMs;
+  const timeoutMs = serverConfig.usgsTimeoutMs;
   const baseUrl = serverConfig.usgsApiUrl;
   const now = new Date();
   const start = new Date(now.getTime() - 30 * 24 * 3600 * 1000);

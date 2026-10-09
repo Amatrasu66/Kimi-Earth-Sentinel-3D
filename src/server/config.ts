@@ -11,7 +11,8 @@ export const DEFAULTS = {
   OPEN_METEO_URL: "https://api.open-meteo.com/v1",
   AIRNOW_API_URL: "https://www.airnowapi.org/aq/observation",
   NASA_FIRMS_URL: "https://firms.modaps.eosdis.nasa.gov/api",
-  REQUEST_TIMEOUT: 15,
+  REQUEST_TIMEOUT: 8,
+  MAX_UPSTREAM_TIMEOUT_SEC: 30,
   CACHE_DEFAULT_TIMEOUT: 300,
 } as const;
 
@@ -25,6 +26,19 @@ function envInt(name: string, fallback: number): number {
   if (raw === undefined || raw === "") return fallback;
   const n = parseInt(raw, 10);
   return Number.isNaN(n) ? fallback : n;
+}
+
+/**
+ * T2.2 validated timeout (seconds). Malformed or non-positive values fall
+ * back to the default; excessive values clamp to MAX_UPSTREAM_TIMEOUT_SEC
+ * so no override can outrun the route maxDuration ceilings.
+ */
+function envTimeoutSec(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const n = parseInt(raw, 10);
+  if (Number.isNaN(n) || n < 1) return fallback;
+  return Math.min(n, DEFAULTS.MAX_UPSTREAM_TIMEOUT_SEC);
 }
 
 export const serverConfig = {
@@ -52,12 +66,28 @@ export const serverConfig = {
   get nasaFirmsApiKey(): string | null {
     return process.env.NASA_FIRMS_API_KEY || null;
   },
-  /** Outbound HTTP timeout in seconds (mirrors REQUEST_TIMEOUT). */
+  /** Outbound HTTP timeout in seconds (mirrors REQUEST_TIMEOUT, T2.2 default 8s). */
   get requestTimeoutSec(): number {
-    return envInt("REQUEST_TIMEOUT", DEFAULTS.REQUEST_TIMEOUT);
+    return envTimeoutSec("REQUEST_TIMEOUT", DEFAULTS.REQUEST_TIMEOUT);
   },
   get requestTimeoutMs(): number {
     return this.requestTimeoutSec * 1000;
+  },
+  /** Per-provider overrides (seconds); each falls back to the global default. */
+  get usgsTimeoutMs(): number {
+    return envTimeoutSec("USGS_TIMEOUT", this.requestTimeoutSec) * 1000;
+  },
+  get nasaEonetTimeoutMs(): number {
+    return envTimeoutSec("EONET_TIMEOUT", this.requestTimeoutSec) * 1000;
+  },
+  get openMeteoTimeoutMs(): number {
+    return envTimeoutSec("OPEN_METEO_TIMEOUT", this.requestTimeoutSec) * 1000;
+  },
+  get airnowTimeoutMs(): number {
+    return envTimeoutSec("AIRNOW_TIMEOUT", this.requestTimeoutSec) * 1000;
+  },
+  get nasaFirmsTimeoutMs(): number {
+    return envTimeoutSec("FIRMS_TIMEOUT", this.requestTimeoutSec) * 1000;
   },
   get cacheDefaultTimeout(): number {
     return envInt("CACHE_DEFAULT_TIMEOUT", DEFAULTS.CACHE_DEFAULT_TIMEOUT);

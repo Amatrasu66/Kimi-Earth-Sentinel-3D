@@ -12,6 +12,16 @@ import {
 
 export const dynamic = "force-dynamic";
 
+/**
+ * T2.2 execution ceiling. Worst case by construction: weather fans out to
+ * at most 4 batches at concurrency 2 with an 8 s per-batch timeout, i.e.
+ * ~16 s of upstream work plus overhead. 30 s gives ~2× headroom and stays
+ * far under the verified Vercel Hobby function cap (300 s default/maximum
+ * for Node.js, Vercel docs 2026). No other route fans out, so no other
+ * route needs an explicit value.
+ */
+export const maxDuration = 30;
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ layerId: string }> },

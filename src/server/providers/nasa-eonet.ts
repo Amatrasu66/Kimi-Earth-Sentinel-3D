@@ -79,7 +79,7 @@ export async function getEonetEvents(
   try {
     const res = await fetchJsonWithTimeout(`${serverConfig.nasaEonetUrl}/events`, {
       params,
-      timeoutMs: serverConfig.requestTimeoutMs,
+      timeoutMs: serverConfig.nasaEonetTimeoutMs,
     });
     if (res.status >= 400) throw new Error(`EONET responded with status ${res.status}`);
     data = res.json;

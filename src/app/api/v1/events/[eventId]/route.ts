@@ -5,6 +5,14 @@ import { payloadStatus } from "@/server/services/layers";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * T2.2 execution ceiling. Worst case is a single upstream detail fetch at
+ * the 8 s provider timeout plus normalization. 15 s gives ~2× headroom and
+ * stays far under the verified Vercel Hobby function cap (300 s
+ * default/maximum for Node.js, Vercel docs 2026).
+ */
+export const maxDuration = 15;
+
 const EVENT_ID_RE = /^[A-Za-z0-9_.-]+$/;
 
 export async function GET(

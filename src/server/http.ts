@@ -22,15 +22,35 @@ export async function fetchJsonWithTimeout(
     signal?: AbortSignal;
   } = {},
 ): Promise<{ status: number; json: unknown; text?: string }> {
-  const timeoutMs = opts.timeoutMs ?? serverConfig.requestTimeoutMs;
+  // T2.2: non-positive or non-finite explicit timeouts fall back to the
+  // validated global default instead of firing immediately or never.
+  const timeoutMs =
+    typeof opts.timeoutMs === "number" && Number.isFinite(opts.timeoutMs) && opts.timeoutMs > 0
+      ? opts.timeoutMs
+      : serverConfig.requestTimeoutMs;
+  // T2.2: a caller that is already cancelled must not start work — the
+  // abort listener below would never fire for it, so propagate the abort
+  // reason up front instead of running to the timeout and misreporting it.
+  if (opts.signal?.aborted) throw opts.signal.reason;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   // Merge caller signal (request cancellation) with our timeout.
   const onCallerAbort = () => controller.abort();
   opts.signal?.addEventListener("abort", onCallerAbort);
 
-  try {
+  // T2.2: race the fetch against the deadline so the timeout is guaranteed
+  // even if the underlying fetch ignores the abort signal. The message is
+  // redacted at construction (T1.4) — before it can reach any log call.
+  const timeoutMessage = () =>
+    `Upstream request timed out after ${timeoutMs}ms: ${redactText(url)}`;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new UpstreamTimeoutError(timeoutMessage()));
+    }, timeoutMs);
+  });
+  const fetchPromise = (async () => {
     const fullUrl = buildUrl(url, opts.params);
     const res = await fetch(fullUrl, {
       signal: controller.signal,
@@ -44,17 +64,21 @@ export async function fetchJsonWithTimeout(
       json = null;
     }
     return { status: res.status, json, text };
+  })();
+  try {
+    return await Promise.race([fetchPromise, timeoutPromise]);
   } catch (err: unknown) {
+    if (err instanceof UpstreamTimeoutError) throw err;
     if (err instanceof Error && err.name === "AbortError") {
       if (opts.signal?.aborted) throw err; // caller cancelled — propagate
       // T1.4: `url` can embed a credential (FIRMS key is a path segment),
       // so the timeout message is redacted at construction — before it can
       // reach any log call or dev error response via String(err).
-      throw new UpstreamTimeoutError(`Upstream request timed out after ${timeoutMs}ms: ${redactText(url)}`);
+      throw new UpstreamTimeoutError(timeoutMessage());
     }
     throw err;
   } finally {
-    clearTimeout(timer);
+    if (timer !== undefined) clearTimeout(timer);
     opts.signal?.removeEventListener("abort", onCallerAbort);
   }
 }
