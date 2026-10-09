@@ -9,7 +9,16 @@ export type Severity = (typeof SEVERITIES)[number];
 export const TIME_RANGES = ["24h", "48h", "7d", "30d"] as const;
 export type TimeRange = (typeof TIME_RANGES)[number];
 
-export const LAYERS_WITHOUT_BBOX = new Set(["air_quality"]);
+/**
+ * T2.5: every current layer accepts `bbox` (air_quality goes global via the
+ * Open-Meteo model). The hook is retained so future per-layer parameter
+ * rules have a home; today nothing is rejected here.
+ */
+export function checkSupportedParams(layerId: string, bboxRaw?: string | null): string | null {
+  void layerId;
+  void bboxRaw;
+  return null;
+}
 
 export const MAX_LIMIT = 2000;
 export const DEFAULT_LIMIT = 500;
@@ -78,17 +87,6 @@ export function parseBbox(raw: string | null | undefined): { value: Bbox | null;
     return { value: null, error: "Invalid bbox: require minLon < maxLon and minLat < maxLat." };
   }
   return { value: { min_lon, min_lat, max_lon, max_lat }, error: null };
-}
-
-export function checkSupportedParams(layerId: string, bboxRaw?: string | null): string | null {
-  if (bboxRaw && LAYERS_WITHOUT_BBOX.has(layerId)) {
-    return (
-      `Layer ${JSON.stringify(layerId)} does not support the 'bbox' parameter: ` +
-      "its source is US-oriented and cannot honor an arbitrary global " +
-      "bounding box. Omit 'bbox' to fetch this layer."
-    );
-  }
-  return null;
 }
 
 export function parseSeverity(raw: string | null | undefined): { value: Severity | null; error: string | null } {

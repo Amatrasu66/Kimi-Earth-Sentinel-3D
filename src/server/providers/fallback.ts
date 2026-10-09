@@ -365,7 +365,7 @@ export function severityForAqi(aqi: number): string {
 }
 
 export function generateMockAqi(bbox?: string | null, limit = 500, minSeverity?: string | null) {
-  void bbox; // global city list mirrors Python (bbox rejected at route)
+  void bbox; // mock serves a fixed global city list regardless of bbox
   const rng = mulberry32(42);
   const points: Record<string, unknown>[] = [];
   for (const city of AQI_CITIES) {

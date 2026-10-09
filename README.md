@@ -123,7 +123,7 @@ There is no database, no Redis, no PostgreSQL/PostGIS, no persistent environment
 | Earthquakes | USGS FDSNWS | No | Simulated (labelled) |
 | Disasters | NASA EONET | No | Simulated (labelled) |
 | Temperature / Precipitation / Clouds / Wind | Open-Meteo | No | Simulated (labelled) |
-| Air quality | AirNow (US only) | `AIRNOW_API_KEY` | Simulated (labelled); `bbox` rejected with `400 UNSUPPORTED_PARAM` (cannot be honored by this source) |
+| Air quality | Open-Meteo Air Quality model worldwide (no key); AirNow U.S. station observations optional with `AIRNOW_API_KEY` | `AIRNOW_API_KEY` (U.S. stations only) | Simulated (labelled); `bbox` honored globally (U.S.-covering bboxes with a key try AirNow first) |
 | Wildfires | NASA FIRMS | `NASA_FIRMS_API_KEY` | Simulated (labelled) |
 | Satellite imagery | NASA GIBS | No | Tile redirect to GIBS WMTS (allow-listed layers only) |
 
@@ -151,6 +151,8 @@ Every layer payload carries:
 - **Unavailable** — no data could be produced at all (e.g. heatmap requested for an unknown layer).
 
 Event details: earthquake ids resolve live against the USGS detail feed; `eonet-*` ids resolve live against the NASA EONET event endpoint (both cached 5 minutes, `STALE`-served on refresh failure). A provider-confirmed absence returns `404`, never disguised as fallback data.
+
+Air quality: `data_status.source` names the actual provider per request — `Open-Meteo Air Quality` for global model output (CAMS-based estimates, not station observations; no key required) or `AirNow` for U.S. monitoring-station observations (key required, U.S.-covering bboxes only). Model points carry `pollutants` (`pm2_5`, `pm10`, `ozone`, `nitrogen_dioxide`; `null` when the feed omits a value) alongside the US-AQI `value`. No worldwide ground-station coverage is claimed: outside AirNow's U.S. observations, values are model estimates on a ~45 km global grid (~11 km over Europe).
 
 ## Project Structure
 
@@ -223,7 +225,7 @@ Base URL `/api/v1` (plus unversioned `GET /api/health` for deployment checks). A
 | `GET /api/health` | Liveness: `{ status: "ok", service, version, timestamp, started_at }` |
 | `GET /api/v1/health` | Same payload, versioned |
 | `GET /api/v1/layers` | Layer metadata (id, name, source, unit, color scale, refresh interval) |
-| `GET /api/v1/layers/<layer_id>/data?bbox=&limit=&min_severity=` | Points + stats + `data_status`; validated (`limit` 1–2000, bbox ranges, known severities); cached per layer TTL; `air_quality` rejects `bbox` with `400 UNSUPPORTED_PARAM` (US-only source) |
+| `GET /api/v1/layers/<layer_id>/data?bbox=&limit=&min_severity=` | Points + stats + `data_status`; validated (`limit` 1–2000, bbox ranges, known severities); cached per layer TTL; `air_quality` honors `bbox` globally (Open-Meteo model; U.S.-covering bboxes with a key try AirNow station observations first) |
 | `GET /api/v1/layers/<layer_id>/heatmap?resolution=&time_range=` | Base64 float32 grid + `data_status` (currently simulated; same schema for future real grids) |
 | `GET /api/v1/events/<id>` | Event detail: live USGS lookup for earthquake ids, live NASA EONET lookup for `eonet-*` ids, live FIRMS observation detail for `fire-<lat>-<lon>` markers (API key required; fields below), all cached 5 min and `LIVE`/`STALE` labelled; provider-confirmed absence → `404`; provider failure, keyless instance, or lookup-less markers (other layers) → labelled `SIMULATED` fallback |
 | `GET /api/v1/search?q=&type=&limit=` | Location/event search over bundled gazetteer + event index (simulated, labelled) |
@@ -346,7 +348,7 @@ Validate the real renderer manually in a Chromium browser with WebGPU (day/night
 - **Simulated heatmaps:** all layers return deterministic seeded grids behind the same schema; real gridded datasets can plug in per layer (`HEATMAP_PROVIDERS`) without frontend changes.
 - **Simulated historical statistics:** `GET /api/v1/stats` and `GET /api/v1/stats/historical` return labelled placeholders, not measured history.
 - **Simulated search/geocoding:** search runs over a bundled gazetteer + event index, reverse-geocode is a coarse region lookup, and the timezone endpoint is a longitude-only approximation — all labelled `SIMULATED`.
-- **AirNow geographic limitations:** the air-quality source is US-oriented and cannot honor an arbitrary global `bbox`; passing `bbox` for `air_quality` is rejected with `400 UNSUPPORTED_PARAM` rather than silently ignored. Live AQI additionally requires `AIRNOW_API_KEY`.
+- **Air quality coverage:** global AQI comes from the Open-Meteo Air Quality model (CAMS, ~45 km grid worldwide / ~11 km Europe) — estimates, not station readings. AirNow contributes U.S. monitoring-station observations only (key required, single central-U.S. query, U.S.-covering bboxes); no per-point AirNow fan-out is performed.
 - **EONET events with missing/empty geometry:** some EONET events carry no usable coordinates; their detail payloads return `lat`/`lon` as `null` rather than fabricated positions.
 - **Single active layer:** the UI shows exactly one layer at a time (multi-layer compositing is a roadmap item, not current behavior).
 

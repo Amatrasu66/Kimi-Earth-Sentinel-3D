@@ -54,6 +54,10 @@ export const serverConfig = {
   get openMeteoUrl(): string {
     return envStr("OPEN_METEO_URL", DEFAULTS.OPEN_METEO_URL);
   },
+  /** Air Quality API lives on a separate host (verified in official docs). */
+  get openMeteoAqUrl(): string {
+    return envStr("OPEN_METEO_AQ_URL", "https://air-quality-api.open-meteo.com/v1");
+  },
   get airnowApiUrl(): string {
     return envStr("AIRNOW_API_URL", DEFAULTS.AIRNOW_API_URL);
   },

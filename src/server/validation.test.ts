@@ -46,8 +46,9 @@ describe("parseBbox", () => {
 });
 
 describe("checkSupportedParams", () => {
-  it("rejects bbox for air_quality with UNSUPPORTED_PARAM semantics", () => {
-    expect(checkSupportedParams("air_quality", "-10,-20,10,20")).toMatch(/does not support/);
+  it("accepts bbox for every current layer (T2.5: air_quality goes global)", () => {
+    expect(checkSupportedParams("air_quality", "-10,-20,10,20")).toBeNull();
+    expect(checkSupportedParams("air_quality", "100,0,120,20")).toBeNull();
     expect(checkSupportedParams("earthquakes", "-10,-20,10,20")).toBeNull();
     expect(checkSupportedParams("air_quality", null)).toBeNull();
   });

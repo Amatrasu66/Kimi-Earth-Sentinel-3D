@@ -6,6 +6,7 @@
 import { serverConfig } from "../config";
 import { fetchJsonWithTimeout, logWarn } from "../http";
 import { LIVE, SIMULATED, utcnowIso, withStatus } from "../provenance";
+import { runBatches } from "../batch-pool";
 import {
   generateMockWeather,
   generateWeatherGrid,
@@ -65,52 +66,6 @@ async function fetchBatch(
   }
   if (!Array.isArray(res.json)) throw new Error("Unexpected Open-Meteo response shape");
   return res.json as Record<string, unknown>[];
-}
-
-type BatchOutcome =
-  | { results: Record<string, unknown>[] }
-  | { error: unknown };
-
-/**
- * T2.2 small worker pool: runs at most `limit` batch fetches concurrently,
- * preserves chunk order in the output, captures per-batch failures as
- * values (one bad batch never discards the others), and stops scheduling
- * new batches once `signal` aborts. Single consumer (weather batches), so
- * it stays local to this module.
- */
-async function runBatches<T>(
-  batchChunks: T[][],
-  limit: number,
-  fn: (chunk: T[], index: number, signal?: AbortSignal) => Promise<BatchOutcome>,
-  signal?: AbortSignal,
-): Promise<BatchOutcome[]> {
-  const out: BatchOutcome[] = new Array(batchChunks.length);
-  let cursor = 0;
-  const workerCount = Math.max(1, Math.min(limit, batchChunks.length));
-  const run = async (): Promise<void> => {
-    for (;;) {
-      if (signal?.aborted) return;
-      const index = cursor;
-      cursor += 1;
-      if (index >= batchChunks.length) return;
-      try {
-        out[index] = await fn(batchChunks[index], index, signal);
-      } catch (error) {
-        out[index] = { error };
-      }
-    }
-  };
-  await Promise.all(Array.from({ length: workerCount }, () => run()));
-  // Workers stop scheduling once the signal aborts, which can leave holes
-  // for never-started batches (Array.map would skip holes, so fill via
-  // Array.from) — report those as cancellations, never as silent gaps, so
-  // every chunk is accounted for downstream.
-  return Array.from({ length: batchChunks.length }, (_, index) => {
-    const outcome = out[index];
-    return outcome === undefined
-      ? { error: new Error(`Batch ${index} cancelled before scheduling`) }
-      : outcome;
-  });
 }
 
 export async function getWeatherData(
