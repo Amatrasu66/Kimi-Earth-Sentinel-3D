@@ -2,7 +2,7 @@
  * Live event-detail lookups — port of backend/app/services/event_detail.py.
  */
 import { serverConfig } from "../config";
-import { fetchJsonWithTimeout, logError, logWarn } from "../http";
+import { fetchJsonWithTimeout, fetchTextWithTimeout, logError, logWarn } from "../http";
 import {
   LIVE,
   SIMULATED,
@@ -12,12 +12,19 @@ import {
 } from "../provenance";
 import { isValidCoordinate } from "../validation";
 import { getMockEventDetail } from "../providers/fallback";
+import {
+  findFirmsObservation,
+  parseFireEventId,
+  severityForBrightness as severityForFirmsBrightness,
+  type FirmsObservation,
+} from "../providers/nasa-firms";
 import { severityForCategories } from "../providers/nasa-eonet";
 import { severityForMagnitude } from "../providers/usgs";
 import { resolveWithCache } from "./layers";
 
 export const PROVIDER_USGS = "usgs";
 export const PROVIDER_EONET = "eonet";
+export const PROVIDER_FIRMS = "firms";
 export const EVENT_DETAIL_TTL = 300;
 
 const USGS_ID_RE = /^[A-Za-z0-9]{4,64}$/;
@@ -235,16 +242,19 @@ async function liveEonetDetail(markerId: string) {
 
 // --- Simulated-only ids ---
 
+function simulatedFireDetail(eventId: string, message: string) {
+  const event = getMockEventDetail(eventId) as Record<string, unknown>;
+  event.layer_id = "wildfires";
+  event.type = "wildfire";
+  event.source = { name: "NASA FIRMS", url: serverConfig.nasaFirmsUrl };
+  return withStatus(event, SIMULATED, "NASA FIRMS", message);
+}
+
 function simulatedEventDetail(eventId: string) {
   const event = getMockEventDetail(eventId) as Record<string, unknown>;
   if (eventId.startsWith("fire-")) {
-    event.layer_id = "wildfires";
-    event.type = "wildfire";
-    event.source = { name: "NASA FIRMS", url: serverConfig.nasaFirmsUrl };
-    return withStatus(
-      event,
-      SIMULATED,
-      "NASA FIRMS",
+    return simulatedFireDetail(
+      eventId,
       "No live individual-event lookup for FIRMS fire observations — showing reference detail for this marker.",
     );
   }
@@ -257,9 +267,108 @@ function simulatedEventDetail(eventId: string) {
   );
 }
 
+// --- Live FIRMS wildfire detail (T2.3) ---
+
+export function isFireEventId(eventId: string): boolean {
+  return eventId.startsWith("fire-");
+}
+
+/**
+ * Combine FIRMS acq_date (YYYY-MM-DD) + acq_time (HHMM) into an ISO UTC
+ * timestamp. Returns null when either field is missing or malformed — the
+ * existing missing-field convention — instead of fabricating a time.
+ */
+export function firmsAcqTimestamp(acqDate: string, acqTime: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(acqDate)) return null;
+  const digits = acqTime.replace(/\D/g, "");
+  if (digits.length === 0 || digits.length > 4) return null;
+  const padded = digits.padStart(4, "0");
+  const hh = Number(padded.slice(0, 2));
+  const mm = Number(padded.slice(2));
+  if (hh > 23 || mm > 59) return null;
+  return `${acqDate}T${padded.slice(0, 2)}:${padded.slice(2)}:00Z`;
+}
+
+function buildFirmsDetail(obs: FirmsObservation, eventId: string): Record<string, unknown> {
+  const when = firmsAcqTimestamp(obs.acqDate, obs.acqTime);
+  const platform = obs.satellite || "unknown satellite";
+  return {
+    id: eventId,
+    layer_id: "wildfires",
+    provider: "NASA FIRMS",
+    type: "wildfire",
+    title: "Wildfire Hotspot",
+    lat: obs.lat,
+    lon: obs.lon,
+    timestamp: when,
+    description:
+      `NASA FIRMS hotspot observed by ${platform}` +
+      (obs.instrument ? ` (${obs.instrument})` : "") +
+      (when ? ` at ${when}` : "") +
+      ". Brightness and FRP describe the thermal signal, not fire size or burned area.",
+    severity: severityForFirmsBrightness(obs.bright),
+    brightness: obs.bright,
+    frp: obs.frp,
+    confidence: obs.confidence || null,
+    daynight: obs.daynight || null,
+    satellite: obs.satellite || null,
+    instrument: obs.instrument || null,
+    acq_date: obs.acqDate || null,
+    acq_time: obs.acqTime || null,
+    source: { name: "NASA FIRMS", url: serverConfig.nasaFirmsUrl },
+    geometry: { type: "Point", coordinates: [obs.lon, obs.lat] },
+  };
+}
+
+async function liveFirmsDetail(eventId: string) {
+  const coords = parseFireEventId(eventId);
+  const apiKey = coords ? serverConfig.nasaFirmsApiKey : null;
+  if (!coords || !apiKey) {
+    // Unreachable via the route (malformed fire ids are rejected with 400
+    // and keyless instances never fetch), but safe for direct callers:
+    // fall back exactly as before, never fabricate.
+    return {
+      data: simulatedEventDetail(eventId) as Record<string, unknown> & {
+        data_status: DataStatus;
+      },
+      cacheHit: false,
+      stale: false,
+    };
+  }
+  const key = eventCacheKey(PROVIDER_FIRMS, eventId);
+  return resolveWithCache(key, EVENT_DETAIL_TTL, async () => {
+    let csvText: string;
+    try {
+      const res = await fetchTextWithTimeout(
+        `${serverConfig.nasaFirmsUrl}/area/csv/VIIRS_NOAA20_NRT/${apiKey}/WORLD/1`,
+        { timeoutMs: serverConfig.nasaFirmsTimeoutMs },
+      );
+      if (res.status >= 400) throw new Error(`FIRMS detail responded with status ${res.status}`);
+      csvText = res.text;
+    } catch (e) {
+      logWarn("FIRMS event detail unreachable, using fallback", String(e));
+      return simulatedFireDetail(
+        eventId,
+        "NASA FIRMS event detail unavailable — showing simulated fallback data.",
+      );
+    }
+    const obs = findFirmsObservation(csvText, coords.lat, coords.lon);
+    if (!obs) {
+      return simulatedFireDetail(
+        eventId,
+        "Marker observation not found in the current FIRMS feed — showing simulated reference detail.",
+      );
+    }
+    return withStatus(buildFirmsDetail(obs, eventId), LIVE, "NASA FIRMS", undefined, utcnowIso());
+  });
+}
+
 export async function getEventDetail(eventId: string) {
   const provider = resolveProvider(eventId);
   if (provider === null) {
+    // T2.3: fire-<lat>-<lon> markers re-associate their source observation
+    // from a fresh feed fetch; everything else keeps the simulated path.
+    if (isFireEventId(eventId)) return liveFirmsDetail(eventId);
     return { data: simulatedEventDetail(eventId) as Record<string, unknown> & { data_status: DataStatus }, cacheHit: false, stale: false };
   }
   const key = eventCacheKey(provider, eventId);

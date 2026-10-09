@@ -89,6 +89,15 @@ export interface EventDetail {
   alert?: string | null;
   tsunami?: boolean | null;
   significance?: number | null;
+  /** FIRMS observation fields (present on live wildfire details, T2.3). */
+  satellite?: string | null;
+  instrument?: string | null;
+  brightness?: number | null;
+  frp?: number | null;
+  confidence?: string | null;
+  daynight?: string | null;
+  acq_date?: string | null;
+  acq_time?: string | null;
   /** Provenance: present on backend responses (live / simulated / stale). */
   data_status?: DataStatus;
 }

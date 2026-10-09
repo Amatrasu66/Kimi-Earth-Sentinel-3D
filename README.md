@@ -225,7 +225,7 @@ Base URL `/api/v1` (plus unversioned `GET /api/health` for deployment checks). A
 | `GET /api/v1/layers` | Layer metadata (id, name, source, unit, color scale, refresh interval) |
 | `GET /api/v1/layers/<layer_id>/data?bbox=&limit=&min_severity=` | Points + stats + `data_status`; validated (`limit` 1–2000, bbox ranges, known severities); cached per layer TTL; `air_quality` rejects `bbox` with `400 UNSUPPORTED_PARAM` (US-only source) |
 | `GET /api/v1/layers/<layer_id>/heatmap?resolution=&time_range=` | Base64 float32 grid + `data_status` (currently simulated; same schema for future real grids) |
-| `GET /api/v1/events/<id>` | Event detail: live USGS lookup for earthquake ids, live NASA EONET lookup for `eonet-*` ids (both cached 5 min, `LIVE`/`STALE` labelled); provider-confirmed absence → `404`; provider failure or lookup-less markers (wildfire observations, other layers) → labelled `SIMULATED` fallback |
+| `GET /api/v1/events/<id>` | Event detail: live USGS lookup for earthquake ids, live NASA EONET lookup for `eonet-*` ids, live FIRMS observation detail for `fire-<lat>-<lon>` markers (API key required; fields below), all cached 5 min and `LIVE`/`STALE` labelled; provider-confirmed absence → `404`; provider failure, keyless instance, or lookup-less markers (other layers) → labelled `SIMULATED` fallback |
 | `GET /api/v1/search?q=&type=&limit=` | Location/event search over bundled gazetteer + event index (simulated, labelled) |
 | `GET /api/v1/stats` | Global rollup (simulated, labelled) |
 | `GET /api/v1/stats/historical?metric=&period=&aggregation=` | Placeholder series (simulated, labelled — no fake history presented as measured) |
@@ -239,6 +239,8 @@ Only the endpoints above exist; no other API surface is implemented.
 Live and static-catalogue successes carry `Cache-Control: public, s-maxage=<TTL>, stale-while-revalidate=<2 × TTL>` (per-layer TTLs for layer data, 300 s event detail, 1 h catalogues, 60 s index); health, stale/simulated fallbacks, errors, and throttles carry `no-store`. Full policy table in `docs/development.md` → HTTP caching.
 
 `started_at` is the instance-local boot time (ISO 8601, captured when the server instance loads the health module) — not the deployment time. Serverless isolates boot on demand, so the value resets per instance; never read it as deploy age or global uptime. (It replaces the old `uptime_seconds`, which was always ~`0` on serverless.)
+
+Live wildfire detail exposes the matched FIRMS observation: `brightness` (bright_ti4), `frp`, `confidence`, `daynight`, `satellite`, `instrument`, `acq_date`, `acq_time` (combined into `timestamp`), plus `lat`/`lon` and FIRMS source attribution. Brightness/FRP describe the thermal signal, not fire size or burned area. Optional fields absent from a row are `null`; rows without a numeric brightness cannot produce an honest detail and fall back to simulated.
 
 ### Rate limits (per client IP, per 60 s window)
 

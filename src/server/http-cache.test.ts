@@ -227,7 +227,9 @@ describe("event detail caching", () => {
   });
 
   it("serves SIMULATED wildfire detail with no-store", async () => {
-    const res = await eventGET(new Request("http://localhost:3000/x"), eventParams("fire-t21-1"));
+    // T2.3: well-formed fire-<lat>-<lon> marker without a configured key
+    // stays on the simulated path (no provider call possible).
+    const res = await eventGET(new Request("http://localhost:3000/x"), eventParams("fire-34.1--118.2"));
     expect(res.status).toBe(200);
     expect(res.headers.get("Cache-Control")).toBe("no-store");
     const body = (await res.json()) as { data: { data_status: { status: string } } };

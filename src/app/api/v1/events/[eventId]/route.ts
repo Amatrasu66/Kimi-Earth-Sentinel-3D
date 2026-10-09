@@ -1,7 +1,8 @@
-import { EventNotFound, EVENT_DETAIL_TTL, getEventDetail } from "@/server/services/event-detail";
+import { EventNotFound, EVENT_DETAIL_TTL, getEventDetail, isFireEventId } from "@/server/services/event-detail";
 import { LIVE } from "@/server/provenance";
 import { fail, internalError, NO_STORE, ok, publicCacheControl } from "@/server/route-helpers";
 import { payloadStatus } from "@/server/services/layers";
+import { parseFireEventId } from "@/server/providers/nasa-firms";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,13 @@ export async function GET(
     }
     if (!EVENT_ID_RE.test(eventId)) {
       return fail(`Invalid event_id ${JSON.stringify(eventId)}: must match [A-Za-z0-9_.-].`);
+    }
+    // T2.3: wildfire markers carry fire-<lat>-<lon> ids; anything else in
+    // the fire- namespace is malformed — reject before any provider work.
+    if (isFireEventId(eventId) && !parseFireEventId(eventId)) {
+      return fail(
+        `Invalid wildfire event_id ${JSON.stringify(eventId)}: expected fire-<lat>-<lon> with valid coordinates.`,
+      );
     }
     try {
       const { data, cacheHit, stale } = await getEventDetail(eventId);
