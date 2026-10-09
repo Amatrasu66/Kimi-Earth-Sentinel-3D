@@ -203,7 +203,7 @@ export const api = {
 
   // Health
   getHealth: (opts?: RequestOptions) =>
-    fetchApi<{ status: string; service: string; version: string; timestamp: string }>('/health', opts),
+    fetchApi<{ status: string; service: string; version: string; timestamp: string; started_at: string }>('/health', opts),
 
   // Geocode
   reverseGeocode: (lat: number, lon: number, opts?: RequestOptions) => {

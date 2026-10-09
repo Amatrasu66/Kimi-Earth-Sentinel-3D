@@ -16,7 +16,7 @@ The project is deployed and publicly accessible:
 | Service | URL | Hosting |
 |---|---|---|
 | Live Frontend | https://kimi-earth-sentinel-3d.vercel.app/ | Vercel (Hobby) |
-| Backend API | https://kimi-earth-sentinel-3d.vercel.app/api/v1 | Vercel (same Next.js app, no Render) |
+| API index | https://kimi-earth-sentinel-3d.vercel.app/api/v1 | Vercel (same Next.js app, no Render) |
 
 The React + TypeScript frontend and the Next.js API Route Handlers deploy together from this GitHub repository as one Vercel project. There is no Render service anymore (`render.yaml` deleted).
 
@@ -215,11 +215,12 @@ Use `GET /api/v1/health` (or Settings → Diagnostics in the UI) to verify the a
 
 ## API Overview
 
-Base URL `/api/v1` (plus unversioned `GET /api/health` for deployment checks). All success responses use `{ success: true, data, meta }`; errors use `{ success: false, error: { code, message } }` with meaningful status codes (400 validation, 404 unknown layer/route, 405 wrong method, 429 rate limited with `Retry-After`).
+Base URL `/api/v1` (plus unversioned `GET /api/health` for deployment checks). All success responses use `{ success: true, data, meta }`, except the two liveness checks (`GET /api/health`, `GET /api/v1/health`), which return `{ success: true, data }`; errors use `{ success: false, error: { code, message } }` with meaningful status codes (400 validation, 404 unknown layer/route, 405 wrong method, 429 rate limited with `Retry-After`).
 
 | Endpoint | Description |
 |---|---|
-| `GET /api/health` | Liveness: `{ status: "ok", service, version, timestamp, uptime_seconds }` |
+| `GET /api/v1` | API index: `{ version, links: { self, layers, health } }` (relative same-origin links) |
+| `GET /api/health` | Liveness: `{ status: "ok", service, version, timestamp, started_at }` |
 | `GET /api/v1/health` | Same payload, versioned |
 | `GET /api/v1/layers` | Layer metadata (id, name, source, unit, color scale, refresh interval) |
 | `GET /api/v1/layers/<layer_id>/data?bbox=&limit=&min_severity=` | Points + stats + `data_status`; validated (`limit` 1–2000, bbox ranges, known severities); cached per layer TTL; `air_quality` rejects `bbox` with `400 UNSUPPORTED_PARAM` (US-only source) |
@@ -234,6 +235,8 @@ Base URL `/api/v1` (plus unversioned `GET /api/health` for deployment checks). A
 | `GET /api/v1/imagery/gibs/tile/<layer>/<z>/<x>/<y>` | Redirect to NASA GIBS tile (allow-listed layers only) |
 
 Only the endpoints above exist; no other API surface is implemented.
+
+`started_at` is the instance-local boot time (ISO 8601, captured when the server instance loads the health module) — not the deployment time. Serverless isolates boot on demand, so the value resets per instance; never read it as deploy age or global uptime. (It replaces the old `uptime_seconds`, which was always ~`0` on serverless.)
 
 ### Rate limits (per client IP, per 60 s window)
 

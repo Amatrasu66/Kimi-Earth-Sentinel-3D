@@ -2,7 +2,9 @@ import { utcnowIso } from "./provenance";
 
 export const SERVICE = "kimi-earth-sentinel-api";
 export const VERSION = "1.0.0";
-const STARTED_AT = Date.now();
+// Instance-local start time, captured at module load. On serverless this is
+// the isolate's boot — NOT the deployment time. Never present it as such.
+const STARTED_AT_ISO = utcnowIso();
 
 /** Honest liveness payload — no fabricated per-provider claims. */
 export function healthPayload() {
@@ -11,6 +13,6 @@ export function healthPayload() {
     service: SERVICE,
     version: VERSION,
     timestamp: utcnowIso(),
-    uptime_seconds: Math.round((Date.now() - STARTED_AT) / 100) / 10,
+    started_at: STARTED_AT_ISO,
   };
 }

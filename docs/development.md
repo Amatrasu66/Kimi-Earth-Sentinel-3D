@@ -55,7 +55,7 @@ npm run build           # next build
 
 1. Open the deployed app → Settings → Diagnostics. It shows the configured API base + source, backend health + latency, current layer/provenance, WebGPU support, and the active renderer.
 2. If `Backend health` reads `unreachable`, check the Vercel deployment (failed build, missing env vars). There is no CORS layer — same-origin requests cannot fail on CORS. (The old `API base: not configured` state no longer exists: the base is the constant `/api/v1`.)
-3. `GET /api/health` and `GET /api/v1/health` must both return `{ status: "ok", … }`; `GET /api/v1/layers` must list the 8 layers.
+3. `GET /api/health` and `GET /api/v1/health` must both return `{ status: "ok", … }`; `GET /api/v1` must return the `{ version, links }` index; `GET /api/v1/layers` must list the 8 layers. Health carries `started_at` (ISO 8601 instance-local boot time, captured at module load — not deployment time; it resets per serverless isolate, which is why the old `uptime_seconds` was removed).
 
 ## Earth renderer
 
