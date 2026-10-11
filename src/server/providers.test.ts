@@ -64,6 +64,26 @@ describe("EONET normalization", () => {
     const out = normalizeEonet(sample, 500, "critical") as { count: number };
     expect(out.count).toBe(0);
   });
+  it("reads the real v3 `geometry` (singular) field (T2.7 contract fix)", () => {
+    const v3 = {
+      events: [
+        {
+          id: "EONET_1",
+          title: "Storm",
+          categories: [{ id: "severeStorms", title: "Severe Storms" }],
+          geometry: [{ date: "2026-10-07T18:00:00Z", type: "Point", coordinates: [-101.3, 15.2] }],
+          sources: [{ id: "JTWC" }],
+        },
+      ],
+    };
+    const out = normalizeEonet(v3, 500, null) as {
+      count: number;
+      points: Array<Record<string, unknown>>;
+    };
+    expect(out.count).toBe(1);
+    expect(out.points[0].lat).toBe(15.2);
+    expect(out.points[0].lon).toBe(-101.3);
+  });
 });
 
 describe("FIRMS CSV parsing", () => {

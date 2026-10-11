@@ -18,7 +18,7 @@ import {
   severityForBrightness as severityForFirmsBrightness,
   type FirmsObservation,
 } from "../providers/nasa-firms";
-import { severityForCategories } from "../providers/nasa-eonet";
+import { eonetGeometries, severityForCategories } from "../providers/nasa-eonet";
 import { severityForMagnitude } from "../providers/usgs";
 import { resolveWithCache } from "./layers";
 
@@ -166,7 +166,9 @@ function normalizeEonetEvent(event: unknown, markerId: string): Record<string, u
     id: s.id ?? "eonet",
     url: s.url ?? "",
   }));
-  const latest = latestGeometry(rec.geometries);
+  const latest = latestGeometry(
+    eonetGeometries(rec as { geometry?: unknown; geometries?: unknown }),
+  );
   const geomType = latest.type as string | undefined;
   const coords = latest.coordinates;
   let lat: number | null = null;

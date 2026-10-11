@@ -237,7 +237,7 @@ describe("event detail caching", () => {
   });
 });
 
-describe("simulated mock endpoints stay no-store", () => {
+describe("live search/stats caching vs fallback no-store", () => {
   it("live merged search is publicly cached (T2.6 SEARCH_TTL)", async () => {
     vi.stubGlobal(
       "fetch",
@@ -277,10 +277,24 @@ describe("simulated mock endpoints stay no-store", () => {
     expect(unavailBody.data.data_status.status).toBe("unavailable");
   });
 
-  it("stats (nondeterministic mock)", async () => {
+  it("live stats overview is publicly cached (T2.7 STATS_TTL)", async () => {
+    vi.stubGlobal("fetch", liveFetchStub({ features: [] }));
+    const res = await statsGET();
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Cache-Control")).toBe(
+      "public, s-maxage=300, stale-while-revalidate=600",
+    );
+    const body = (await res.json()) as { data: { data_status: { status: string } } };
+    expect(body.data.data_status.status).toBe("live");
+  });
+
+  it("failed stats fallbacks stay no-store (never extended via CDN)", async () => {
+    vi.stubGlobal("fetch", deadFetchStub());
     const res = await statsGET();
     expect(res.status).toBe(200);
     expect(res.headers.get("Cache-Control")).toBe("no-store");
+    const body = (await res.json()) as { data: { data_status: { status: string } } };
+    expect(body.data.data_status.status).toBe("unavailable");
   });
 });
 

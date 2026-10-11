@@ -121,22 +121,48 @@ export interface SearchResult {
   source?: string;
 }
 
+/**
+ * T2.7 real statistics overview (no UI consumer yet — shape mirrors the
+ * route payload). Every metric is null when its source is unavailable;
+ * per-source statuses in `sources` say which. Fabricated fields from the old
+ * simulated rollup (temperature anomaly, precipitation, AQI average, alert
+ * counts, by_region severity) are removed — they had no provider.
+ */
 export interface GlobalStats {
+  window: { start: string; end: string };
   global: {
-    active_events: number;
-    earthquakes_24h: number;
-    avg_temperature_anomaly: number;
-    precipitation_status: string;
-    air_quality_avg: number;
-    wildfire_count: number;
-    severe_weather_alerts: number;
+    earthquakes_24h: number | null;
+    max_magnitude_24h: number | null;
+    max_magnitude_time: string | null;
+    active_events: number | null;
+    wildfire_count: number | null;
+    max_brightness: number | null;
   };
-  by_region: Record<string, {
-    events: number;
-    severity_index: number;
-    top_threat: string;
-  }>;
+  sources: {
+    earthquakes: DataStatus;
+    disasters: DataStatus;
+    wildfires: DataStatus;
+  };
   timestamp: string;
+}
+
+export interface HistoryBucket {
+  start: string;
+  end: string;
+  count: number;
+  max_magnitude: number | null;
+  avg_magnitude: number | null;
+  max_brightness: number | null;
+  by_category: Record<string, number> | null;
+}
+
+export interface HistoricalStats {
+  metric: string;
+  period: string;
+  granularity: string | null;
+  start: string | null;
+  end: string | null;
+  values: HistoryBucket[];
 }
 
 export type SeverityLevel = 'low' | 'moderate' | 'high' | 'critical';

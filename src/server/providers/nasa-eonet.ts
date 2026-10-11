@@ -29,7 +29,23 @@ interface EonetEvent {
   title?: string;
   categories?: { id?: string; title?: string }[];
   geometries?: { date?: string; coordinates?: unknown }[];
+  geometry?: { date?: string; coordinates?: unknown }[];
   sources?: { id?: string }[];
+}
+
+/**
+ * Geometry list for an EONET event record. v3 serves it under `geometry`
+ * (singular — verified against the live API + v3 docs 2026-10-11); the
+ * legacy plural `geometries` key is accepted defensively so older fixtures
+ * and cached payloads keep working.
+ */
+export function eonetGeometries(event: {
+  geometry?: unknown;
+  geometries?: unknown;
+}): { date?: string; coordinates?: unknown }[] {
+  if (Array.isArray(event.geometry)) return event.geometry;
+  if (Array.isArray(event.geometries)) return event.geometries;
+  return [];
 }
 
 export function normalizeEonet(data: unknown, limit: number, minSeverity?: string | null) {
@@ -43,7 +59,7 @@ export function normalizeEonet(data: unknown, limit: number, minSeverity?: strin
     const categories = Array.isArray(event.categories) ? event.categories : [];
     const catTitle =
       categories.length > 0 && categories[0]?.title ? (categories[0].title as string) : "Unknown";
-    const geometries = Array.isArray(event.geometries) ? event.geometries : [];
+    const geometries = eonetGeometries(event);
     if (geometries.length === 0) continue;
     const latestGeo = geometries[geometries.length - 1];
     const coords = latestGeo?.coordinates;

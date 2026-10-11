@@ -185,20 +185,17 @@ export const api = {
     );
   },
 
-  // Stats
+  // Stats (T2.7: real provider-derived overview; per-source statuses in `sources`)
   getStats: (opts?: RequestOptions) => fetchApi<import('@/types').GlobalStats>('/stats', opts),
 
-  getHistorical: (metric: string, period?: string, aggregation?: string, opts?: RequestOptions) => {
+  getHistorical: (metric: string, period?: string, opts?: RequestOptions) => {
     const params = new URLSearchParams();
     params.set('metric', metric);
     if (period) params.set('period', period);
-    if (aggregation) params.set('aggregation', aggregation);
-    return fetchApi<{
-      metric: string;
-      period: string;
-      aggregation: string;
-      values: Array<{ date: string; [key: string]: number | string }>;
-    }>(`/stats/historical?${params.toString()}`, opts);
+    return fetchApi<import('@/types').HistoricalStats>(
+      `/stats/historical?${params.toString()}`,
+      opts,
+    );
   },
 
   // Health
