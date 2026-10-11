@@ -74,3 +74,36 @@ describe('EarthRenderer sun direction plumbing (T2.4)', () => {
     expect(webgpuSun).toBe(JSON.stringify(SUN));
   });
 });
+
+describe('EarthRenderer default mode (GLOBE-1)', () => {
+  afterEach(() => {
+    cleanup();
+    window.history.replaceState(null, '', '/');
+  });
+
+  it('mounts no fullscreen container when the URL does not opt into a 3D path', () => {
+    window.history.replaceState(null, '', '/');
+    const onActiveRenderer = vi.fn();
+    const { container } = render(
+      <EarthRenderer
+        activeLayer={null}
+        dataPoints={[]}
+        onMarkerClick={() => {}}
+        onMarkerHover={() => {}}
+        sunDirection={SUN}
+        onActiveRenderer={onActiveRenderer}
+      />,
+    );
+
+    // The dotted Earth is hosted by GlobeStage, so this fixed container
+    // must stay out of the way instead of drawing a blank/black layer.
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByTestId('globe-scene')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('webgpu-earth')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('status', { name: 'Initializing Earth renderer' }),
+    ).not.toBeInTheDocument();
+    // Diagnostics belong to the stage-mounted globe in this mode.
+    expect(onActiveRenderer).not.toHaveBeenCalled();
+  });
+});

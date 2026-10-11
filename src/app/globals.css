@@ -400,6 +400,28 @@
     grid-template-areas: 'rail stage';
   }
 
+  /* Dotted Earth (GLOBE-1): canvas basemap fills the stage cell exactly.
+     The workspace grid is pointer-events:none so chrome stays out of the
+     globe's way; this subtree re-enables interaction for drag-rotate and
+     wheel-zoom only. Sizing lives here — the component sets no inline
+     styles, so CSP style-src 'self' gains nothing new to report. */
+  .dotted-earth {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: auto;
+    touch-action: none;
+  }
+  .dotted-earth canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: grab;
+  }
+  .dotted-earth canvas:active {
+    cursor: grabbing;
+  }
+
   /* Globe stage framing: drafting-notation corner ticks + a whisper
      locator. Subordinate by design — the globe is the dominant object.
      pointer-events-none always — it never intercepts globe drag. */

@@ -1,25 +1,35 @@
 /**
- * Earth renderer selector — progressive enhancement boundary.
+ * Earth renderer selector — progressive enhancement boundary (GLOBE-1).
  *
- *   probe WebGPU support
- *        ├─ available → <WebGPUEarth/> (WebGPU + TSL day/night Earth)
- *        └─ missing/fails → <GlobeScene/> (existing WebGL/R3F globe)
+ *   default                 → <DottedEarth/> mounted in the GlobeStage cell
+ *   ?renderer=webgpu        → <WebGPUEarth/> (WebGPU + TSL day/night Earth)
+ *   ?renderer=webgl         → <GlobeScene/>  (existing WebGL/R3F globe)
  *
- * Both branches expose the identical Sentinel contract (markers, hover,
- * click, fly-to, rotation), so the rest of the app never knows which
- * renderer is active. The active renderer is reported via
- * `onActiveRenderer` for the Settings → Diagnostics panel.
+ * The dotted canvas Earth is the default because it is the only path that
+ * can guarantee a visible geographic base layer: no GPU probe, no 2.1 MB
+ * lazy chunk, no adapter handshake, no texture downloads. It is mounted by
+ * `GlobeStage` (inside the stage grid cell, not here), so when the default
+ * mode is active this component renders nothing — the fullscreen
+ * container below belongs to the two opt-in 3D paths only.
  *
- * The app is never left with a blank viewport: the WebGL globe is always
- * available as a fallback, and a loading veil covers only the brief
- * probe/initialization window.
+ * All three branches expose the identical Sentinel contract (markers,
+ * hover, click, fly-to, rotation), so the rest of the app never knows
+ * which renderer is active. The active renderer is reported via
+ * `onActiveRenderer` for the Settings → Diagnostics panel; in the default
+ * mode that report comes from GlobeStage/DottedEarth.
+ *
+ * The app is never left with a blank viewport: the stage-mounted base
+ * globe needs no GPU at all, and the WebGL globe remains the fallback for
+ * a failed/hung WebGPU init.
  */
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import GlobeScene from './GlobeScene';
 import WebGpuErrorBoundary from './WebGpuErrorBoundary';
 import type { EarthStatus } from './earthConfig';
-import { probeWebGpuSupport, getForcedRenderer, decideRendererMode } from '@/lib/webgpu';
+import { getForcedRenderer } from '@/lib/webgpu';
+import { useGlobeMode } from './rendererMode';
+import type { GlobeMode } from './rendererMode';
 
 // Lazy + client-only: `three/webgpu` + TSL nodes ship in a separate chunk
 // that only downloads on WebGPU-capable browsers — and `ssr: false`
@@ -27,11 +37,10 @@ import { probeWebGpuSupport, getForcedRenderer, decideRendererMode } from '@/lib
 // The WebGL fallback never pays for it, and Suspense keeps the viewport
 // covered while it loads.
 const WebGPUEarth = dynamic(() => import('./WebGPUEarth'), { ssr: false });
-import type { RendererKind } from '@/lib/webgpu';
 import type { DataPoint, LayerId } from '@/types';
 
 export interface RendererInfo {
-  active: RendererKind | 'loading';
+  active: GlobeMode | 'loading';
   /** 'ok' when the active renderer is ready, otherwise a short reason. */
   detail: string;
   textures: { loaded: number; total: number };
@@ -78,32 +87,29 @@ export default function EarthRenderer({
   // Session 5 A/B test: `?renderer=webgl` / `?renderer=webgpu` resolves
   // synchronously at mount (no probe, no cascading render).
   // Test B: https://kimi-earth-sentinel-3d.vercel.app/?renderer=webgl
-  const [mode, setMode] = useState<'pending' | RendererKind>(() => getForcedRenderer() ?? 'pending');
+  // Default (no override): 'pending' for the SSR/hydration pass, then the
+  // stage-mounted dotted Earth (GLOBE-1). Reading the URL via
+  // useSyncExternalStore keeps SSR markup deterministic and avoids the
+  // async GPU probe entirely — geography shows on the first client frame
+  // instead of a black veil.
+  const mode = useGlobeMode();
+  // Runtime degradation of the WebGPU branch (chunk failure, GPU error,
+  // hung init → watchdog). Layered on top of the URL-resolved mode so the
+  // existing graceful WebGPU→WebGL fallback is preserved unchanged.
+  const [webgpuDegraded, setWebgpuDegraded] = useState(false);
+  const activeMode: 'pending' | GlobeMode =
+    webgpuDegraded && mode === 'webgpu' ? 'webgl' : mode;
   const [webgpuStatus, setWebgpuStatus] = useState<EarthStatus | null>(null);
   const callbackRef = useRef(onActiveRenderer);
   useEffect(() => {
     callbackRef.current = onActiveRenderer;
   });
 
-  useEffect(() => {
-    // A forced `?renderer=` value is already the mounted mode — only probe
-    // when the URL leaves the choice to capability detection.
-    if (getForcedRenderer()) return;
-    let cancelled = false;
-    probeWebGpuSupport().then((support) => {
-      if (cancelled) return;
-      setMode(decideRendererMode(null, support));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const handleWebgpuStatus = useCallback((status: EarthStatus) => {
     setWebgpuStatus(status);
     if (status.phase === 'error') {
       // Degrade gracefully — never a blank page.
-      setMode('webgl');
+      setWebgpuDegraded(true);
     }
   }, []);
 
@@ -115,14 +121,14 @@ export default function EarthRenderer({
       textures: { loaded: 0, total: 0 },
       error: 'WebGPU chunk failed to load',
     });
-    setMode('webgl');
+    setWebgpuDegraded(true);
   }, []);
 
   // Watchdog: if WebGPU hasn't reported ready within the budget (hung
   // adapter init, stalled texture fetch — neither rejects nor emits an
   // error), fall back to WebGL instead of holding a black canvas forever.
   useEffect(() => {
-    if (mode !== 'webgpu') return;
+    if (activeMode !== 'webgpu') return;
     if (webgpuStatus?.phase === 'ready' || webgpuStatus?.phase === 'error') return;
     const timer = setTimeout(() => {
       setWebgpuStatus((prev) => {
@@ -134,19 +140,22 @@ export default function EarthRenderer({
           error: 'WebGPU initialization timed out',
         };
       });
-      setMode((prev) => (prev === 'webgpu' ? 'webgl' : prev));
+      setWebgpuDegraded(true);
     }, 30_000);
     return () => clearTimeout(timer);
-  }, [mode, webgpuStatus?.phase]);
+  }, [activeMode, webgpuStatus?.phase]);
 
   useEffect(() => {
+    // The default dotted branch reports its own geography status from
+    // GlobeStage/DottedEarth — never overwrite it with a generic message.
+    if (activeMode === 'dotted') return;
     const forced = getForcedRenderer();
     const source: RendererInfo['source'] = forced ? 'forced' : 'automatic';
     const forcedSuffix = forced ? ` (forced ?renderer=${forced})` : '';
     const info: RendererInfo =
-      mode === 'pending'
-        ? { active: 'loading', detail: 'probing WebGPU support…', textures: { loaded: 0, total: 0 }, source }
-        : mode === 'webgpu'
+      activeMode === 'pending'
+        ? { active: 'loading', detail: 'starting globe…', textures: { loaded: 0, total: 0 }, source }
+        : activeMode === 'webgpu'
           ? {
               active: 'webgpu',
               detail:
@@ -161,16 +170,26 @@ export default function EarthRenderer({
             }
           : {
               active: 'webgl',
-              detail: forced === 'webgl' ? 'forced WebGL (?renderer=webgl)' : 'fallback active',
+              detail: webgpuDegraded
+                ? 'WebGPU unavailable — WebGL fallback'
+                : forced === 'webgl'
+                  ? 'forced WebGL (?renderer=webgl)'
+                  : 'fallback active',
               textures: { loaded: 0, total: 0 },
               source,
             };
     callbackRef.current?.(info);
-  }, [mode, webgpuStatus]);
+  }, [activeMode, webgpuStatus, webgpuDegraded]);
+
+  // Default mode (GLOBE-1): the base globe is mounted by GlobeStage inside
+  // the stage grid cell, so this fullscreen container stays unmounted —
+  // the dotted canvas is the only Earth on screen, and it never sits
+  // behind a blank renderer.
+  if (activeMode === 'dotted') return null;
 
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1 }}>
-      {mode === 'webgpu' ? (
+      {activeMode === 'webgpu' ? (
         <Suspense
           fallback={
             <div
@@ -205,7 +224,7 @@ export default function EarthRenderer({
             />
           </WebGpuErrorBoundary>
         </Suspense>
-      ) : mode === 'webgl' ? (
+      ) : activeMode === 'webgl' ? (
         <GlobeScene
           activeLayer={activeLayer}
           dataPoints={dataPoints}

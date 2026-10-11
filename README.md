@@ -36,7 +36,7 @@ Kimi-Earth-Sentinel-3D/
 
 ## Key Features
 
-- Interactive 3D Earth (Three.js WebGPU + TSL day/night Earth, WebGL/React Three Fiber fallback): rotate, zoom, auto-rotation, night lights, clouds, Fresnel atmosphere, starfield
+- Interactive Earth: a lightweight dotted globe by default (rotate, zoom, auto-rotation, marker hover/click, search fly-to), with an opt-in Three.js WebGPU + TSL day/night Earth and a WebGL/React Three Fiber fallback (`?renderer=webgpu` / `?renderer=webgl`)
 - Environmental layers: temperature, precipitation, cloud cover, wind, earthquakes, natural disasters, air quality, wildfires
 - Live data from USGS, NASA EONET, NASA FIRMS, Open-Meteo, AirNow (keys required for AirNow/FIRMS)
 - Simulated fallback data that is always labelled `SIMULATED` in the UI
@@ -327,23 +327,29 @@ Backend → Vercel (root Next.js app):
 App structure (single deployment):
 
 - The UI runs from `src/` in this same app: `src/app/page.tsx` (server wrapper) → `src/components/app/SentinelApp.tsx` (`"use client"`).
-- Globe code is unchanged in behavior: `EarthRenderer` probes WebGPU and loads `WebGPUEarth` (`three/webgpu` + TSL, `ssr: false` code-split chunk) with the WebGL `Globe`/`GlobeScene` fallback. Textures live in `public/textures/`.
+- Globe code: `GlobeStage` mounts the default dotted-canvas Earth inside the stage cell (`src/components/globe/dotted/`). The fullscreen `EarthRenderer` path only mounts for `?renderer=webgpu` / `?renderer=webgl` — `WebGPUEarth` (`three/webgpu` + TSL, `ssr: false` code-split chunk) with the WebGL `Globe`/`GlobeScene` fallback. 3D textures live in `public/textures/`; the dotted globe's geography is `public/geo/land-110m.json`.
 
 CORS:
 
 - None. Same-origin `/api/*` requests need no cross-origin configuration.
 
-## Earth Renderer (WebGPU + TSL)
+## Earth Renderer
 
-The Earth surface is rendered by `src/components/globe/WebGPUEarth.tsx`, an imperative React component built on the official Three.js `webgpu_tsl_earth` example (Three.js 0.185.x, `three/webgpu` + `three/tsl`):
+By default the surface is the dotted canvas Earth, `src/components/globe/dotted/DottedEarth.tsx`, mounted by `GlobeStage` inside the stage cell. It needs no GPU probe, no WebGL/WebGPU context and no textures: the ocean disc and graticule draw on the first frame, and the land dots + coastline (from the bundled `public/geo/land-110m.json`, Natural Earth, public domain) appear as soon as that local asset resolves. It is never gated on a data layer — markers simply add on top when they arrive. Rotate by dragging, zoom with the wheel, hover/click markers, and use search to fly the view.
+
+Pass `?renderer=webgpu` or `?renderer=webgl` to use one of the full 3D renderers instead.
+
+### WebGPU + TSL (opt-in)
+
+With `?renderer=webgpu`, the Earth surface is rendered by `src/components/globe/WebGPUEarth.tsx`, an imperative React component built on the official Three.js `webgpu_tsl_earth` example (Three.js 0.185.x, `three/webgpu` + `three/tsl`):
 
 - `MeshStandardNodeMaterial` with a TSL `colorNode` blending the day texture and night city-lights by a sun-oriented smoothstep transition (`dot(normalWorld, sunDirection)`), classic `emissiveMap` night glow, water-texture roughness, and topology bump.
 - TSL Fresnel atmosphere shell (`BackSide`, additive), drifting cloud layer, deterministic starfield, directional sun (configurable `sunDirection` prop, reserved for future UTC solar wiring).
-- `EarthRenderer.tsx` probes WebGPU support and lazy-loads the WebGPU chunk only on capable browsers; otherwise (or on init failure) the existing WebGL/React Three Fiber globe (`Globe`/`GlobeScene`) takes over with the identical marker/hover/click/fly-to/rotation contract. The app never renders a blank viewport.
+- `EarthRenderer.tsx` mounts the WebGPU chunk for that override; on a chunk-load failure, a render error, or a 30 s init timeout it degrades to the WebGL `Globe`/`GlobeScene` with the identical marker/hover/click/fly-to/rotation contract. The app never renders a blank viewport.
 - Markers keep the canonical `latLonToVector3Into` projection (same radius `5`, altitude factor `1.012`), severity colors, instanced rendering, rAF-throttled raycast picking, and quaternion fly-to — verified against known continents (no lat/lon reversal).
 - Earth textures are the `public/textures/` assets (NASA Visible Earth Blue Marble family, as credited in Settings → About).
 
-Validate the real renderer manually in a Chromium browser with WebGPU (day/night transition, night lights, clouds, atmosphere, rotation, marker hover/click, search fly-to), plus once with WebGPU disabled (`--disable-webgpu` or a non-supporting browser) to confirm the fallback.
+Validate the real renderer manually in a Chromium browser with WebGPU (day/night transition, night lights, clouds, atmosphere, rotation, marker hover/click, search fly-to), plus once with WebGPU disabled (`--disable-webgpu` or a non-supporting browser) to confirm the fallback — and once with no `?renderer=` to confirm the default dotted globe.
 
 ## Current Limitations
 

@@ -19,6 +19,20 @@ interface StatusDockProps {
   rendererInfo?: RendererInfo | null;
 }
 
+/** Display names for every selectable renderer (incl. the default). */
+const RENDERER_NAMES: Record<string, string> = {
+  webgpu: 'WebGPU',
+  webgl: 'WebGL',
+  dotted: 'Dotted Earth',
+};
+
+/** Status dot colour per renderer — healthy renderers read green. */
+const RENDERER_DOT_COLORS: Record<string, string> = {
+  webgpu: 'var(--status-live)',
+  webgl: 'var(--status-simulated)',
+  dotted: 'var(--status-live)',
+};
+
 /**
  * System dock: one intentional baseline — cursor position · layer
  * context · provenance (wide) · UTC · renderer state. In-flow footer
@@ -44,18 +58,18 @@ export default function StatusDock({ coordinates, activeLayer, dataCount, dataSt
   const chipLabel = provenanceChipLabel(dataStatus, cacheHit);
   const statusColor = `var(--status-${statusKind === 'unknown' ? 'neutral' : statusKind})`;
   // Session 6: badge reads e.g. "WebGL · forced" vs "WebGPU · automatic"
-  // so a `?renderer=` override is impossible to misunderstand.
+  // so a `?renderer=` override is impossible to misunderstand. GLOBE-1
+  // adds the default dotted canvas Earth to the same vocabulary.
   const sourceSuffix = rendererInfo?.source === 'forced' ? ' · forced' : ' · automatic';
+  const rendererName = rendererInfo ? RENDERER_NAMES[rendererInfo.active] : undefined;
   const rendererShort =
-    rendererInfo?.active === 'loading' || !rendererInfo
+    !rendererInfo || rendererInfo.active === 'loading' || !rendererName
       ? 'Starting…'
-      : `${rendererInfo.active === 'webgpu' ? 'WebGPU' : 'WebGL'}${sourceSuffix}`;
+      : `${rendererName}${sourceSuffix}`;
   const rendererLabel =
-    rendererInfo?.active === 'webgpu'
-      ? `WebGPU${sourceSuffix} · ${rendererInfo.detail}`
-      : rendererInfo?.active === 'webgl'
-        ? `WebGL${sourceSuffix} · ${rendererInfo.detail}`
-        : 'Renderer…';
+    rendererInfo && rendererName
+      ? `${rendererName}${sourceSuffix} · ${rendererInfo.detail}`
+      : 'Renderer…';
 
   return (
     <footer
@@ -122,7 +136,7 @@ export default function StatusDock({ coordinates, activeLayer, dataCount, dataSt
           <span className="flex shrink-0 cursor-default items-center gap-1.5" role="status" aria-label={`Renderer: ${rendererLabel}`}>
             <Cpu className="h-3.5 w-3.5 text-white/40" aria-hidden />
             <span className="sentinel-micro hidden sm:inline">{rendererShort}</span>
-            <span className={cn('h-1.5 w-1.5 rounded-full', rendererInfo?.active === 'webgpu' && 'sentinel-live-dot')} style={{ background: rendererInfo?.active === 'webgpu' ? 'var(--status-live)' : rendererInfo?.active === 'webgl' ? 'var(--status-simulated)' : 'var(--status-neutral)' }} aria-hidden />
+            <span className={cn('h-1.5 w-1.5 rounded-full', rendererInfo?.active === 'webgpu' && 'sentinel-live-dot')} style={{ background: rendererInfo ? (RENDERER_DOT_COLORS[rendererInfo.active] ?? 'var(--status-neutral)') : 'var(--status-neutral)' }} aria-hidden />
           </span>
         </TooltipTrigger>
         <TooltipContent side="top" className="border-white/10 bg-sentinel-elev text-xs text-white">

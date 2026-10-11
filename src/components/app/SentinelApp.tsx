@@ -81,7 +81,7 @@ function SentinelApp() {
   const [flyTo, setFlyTo] = useState<{ lat: number; lon: number; key: number } | null>(null);
   const [rendererInfo, setRendererInfo] = useState<RendererInfo>({
     active: 'loading',
-    detail: 'probing WebGPU support…',
+    detail: 'starting globe…',
     textures: { loaded: 0, total: 0 },
     source: 'automatic',
   });
@@ -404,7 +404,16 @@ function SentinelApp() {
           />
         }
         rail={<LayerRail activeLayer={activeLayer} onLayerToggle={handleLayerToggle} shortcutLayers={SHORTCUT_LAYERS} />}
-        stage={<GlobeStage />}
+        stage={
+          <GlobeStage
+            dataPoints={allDataPoints}
+            onMarkerClick={handleMarkerClick}
+            onMarkerHover={handleMarkerHover}
+            isRotating={isRotating}
+            flyTo={flyTo}
+            onActiveRenderer={setRendererInfo}
+          />
+        }
         panel={
           activeLayer || selectedEvent ? (
           <DataPanel

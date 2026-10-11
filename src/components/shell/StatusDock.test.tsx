@@ -49,3 +49,56 @@ describe('StatusDock UTC clock hydration', () => {
     expect(screen.getByLabelText('Current UTC time')).toHaveAttribute('aria-live', 'off');
   });
 });
+
+describe('StatusDock renderer badge (GLOBE-1)', () => {
+  const info = (
+    active: 'dotted' | 'webgl' | 'webgpu' | 'loading',
+    source: 'automatic' | 'forced' = 'automatic',
+  ) => ({
+    active,
+    detail: active === 'dotted' ? 'ready · 1076 land dots' : 'starting globe…',
+    textures: { loaded: 0, total: 0 },
+    source,
+  });
+
+  it('names the default dotted Earth renderer instead of mislabelling it', () => {
+    render(
+      <StatusDock
+        coordinates={null}
+        activeLayer={null}
+        dataCount={0}
+        rendererInfo={info('dotted')}
+      />,
+    );
+    const badge = screen.getByRole('status', {
+      name: 'Renderer: Dotted Earth · automatic · ready · 1076 land dots',
+    });
+    expect(badge).toHaveTextContent('Dotted Earth · automatic');
+  });
+
+  it('still distinguishes a forced 3D override', () => {
+    render(
+      <StatusDock
+        coordinates={null}
+        activeLayer={null}
+        dataCount={0}
+        rendererInfo={info('webgl', 'forced')}
+      />,
+    );
+    expect(screen.getByRole('status', { name: /WebGL · forced/ })).toBeInTheDocument();
+  });
+
+  it('reads Starting… while the renderer is unresolved', () => {
+    render(
+      <StatusDock
+        coordinates={null}
+        activeLayer={null}
+        dataCount={0}
+        rendererInfo={info('loading')}
+      />,
+    );
+    expect(screen.getByRole('status', { name: /Renderer: Renderer/ })).toHaveTextContent(
+      'Starting…',
+    );
+  });
+});

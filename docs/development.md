@@ -59,10 +59,18 @@ npm run build           # next build
 
 ## Earth renderer
 
-- `components/globe/WebGPUEarth.tsx` — WebGPU + TSL Earth (Three.js 0.185.x: `three/webgpu`, `three/tsl`, OrbitControls from `three/addons`). Imperative engine in a mount-once effect; props flow through refs so the frame loop never sets React state. Full cleanup on unmount (animation loop, controls, listeners, geometries/materials/textures, renderer).
-- `components/globe/EarthRenderer.tsx` — probes `lib/webgpu.ts`, lazy-loads the WebGPU chunk on capable browsers, falls back to `Globe`/`GlobeScene` (WebGL) otherwise or on init error.
-- `lib/webgpu.ts` — cached `navigator.gpu.requestAdapter()` probe; unit-tested with mocks (never requires a real GPU in CI).
+- `components/globe/dotted/DottedEarth.tsx` — **default renderer (GLOBE-1)**: a 2D-canvas orthographic Earth mounted inside the stage cell by `components/shell/GlobeStage.tsx`. No GPU probe, no WebGL/WebGPU context, no textures: the ocean disc + graticule paint on the first frame, and the land dots + coastline appear the moment the *local* geography asset resolves. Always visible — deliberately **not** gated on `activeLayer`, on layer loading, or on whether the layer returned points (an empty data layer is not an empty Earth). Drag, wheel zoom, hover/click picking and fly-to live here; markers reuse `filterValidPoints`, so rendered marker N is always data point N.
+- `components/globe/rendererMode.ts` — the single decision point: `resolveGlobeMode()` returns the `?renderer=` override or `DEFAULT_GLOBE_MODE = 'dotted'`. Components read it through `useSyncExternalStore` (`useGlobeMode()`), so SSR reports the neutral `'pending'` (loading veil, pinned by `page.test.tsx`) while the client resolves synchronously — no capability probe, no cascading `setState`, no hydration mismatch.
+- `components/globe/EarthRenderer.tsx` — mounts the fullscreen fixed container **only** for `?renderer=webgpu` / `?renderer=webgl`; in the default mode it returns `null` so the stage globe is the only Earth on screen (it can no longer paint a black layer over it). The existing WebGPU → WebGL graceful fallback is preserved and layered on top: chunk-load failure, `WebGPUEarth` error, and a 30 s init watchdog all degrade to WebGL instead of holding a blank canvas.
+- `components/globe/WebGPUEarth.tsx` — WebGPU + TSL Earth (Three.js 0.185.x: `three/webgpu`, `three/tsl`, OrbitControls from `three/addons`). Imperative engine in a mount-once effect; props flow through refs so the frame loop never sets React state. Full cleanup on unmount. Opt-in only.
+- `lib/webgpu.ts` — `getForcedRenderer()` reads the `?renderer=` override; `probeWebGpuSupport()` / `decideRendererMode()` stay unit-tested but are no longer on the default path.
 - Manual GPU validation cannot run in Vitest/jsdom: verify in a real browser (see root README → Earth Renderer).
+
+### Base geography asset (GLOBE-1)
+
+- `public/geo/land-110m.json` — Natural Earth `ne_110m_land` (127 polygons), stripped to `{ type, features[].geometry }` (126 KB). Same-origin static asset, fetched **once per session** by `dotted/landGeo.ts`: concurrent callers share one in-flight promise, a settled success is cached, a failure is never cached (so a transient error may be retried), and a non-FeatureCollection payload rejects instead of poisoning the projection. Public domain — source, processing notes and terms in `public/geo/NOTICE.md`.
+- `dotted/dotField.ts` — the land dot field is built **once** after the asset resolves (Fibonacci sphere + `geoContains`), never inside the frame loop; `DOT_FIELD_CANDIDATES = 3600` yields roughly 1000 land dots.
+- `dotted/globeProjection.ts` — hand-rolled rotate + orthographic projection with a depth test, asserted for parity against a real `geoOrthographic()` in `globeProjection.test.ts`. The depth test is required because `projection(point)` bypasses d3's clip pipeline, which would mirror far-side land into the disc.
 
 ## Server shell (T3.2)
 
