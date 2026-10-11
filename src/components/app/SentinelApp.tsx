@@ -26,7 +26,13 @@ import { useSunDirection } from '@/hooks/useSunDirection';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { api } from '@/services/api';
 import { isValidCoordinate } from '@/lib/geo';
+import {
+  parseAppUrl,
+  serializeAppState,
+} from '@/lib/url-state';
+import type { AppView } from '@/lib/url-state';
 import type { DataPoint, LayerId, EventDetail } from '@/types';
+import type { SeverityFilterValue } from '@/components/intelligence/SeverityFilter';
 // (Global styles live in src/app/globals.css — App Router allows global CSS
 // imports only from the root layout, so the old './App.css' import is gone;
 // its contents were merged into globals.css verbatim.)
@@ -60,6 +66,18 @@ function SentinelApp() {
   const [isRotating, setIsRotating] = useState(true);
   const [hintDismissed, setHintDismissed] = useState(false);
   const [allDataPoints, setAllDataPoints] = useState<DataPoint[]>([]);
+  // T3.3 URL-driven state: search text, severity display filter ('all' =
+  // unfiltered default), and globe/list view ('globe' default; `list` shares
+  // the same panel list — no dedicated toggle control yet, see docs).
+  // Initial values are deterministic SSR-safe constants; the live URL is
+  // applied once after mount (see the restore effect below).
+  const [searchQuery, setSearchQuery] = useState('');
+  const [severityFilter, setSeverityFilter] = useState<SeverityFilterValue>('all');
+  const [view, setView] = useState<AppView>('globe');
+  // Validated event id awaiting resolvable layer data (mount + popstate set
+  // it; the data-ready effect consumes it). State (not a ref) so arrival of
+  // data reliably retriggers resolution.
+  const [pendingEventId, setPendingEventId] = useState<string | null>(null);
   const [flyTo, setFlyTo] = useState<{ lat: number; lon: number; key: number } | null>(null);
   const [rendererInfo, setRendererInfo] = useState<RendererInfo>({
     active: 'loading',
@@ -82,6 +100,17 @@ function SentinelApp() {
   const eventRequestId = useRef(0);
   const eventAbortRef = useRef<AbortController | null>(null);
   const flyToKey = useRef(0);
+  // T3.3 URL machinery (all client-only; SSR never touches window/history):
+  // - passthroughRef: unknown params (notably `renderer`) preserved verbatim.
+  // - syncArmedRef/lastDiscreteRef: the sync effect skips its very first run
+  //   (mount commit still holds pre-restore defaults — writing then would
+  //   wipe the URL it is about to restore). Afterwards discrete navigations
+  //   (layer/event/sev/view) push Back-restorable entries while query typing
+  //   only replaces.
+  const passthroughRef = useRef<[string, string][]>([]);
+  const lastDiscreteRef = useRef('');
+  const syncArmedRef = useRef(false);
+  const restoredRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -101,15 +130,20 @@ function SentinelApp() {
     }
   }, [layerData]);
 
-  // Handle layer toggle
+  // Handle layer toggle. Any layer change clears the event selection:
+  // detail belonging to another layer must never linger (T3.3 conflict
+  // rule). Points stay until fresh data arrives (existing fetch behavior).
   const handleLayerToggle = useCallback(
     (layerId: LayerId) => {
       const next = activeLayer === layerId ? null : layerId;
       setActiveLayer(next);
+      eventRequestId.current += 1;
+      eventAbortRef.current?.abort();
+      setSelectedEvent(null);
+      setEventDetail(null);
+      setEventDetailLoading(false);
       if (next === null) {
         setAllDataPoints([]);
-        setSelectedEvent(null);
-        setEventDetail(null);
       }
     },
     [activeLayer],
@@ -197,6 +231,109 @@ function SentinelApp() {
     setEventDetailLoading(false);
   }, []);
 
+  // ---- T3.3 URL-driven state (client-only; SSR output stays deterministic) ----
+
+  // Apply one parsed URL to state. Runs once at mount and on every popstate
+  // (browser Back/Forward). Invalid values never reach state (parseAppUrl
+  // drops them); a validated event id becomes pending until loaded layer
+  // data can resolve it to a real point — or it is dropped, never fabricated.
+  const applyUrlState = useCallback((search: string) => {
+    const parsed = parseAppUrl(search);
+    passthroughRef.current = parsed.passthrough;
+    setActiveLayer(parsed.state.layer);
+    setSearchQuery(parsed.state.q);
+    setSeverityFilter(parsed.state.sev);
+    setView(parsed.state.view);
+    eventRequestId.current += 1;
+    eventAbortRef.current?.abort();
+    setSelectedEvent(null);
+    setEventDetail(null);
+    setEventDetailLoading(false);
+    setPendingEventId(parsed.state.event);
+    // Canonicalize invalid leftovers without history spam (mount junk URLs
+    // and hand-edited addresses collapse to the valid subset in place).
+    const canonical = serializeAppState(parsed.state, parsed.passthrough);
+    if (canonical !== search) {
+      window.history.replaceState(null, '', canonical || window.location.pathname);
+    }
+  }, []);
+
+  // Mount-only restore: the live URL is external state, so it is read here —
+  // never during render — keeping SSR markup deterministic (same exemption
+  // as StatusDock's clock and the T2.4 sun hook).
+  useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+    applyUrlState(window.location.search);
+  }, [applyUrlState]);
+
+  // Resolve a pending event id once its layer's data can answer it. An
+  // explicit user selection always wins over a pending restore. Resolution
+  // reads the payload for THIS layer only: right after a layer switch the
+  // previous layer's payload is still present while the new fetch is in
+  // flight (layer_id mismatch), and that must wait — never resolve-or-drop
+  // against stale points.
+  useEffect(() => {
+    if (!pendingEventId || selectedEvent) {
+      return;
+    }
+    if (!activeLayer || layerLoading) return;
+    const fresh = layerData && layerData.layer_id === activeLayer ? layerData : null;
+    if (!fresh && !layerError) return;
+    const point = (fresh?.points ?? []).find((p) => p.id === pendingEventId) ?? null;
+    setPendingEventId(null);
+    if (point) {
+      void handleMarkerClick(point);
+    } else {
+      // Unresolvable (stale id, wrong layer, unavailable data): drop it from
+      // the URL with a replace so history stays honest — never fabricate.
+      const canonical = serializeAppState(
+        { layer: activeLayer, event: null, q: searchQuery, sev: severityFilter, view },
+        passthroughRef.current,
+      );
+      window.history.replaceState(null, '', canonical || window.location.pathname);
+    }
+  }, [pendingEventId, selectedEvent, activeLayer, layerData, layerError, layerLoading, handleMarkerClick, searchQuery, severityFilter, view]);
+
+  // Synchronize state back to the URL (shareable, restorable). Writes only
+  // when the canonical form differs from the live URL — after popstate the
+  // state was just derived from the URL, so this skips and cannot loop.
+  // Discrete navigations push (Back-restorable) while query typing replaces.
+  useEffect(() => {
+    const eventId = selectedEvent?.id ?? pendingEventId;
+    const discrete = `${activeLayer ?? ''}|${eventId ?? ''}|${severityFilter}|${view}`;
+    if (!syncArmedRef.current) {
+      syncArmedRef.current = true;
+      lastDiscreteRef.current = discrete;
+      return;
+    }
+    const canonical = serializeAppState(
+      { layer: activeLayer, event: eventId, q: searchQuery, sev: severityFilter, view },
+      passthroughRef.current,
+    );
+    const current = window.location.search;
+    if (canonical === current) {
+      lastDiscreteRef.current = discrete;
+      return;
+    }
+    const push = discrete !== lastDiscreteRef.current;
+    lastDiscreteRef.current = discrete;
+    const target = canonical || window.location.pathname;
+    if (push) window.history.pushState(null, '', target);
+    else window.history.replaceState(null, '', target);
+  }, [activeLayer, selectedEvent, pendingEventId, searchQuery, severityFilter, view]);
+
+  // Browser Back/Forward: re-apply the URL that the browser navigated to.
+  // pushState/replaceState above never fire popstate, so this only runs for
+  // genuine history traversals — no cycles with the sync effect.
+  useEffect(() => {
+    const onPopState = () => {
+      applyUrlState(window.location.search);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [applyUrlState]);
+
   // Keyboard shortcuts (ignored while typing in inputs)
   useKeyboardShortcuts({
     shortcutLayers: SHORTCUT_LAYERS,
@@ -254,6 +391,8 @@ function SentinelApp() {
             onSettingsClick={() => setIsSettingsOpen(true)}
             dataStatus={dataStatus}
             activeLayerName={activeLayerMeta?.name ?? null}
+            searchQuery={searchQuery}
+            onSearchQueryChange={setSearchQuery}
           />
         }
         rail={<LayerRail activeLayer={activeLayer} onLayerToggle={handleLayerToggle} shortcutLayers={SHORTCUT_LAYERS} />}
@@ -274,6 +413,8 @@ function SentinelApp() {
             onBackToLayer={handleBackToLayer}
             onEventSelect={handleMarkerClick}
             onRefresh={refetch}
+            severityFilter={severityFilter}
+            onSeverityChange={setSeverityFilter}
           />
           ) : null
         }

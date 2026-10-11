@@ -74,6 +74,8 @@ const baseProps = {
   onBackToLayer: vi.fn(),
   onEventSelect: vi.fn(),
   onRefresh: vi.fn(),
+  severityFilter: 'all' as const,
+  onSeverityChange: vi.fn(),
 };
 
 describe('DataPanel event detail', () => {

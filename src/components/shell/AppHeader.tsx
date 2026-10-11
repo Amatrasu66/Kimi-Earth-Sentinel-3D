@@ -15,6 +15,9 @@ interface AppHeaderProps {
   /** Compact provenance badge — the header owns provenance at ≥sm widths. */
   dataStatus?: DataStatus | null;
   activeLayerName?: string | null;
+  /** Controlled search text (T3.3 URL state) + change reports. */
+  searchQuery: string;
+  onSearchQueryChange: (q: string) => void;
 }
 
 /**
@@ -22,7 +25,7 @@ interface AppHeaderProps {
  * brand+layer | command search | system state. In-flow header row owned
  * by AppShell; translucent so the globe reads through at the top edge.
  */
-export default function AppHeader({ onSearchResultClick, onSettingsClick, dataStatus = null, activeLayerName = null }: AppHeaderProps) {
+export default function AppHeader({ onSearchResultClick, onSettingsClick, dataStatus = null, activeLayerName = null, searchQuery, onSearchQueryChange }: AppHeaderProps) {
   const statusKind = dataStatus?.status ?? 'unknown';
   const statusColor = `var(--status-${statusKind === 'unknown' ? 'neutral' : statusKind})`;
   const showStatus = dataStatus !== null && dataStatus !== undefined;
@@ -54,7 +57,7 @@ export default function AppHeader({ onSearchResultClick, onSettingsClick, dataSt
 
       {/* CENTER — command search, integrated not floating */}
       <div className="flex min-w-0 justify-center">
-        <CommandSearch onResultClick={onSearchResultClick} className="mx-0 w-full min-w-0 max-w-[420px]" />
+        <CommandSearch onResultClick={onSearchResultClick} className="mx-0 w-full min-w-0 max-w-[420px]" query={searchQuery} onQueryChange={onSearchQueryChange} />
       </div>
 
       {/* RIGHT — system state / controls, right-aligned to the same baseline */}

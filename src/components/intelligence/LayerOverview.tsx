@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import MetricRow from '@/components/intelligence/MetricRow';
 import SeverityFilter from '@/components/intelligence/SeverityFilter';
+import type { SeverityFilterValue } from '@/components/intelligence/SeverityFilter';
 import SeverityDistribution from '@/components/intelligence/SeverityDistribution';
 import EventList from '@/components/intelligence/EventList';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -37,21 +38,25 @@ function LayerLegend({ layerMeta }: { layerMeta: LayerMetadata }) {
 
 /**
  * Layer identity → key metrics → severity distribution → filter → event list.
- * Flat section stack separated by hairlines; owns the severity filter.
+ * Flat section stack separated by hairlines. The severity filter is
+ * app-owned (T3.3 URL state) and arrives via props — this component holds
+ * no filter state of its own.
  */
 export default function LayerOverview({
   activeLayer,
   layerMeta,
   dataPoints,
   onEventSelect,
+  filter,
+  onFilterChange,
 }: {
   activeLayer: LayerId | null;
   layerMeta: LayerMetadata | null;
   dataPoints: DataPoint[];
   onEventSelect: (point: DataPoint) => void;
+  filter: SeverityFilterValue;
+  onFilterChange: (next: SeverityFilterValue) => void;
 }) {
-  const [filter, setFilter] = useState<string>('all');
-
   const filteredPoints = filter === 'all' ? dataPoints : dataPoints.filter((p) => p.severity === filter);
 
   const severityCounts = useMemo(
@@ -105,7 +110,7 @@ export default function LayerOverview({
 
       {dataPoints.length > 0 && (
         <div className="intel-section">
-          <SeverityFilter counts={severityCounts} total={dataPoints.length} value={filter} onChange={setFilter} />
+          <SeverityFilter counts={severityCounts} total={dataPoints.length} value={filter} onChange={onFilterChange} />
         </div>
       )}
 

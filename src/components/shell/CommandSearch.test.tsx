@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { useState } from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import CommandSearch from '@/components/shell/CommandSearch';
 
@@ -17,10 +18,17 @@ vi.mock('@/hooks/useSearch', () => ({
   }),
 }));
 
+// T3.3: the search box is controlled (query text lives in the app shell for
+// URL state). The harness below reproduces the shell wiring.
+function ControlledSearch({ onResultClick }: { onResultClick: (lat: number, lon: number) => void }) {
+  const [query, setQuery] = useState('');
+  return <CommandSearch onResultClick={onResultClick} query={query} onQueryChange={setQuery} />;
+}
+
 describe('CommandSearch grouped order', () => {
   it('selects the displayed (grouped) item on Enter, not the raw API index', async () => {
     const onResultClick = vi.fn();
-    render(<CommandSearch onResultClick={onResultClick} />);
+    render(<ControlledSearch onResultClick={onResultClick} />);
 
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'tok' } });
 
@@ -38,7 +46,7 @@ describe('CommandSearch grouped order', () => {
 
   it('arrow navigation follows display order across groups', async () => {
     const onResultClick = vi.fn();
-    render(<CommandSearch onResultClick={onResultClick} />);
+    render(<ControlledSearch onResultClick={onResultClick} />);
 
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'tok' } });
     await screen.findByRole('option', { name: /Tokyo/ });

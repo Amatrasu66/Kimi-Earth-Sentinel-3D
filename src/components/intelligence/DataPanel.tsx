@@ -9,6 +9,7 @@ import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { DataPoint, DataStatus, EventDetail, LayerId, LayerMetadata } from '@/types';
+import type { SeverityFilterValue } from '@/components/intelligence/SeverityFilter';
 
 interface DataPanelProps {
   activeLayer: LayerId | null;
@@ -24,6 +25,9 @@ interface DataPanelProps {
   onBackToLayer: () => void;
   onEventSelect: (point: DataPoint) => void;
   onRefresh: () => void;
+  /** Severity display filter (T3.3: app-owned for URL state). */
+  severityFilter: SeverityFilterValue;
+  onSeverityChange: (next: SeverityFilterValue) => void;
 }
 
 /**
@@ -45,6 +49,8 @@ export default function DataPanel({
   onBackToLayer,
   onEventSelect,
   onRefresh,
+  severityFilter,
+  onSeverityChange,
 }: DataPanelProps) {
   if (!activeLayer && !selectedEvent) return null;
 
@@ -145,6 +151,8 @@ export default function DataPanel({
               layerMeta={layerMeta}
               dataPoints={dataPoints}
               onEventSelect={onEventSelect}
+              filter={severityFilter}
+              onFilterChange={onSeverityChange}
             />
           )}
         </div>

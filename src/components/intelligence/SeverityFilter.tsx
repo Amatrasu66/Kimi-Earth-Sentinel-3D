@@ -12,8 +12,8 @@ export default function SeverityFilter({
 }: {
   counts: Record<string, number>;
   total: number;
-  value: string;
-  onChange: (next: string) => void;
+  value: SeverityFilterValue;
+  onChange: (next: SeverityFilterValue) => void;
 }) {
   return (
     <div

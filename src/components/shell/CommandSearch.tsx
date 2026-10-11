@@ -13,6 +13,13 @@ interface CommandSearchProps {
   onResultClick: (lat: number, lon: number) => void;
   /** Width constraint from the parent command bar. */
   className?: string;
+  /**
+   * Controlled query text (T3.3: owned by the app shell so the URL can
+   * restore and reflect it). Lookup execution stays here — see the effect
+   * below — so debounce/abort behavior is unchanged.
+   */
+  query: string;
+  onQueryChange: (q: string) => void;
 }
 
 /**
@@ -20,15 +27,23 @@ interface CommandSearchProps {
  * location/event results, full keyboard navigation, `/` to focus.
  * ARIA combobox contract preserved from the previous header search.
  */
-export default function CommandSearch({ onResultClick, className }: CommandSearchProps) {
-  const [searchQuery, setSearchQuery] = useState('');
+export default function CommandSearch({ onResultClick, className, query, onQueryChange }: CommandSearchProps) {
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
   const searchRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Set when a result choice (not typing) writes the query: the value effect
+  // below must not fire a lookup for it (choosing never searched before).
+  const skipNextRef = useRef(false);
   const { results, loading, error, search } = useSearch();
+  // Latest lookup via ref so unrelated parent re-renders (hover, sun tick)
+  // never reset the debounce window — only the query text restarts it.
+  const searchFnRef = useRef(search);
+  useEffect(() => {
+    searchFnRef.current = search;
+  });
 
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
@@ -43,6 +58,28 @@ export default function CommandSearch({ onResultClick, className }: CommandSearc
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, []);
+
+  // Single debounced lookup driver (T3.3): typing, external restores
+  // (URL/back-forward), and programmatic sets all flow through here with
+  // the original 300 ms / 2-char contract. Choosing a result sets
+  // skipNextRef so selection never triggers a lookup (as before).
+  // Open-state closes stay in event handlers (never derived in-effect).
+  useEffect(() => {
+    if (skipNextRef.current) {
+      skipNextRef.current = false;
+      return;
+    }
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (query.trim().length >= 2) {
+      debounceRef.current = setTimeout(() => {
+        searchFnRef.current(query.trim());
+        setOpen(true);
+      }, 300);
+    }
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [query]);
 
   // "/" focuses search when not typing; preserves existing shortcut system.
   useEffect(() => {
@@ -61,38 +98,32 @@ export default function CommandSearch({ onResultClick, className }: CommandSearc
 
   const runSearch = useCallback(
     (value: string) => {
-      setSearchQuery(value);
       setHighlight(0);
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      if (value.trim().length >= 2) {
-        debounceRef.current = setTimeout(() => {
-          search(value.trim());
-          setOpen(true);
-        }, 300);
-      } else {
-        setOpen(false);
-      }
+      if (value.trim().length < 2) setOpen(false);
+      onQueryChange(value);
     },
-    [search],
+    [onQueryChange],
   );
 
   const choose = useCallback(
     (result: SearchResult) => {
       onResultClick(result.lat, result.lon);
       setOpen(false);
-      setSearchQuery(result.name);
+      // A choice writes the name without searching (preserved behavior).
+      skipNextRef.current = true;
+      onQueryChange(result.name);
       inputRef.current?.blur();
     },
-    [onResultClick],
+    [onResultClick, onQueryChange],
   );
 
   const clear = useCallback(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    setSearchQuery('');
+    onQueryChange('');
     setOpen(false);
     setHighlight(0);
     inputRef.current?.focus();
-  }, []);
+  }, [onQueryChange]);
 
   // Grouped presentation, flat keyboard order: locations first, then events.
   const sections = useMemo(() => {
@@ -165,12 +196,12 @@ export default function CommandSearch({ onResultClick, className }: CommandSearc
           aria-controls="sentinel-search-listbox"
           aria-activedescendant={open && ordered.length > 0 ? `sentinel-search-${ordered[safeHighlight]?.id}` : undefined}
           className="h-full border-0 bg-transparent p-0 text-[13px] text-white shadow-none placeholder:text-white/30 focus-visible:ring-0"
-          value={searchQuery}
+          value={query}
           onChange={(e) => runSearch(e.target.value)}
-          onFocus={() => searchQuery.trim().length >= 2 && setOpen(true)}
+          onFocus={() => query.trim().length >= 2 && setOpen(true)}
           onKeyDown={onInputKeyDown}
         />
-        {searchQuery ? (
+        {query ? (
           <button
             onClick={clear}
             aria-label="Clear search"
@@ -202,7 +233,7 @@ export default function CommandSearch({ onResultClick, className }: CommandSearc
               <div className="px-2 py-3 text-center" role="alert">
                 <p className="text-[13px] text-red-300/90">Search failed</p>
                 <p className="sentinel-micro mt-1 truncate">{error}</p>
-                <Button variant="outline" size="sm" className="mt-3 border-white/10 bg-white/5 text-white hover:bg-white/10" onClick={() => search(searchQuery.trim())}>
+                <Button variant="outline" size="sm" className="mt-3 border-white/10 bg-white/5 text-white hover:bg-white/10" onClick={() => search(query.trim())}>
                   Retry
                 </Button>
               </div>
