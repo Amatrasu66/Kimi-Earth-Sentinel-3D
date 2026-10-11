@@ -12,10 +12,14 @@ export const metadata: Metadata = {
 // wrapper so metadata stays server-rendered while the app hydrates on the
 // client. API calls are same-origin (/api/v1) — no CORS, no env config.
 //
-// force-dynamic: prerendering an interactive globe page buys nothing (every
-// pixel depends on client state, WebGPU probing, and live API data), and
-// static prerender would evaluate client-only module graphs on the server.
-export const dynamic = "force-dynamic";
+// T3.2: deliberately NO `dynamic = "force-dynamic"` here. The page reads no
+// request-time state (no cookies/headers/searchParams/personalization —
+// `?renderer=` is read from window.location inside client effects only), so
+// it prerenders statically: identical shell HTML with no per-request render.
+// Client components still SSR their initial markup (header, rail, stage,
+// status skeleton, renderer veil); browser-only work (WebGPU probe, clocks,
+// data fetches) starts after hydration. API routes keep their own dynamic
+// behavior independently.
 export default function Home() {
   return <SentinelApp />;
 }

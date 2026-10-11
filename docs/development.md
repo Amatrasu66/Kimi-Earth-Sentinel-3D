@@ -64,6 +64,11 @@ npm run build           # next build
 - `lib/webgpu.ts` — cached `navigator.gpu.requestAdapter()` probe; unit-tested with mocks (never requires a real GPU in CI).
 - Manual GPU validation cannot run in Vitest/jsdom: verify in a real browser (see root README → Earth Renderer).
 
+## Server shell (T3.2)
+
+- `src/app/page.tsx` sets **no** `dynamic` export: the page reads no request-time state (`?renderer=` is client-only), so it prerenders statically — identical shell HTML with no per-request render. All `/api/*` routes keep their own `force-dynamic`. Client components still SSR their initial markup (header, rail, stage, status skeleton, renderer veil); WebGPU/WebGL init stays behind `next/dynamic ssr:false` + the mount-once engine effects and never runs on the server.
+- Initial `/` HTML (~28 KB) carries the title, brand, skip link, 8-rail buttons, search/settings entry points, stage frame, and renderer veil — no live clock or wall-time leakage (clocks/sun direction start after hydration from deterministic constants). Pinned by `src/app/page.test.tsx` (static-mode export + SSR landmark/determinism assertions).
+
 ## Deployment overview
 
 - **Single Vercel project (repo root):** framework Next.js, build `npm run build`. Set server-only `AIRNOW_API_KEY` / `NASA_FIRMS_API_KEY` (never `NEXT_PUBLIC_`). No Render, no separate frontend deployment, no CORS, no scheduler. The UI (`/`) and API (`/api/*`) ship together.
