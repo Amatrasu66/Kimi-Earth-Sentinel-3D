@@ -199,7 +199,8 @@ describe("layer data caching", () => {
     expect(body.data.data_status.fetched_at).toBe("2026-01-01T00:00:00Z");
   });
 
-  it("keeps heatmap (always simulated) no-store", async () => {
+  it("keeps failed heatmaps (UNAVAILABLE, never simulated) no-store", async () => {
+    vi.stubGlobal("fetch", deadFetchStub());
     const res = await heatmapGET(
       new NextRequest("http://localhost:3000/api/v1/layers/temperature/heatmap"),
       HEAT,
@@ -207,7 +208,7 @@ describe("layer data caching", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("Cache-Control")).toBe("no-store");
     const body = (await res.json()) as { data: { data_status: { status: string } } };
-    expect(payloadStatus(body.data)).toBe("simulated");
+    expect(payloadStatus(body.data)).toBe("unavailable");
   });
 });
 

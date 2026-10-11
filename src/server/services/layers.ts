@@ -188,12 +188,12 @@ export function getLayerPayload(
   });
 }
 
-export function getHeatmapPayload(layerId: string, resolution = 128, timeRange = "24h") {
-  const key = heatmapCacheKey(layerId, resolution, timeRange);
-  return resolveWithCache(key, HEATMAP_TTL, async () => {
-    const { getHeatmap } = await import("../providers/heatmap");
-    return getHeatmap(layerId, resolution, timeRange);
-  });
+export async function getHeatmapPayload(layerId: string, resolution = 128, timeRange = "24h") {
+  // Key on the SERVED resolution: requests above the real-data maximum clamp
+  // to it, so keying on the raw request would fork identical payloads.
+  const { effectiveResolution, getHeatmap } = await import("../providers/heatmap");
+  const key = heatmapCacheKey(layerId, effectiveResolution(resolution), timeRange);
+  return resolveWithCache(key, HEATMAP_TTL, () => getHeatmap(layerId, resolution, timeRange));
 }
 
 export { utcnowIso };

@@ -57,6 +57,8 @@ export interface HeatmapData {
   max_value: number;
   unit: string;
   timestamp: string;
+  /** Partial-coverage notes (T2.8, mirrors LayerData); absent when complete. */
+  warnings?: string[];
   data_status?: DataStatus;
 }
 

@@ -46,7 +46,7 @@ Kimi-Earth-Sentinel-3D/
 - Severity filtering, layer legends with units, data-freshness indicators
 - Keyboard shortcuts (1–8 layers, Space pause, Esc back/close)
 - Per-layer HTTP caching with honest `fetched_at` / `cache_hit` metadata
-- Gridded heatmap endpoint with a simulated provider behind a swappable interface
+- Gridded heatmap endpoint with real provider-backed numeric grids (model estimates + event counts; honest `UNAVAILABLE` where unsupported)
 - Production configs: single Vercel project (Next.js app + `/api/*` Route Handlers)
 
 ## Tech Stack
@@ -229,7 +229,7 @@ Base URL `/api/v1` (plus unversioned `GET /api/health` for deployment checks). A
 | `GET /api/v1/health` | Same payload, versioned |
 | `GET /api/v1/layers` | Layer metadata (id, name, source, unit, color scale, refresh interval) |
 | `GET /api/v1/layers/<layer_id>/data?bbox=&limit=&min_severity=` | Points + stats + `data_status`; validated (`limit` 1–2000, bbox ranges, known severities); cached per layer TTL; `air_quality` honors `bbox` globally (Open-Meteo model; U.S.-covering bboxes with a key try AirNow station observations first) |
-| `GET /api/v1/layers/<layer_id>/heatmap?resolution=&time_range=` | Base64 float32 grid + `data_status` (currently simulated; same schema for future real grids) |
+| `GET /api/v1/layers/<layer_id>/heatmap?resolution=&time_range=` | Real numeric grids (base64 float32, same schema): Open-Meteo model estimates for temperature/precipitation/clouds/wind/air-quality (≤20×10 coarse sampling, NaN = missing), per-cell observation counts for earthquakes/disasters/wildfires over the `time_range` window; `UNAVAILABLE` (never seeded) where unsupported |
 | `GET /api/v1/events/<id>` | Event detail: live USGS lookup for earthquake ids, live NASA EONET lookup for `eonet-*` ids, live FIRMS observation detail for `fire-<lat>-<lon>` markers (API key required; fields below), all cached 5 min and `LIVE`/`STALE` labelled; provider-confirmed absence → `404`; provider failure, keyless instance, or lookup-less markers (other layers) → labelled `SIMULATED` fallback |
 | `GET /api/v1/search?q=&type=&limit=` | Live location search (Open-Meteo Geocoding, GeoNames data) merged with the bundled event index (`type=event` stays index-only); `LIVE`/`STALE`/`SIMULATED`/`UNAVAILABLE` labelled per what could actually be served |
 | `GET /api/v1/stats` | Real 24h overview: USGS M2.5+ count/max-magnitude, EONET open-event count, FIRMS detections (keyed only); per-source `sources` provenance, `LIVE` only when every source is live (partial → live + message naming missing sources) |
@@ -348,7 +348,7 @@ Validate the real renderer manually in a Chromium browser with WebGPU (day/night
 ## Current Limitations
 
 - **NASA FIRMS observations vs persistent event records:** wildfire markers are brightness observations with no individual-event endpoint, so their details stay explicitly `SIMULATED` even when the marker list itself is live.
-- **Simulated heatmaps:** all layers return deterministic seeded grids behind the same schema; real gridded datasets can plug in per layer (`HEATMAP_PROVIDERS`) without frontend changes.
+- **Heatmap limits:** real grids serve at most resolution 20 (200 cells; higher requests are served at 20 with a disclosed message). Model grids are coarse live estimates with NaN gaps, not fine-grained measurements; event grids count observations (FIRMS detections, not distinct fires). Keyless FIRMS and 30-day wildfire grids answer `UNAVAILABLE`. Worst-case payload ≈ 1.2 KB raw / 0.6 KB gzip (250 KB budget). GIBS satellite tiles are served via the imagery redirect API only — no globe overlay is built (renderer work deferred); the globe's cloud texture is illustrative.
 - **Archiveless metrics stay unavailable:** temperature/air-quality history, 30-day wildfire history (FIRMS day ranges stop at 10), and keyless FIRMS series answer `UNAVAILABLE` with empty values — current values are never backfilled as history and no seeded series are served.
 - **Reverse geocoding is explicitly unavailable:** `GET /api/v1/geocode/reverse` returns `UNAVAILABLE` with null place fields. The public Nominatim service caps at 1 request/second *per application* (aggregate across all users) — unenforceable from per-instance serverless state — and Open-Meteo offers no reverse endpoint, so no compliant no-key provider fits. A guessed region is never returned.
 - **Timezone boundaries are dataset-approximate near borders:** `GET /api/v1/timezones` returns genuine IANA zones from an offline dataset, but lossy-compressed boundaries far from populated areas can resolve to the neighbouring zone; offshore points return `Etc/GMT*` ocean zones. Offsets are computed live, so DST rules stay current.
@@ -360,7 +360,7 @@ Validate the real renderer manually in a Chromium browser with WebGPU (day/night
 
 - Multi-layer compositing (visible-layers set + per-layer opacity)
 - Timeline/history playback (24h / 48h / 7d) backed by real archives — no fabricated history
-- Real gridded heatmaps per layer via `HEATMAP_PROVIDERS` (schema is ready)
+- GIBS satellite-imagery globe overlay (tile layer on either renderer + legend + date selector; API redirect exists, renderer work deferred)
 - Live single-event lookup for remaining marker kinds
 - PostGIS + Redis for geospatial filtering and shared caching (future options only — not current dependencies)
 - Alerting, richer analytics, mobile layout refinements

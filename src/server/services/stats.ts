@@ -297,7 +297,7 @@ export interface FireRecord {
   bright: number;
 }
 
-export async function fetchFirmsCsv(dayRange: 1 | 7, opts?: { signal?: AbortSignal }): Promise<string> {
+export async function fetchFirmsCsv(dayRange: 1 | 2 | 7, opts?: { signal?: AbortSignal }): Promise<string> {
   const apiKey = serverConfig.nasaFirmsApiKey;
   if (!apiKey) throw new FirmsKeyMissingError();
   const res = await fetchTextWithTimeout(

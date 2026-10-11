@@ -79,7 +79,7 @@ export const LAYERS: LayerMetadata[] = [
   {
     id: "clouds",
     name: "Cloud Cover",
-    description: "Global cloud coverage",
+    description: "Global cloud coverage from live model data (the globe's drifting cloud texture is illustrative, not a measurement)",
     icon: "layer-clouds",
     source: "open_meteo",
     refresh_interval: 1800,

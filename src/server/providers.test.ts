@@ -3,7 +3,7 @@ import { normalizeUsgs } from "@/server/providers/usgs";
 import { normalizeEonet } from "@/server/providers/nasa-eonet";
 import { normalizeFirmsCsv, parseCsvRows } from "@/server/providers/nasa-firms";
 import { normalizeAirnow } from "@/server/providers/airnow";
-import { getHeatmap, getSimulatedHeatmap } from "@/server/providers/heatmap";
+import { getHeatmap } from "@/server/providers/heatmap";
 import {
   buildTileUrl,
   GIBS_LAYERS,
@@ -114,16 +114,8 @@ describe("AirNow normalization", () => {
 });
 
 describe("heatmap", () => {
-  it("is deterministic per (layer, resolution, time_range)", () => {
-    const a = getSimulatedHeatmap("temperature", 8, "24h");
-    const b = getSimulatedHeatmap("temperature", 8, "24h");
-    expect(a.grid).toBe(b.grid);
-    expect(a.data_status.status).toBe("simulated");
-    // 8*8/2 = 32 float32 = 128 bytes
-    expect(Buffer.from(a.grid, "base64").length).toBe(128);
-  });
-  it("returns UNAVAILABLE for unknown layers", () => {
-    const out = getHeatmap("nope", 8, "24h");
+  it("returns UNAVAILABLE (never seeded) for unknown layers", async () => {
+    const out = await getHeatmap("nope", 8, "24h");
     expect(out.data_status.status).toBe("unavailable");
     expect(out.grid).toBe("");
   });
