@@ -22,6 +22,7 @@ import DataPanel from '@/components/intelligence/DataPanel';
 import SettingsModal from '@/components/panels/SettingsModal';
 import MarkerHoverCard from '@/components/overlays/MarkerHoverCard';
 import { useLayers, useLayerData } from '@/hooks/useLayers';
+import { useSunDirection } from '@/hooks/useSunDirection';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { api } from '@/services/api';
 import { isValidCoordinate } from '@/lib/geo';
@@ -67,6 +68,10 @@ function SentinelApp() {
     source: 'automatic',
   });
   const { layers } = useLayers();
+  // T2.4: one authoritative real-time sun direction (single 60 s client
+  // timer inside the hook) shared by both renderer paths. The tuple identity
+  // only changes once per minute, so the memoized renderer stays settled.
+  const sunDirection = useSunDirection();
   const {
     data: layerData,
     loading: layerLoading,
@@ -237,6 +242,7 @@ function SentinelApp() {
         onMarkerHover={handleMarkerHover}
         isRotating={isRotating}
         flyTo={flyTo}
+        sunDirection={sunDirection}
         onActiveRenderer={setRendererInfo}
       />
 

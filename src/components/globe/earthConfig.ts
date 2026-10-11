@@ -21,7 +21,14 @@ export const EARTH_RADIUS = 5;
  */
 export const DEFAULT_CAMERA_DISTANCE = 16.4;
 
-/** Sun direction until wired to UTC solar position (see README roadmap). */
+/**
+ * Deterministic initial sun direction (T2.4).
+ *
+ * Rendered on the server and on the first client pass so markup stays
+ * hydration-identical; `useSunDirection` replaces it with the live UTC solar
+ * position immediately after client mount and refreshes it every 60 s. Both
+ * renderer paths fall back to this tuple when no live value is supplied.
+ */
 export const DEFAULT_SUN_DIRECTION: [number, number, number] = [6, 2.5, 4];
 
 export interface EarthTextureStatus {

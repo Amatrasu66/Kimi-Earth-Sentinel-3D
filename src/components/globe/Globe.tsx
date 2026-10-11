@@ -21,6 +21,12 @@ interface GlobeProps {
   isRotating?: boolean;
   /** Search fly-to target; `key` retriggers. Null = no flight. */
   flyTo?: { lat: number; lon: number; key: number } | null;
+  /**
+   * World-space sun direction (T2.4, real-time UTC position from
+   * `useSunDirection`). Drives the directional light so the lit side tracks
+   * the real Sun. Defaults to the legacy fixed light when absent.
+   */
+  sunDirection?: [number, number, number];
 }
 
 function Atmosphere({ radius = 5 }: { radius?: number }) {
@@ -308,6 +314,7 @@ export default function Globe({
   rotationSpeed = 0.0003,
   isRotating = true,
   flyTo = null,
+  sunDirection,
 }: GlobeProps) {
   const groupRef = useRef<THREE.Group>(null);
   const flightRef = useRef<{
@@ -369,7 +376,7 @@ export default function Globe({
 
       {/* Lighting */}
       <ambientLight intensity={0.1} />
-      <directionalLight position={[10, 5, 10]} intensity={1.5} color="#ffffff" />
+      <directionalLight position={sunDirection ?? [10, 5, 10]} intensity={1.5} color="#ffffff" />
       <hemisphereLight args={['#87CEEB', '#000000', 0.3]} />
 
       {/* Earth */}

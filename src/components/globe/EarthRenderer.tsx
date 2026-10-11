@@ -57,6 +57,10 @@ interface EarthRendererProps {
   isRotating?: boolean;
   /** Search fly-to target; `key` retriggers. Null = no flight. */
   flyTo?: { lat: number; lon: number; key: number } | null;
+  /**
+   * Authoritative world-space sun direction (T2.4, one tuple shared by both
+   * renderer paths: WebGPU day/night blend + light, WebGL directional light).
+   */
   sunDirection?: [number, number, number];
   onActiveRenderer?: (info: RendererInfo) => void;
 }
@@ -209,6 +213,7 @@ export default function EarthRenderer({
           onMarkerHover={onMarkerHover}
           isRotating={isRotating}
           flyTo={flyTo}
+          sunDirection={sunDirection}
         />
       ) : (
         <div

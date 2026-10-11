@@ -12,6 +12,8 @@ interface GlobeSceneProps {
   isRotating?: boolean;
   /** Search fly-to target; `key` retriggers. Null = no flight. */
   flyTo?: { lat: number; lon: number; key: number } | null;
+  /** World-space sun direction (T2.4); forwarded to the WebGL globe light. */
+  sunDirection?: [number, number, number];
 }
 
 function LoadingFallback() {
@@ -40,6 +42,7 @@ export default function GlobeScene({
   onMarkerHover,
   isRotating = true,
   flyTo = null,
+  sunDirection,
 }: GlobeSceneProps) {
   const dpr = getAdaptiveDpr();
 
@@ -66,6 +69,7 @@ export default function GlobeScene({
             isRotating={isRotating}
             rotationSpeed={0.0003}
             flyTo={flyTo}
+            sunDirection={sunDirection}
           />
         </Suspense>
 
