@@ -113,6 +113,12 @@ export interface SearchResult {
   snippet?: string;
   layer?: string;
   timestamp?: string;
+  /** First-level administrative area (live geocoding rows, T2.6). */
+  admin1?: string;
+  /** ISO-3166-1 alpha2 country code (live geocoding rows, T2.6). */
+  country_code?: string;
+  /** Per-result source: live rows name the provider, bundled rows the index. */
+  source?: string;
 }
 
 export interface GlobalStats {

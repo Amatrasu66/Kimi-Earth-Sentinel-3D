@@ -121,11 +121,12 @@ describe("imagery", () => {
 });
 
 describe("timezone + event routing", () => {
-  it("approximates NYC as UTC-05:00", () => {
+  it("resolves NYC to a genuine IANA zone (T2.6 offline lookup, no approximation)", () => {
     const tz = getTimezoneInfo(40.7, -74);
     expect(tz.timezone).toBe("America/New_York");
-    expect(tz.offset).toBe("UTC-05:00");
-    expect(tz.approximate).toBe(true);
+    expect(tz.offset).toMatch(/^UTC[+-]\d{2}:\d{2}$/);
+    expect(tz.approximate).toBe(false);
+    expect(typeof tz.local_time).toBe("string");
   });
   it("routes ids to providers", () => {
     expect(resolveProvider("eonet-123")).toBe("eonet");

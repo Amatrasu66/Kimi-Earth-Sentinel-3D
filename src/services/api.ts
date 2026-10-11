@@ -205,17 +205,32 @@ export const api = {
   getHealth: (opts?: RequestOptions) =>
     fetchApi<{ status: string; service: string; version: string; timestamp: string; started_at: string }>('/health', opts),
 
-  // Geocode
+  // Geocode (T2.6: honest UNAVAILABLE when no compliant provider applies —
+  // fields are null in that case, never a fabricated region)
   reverseGeocode: (lat: number, lon: number, opts?: RequestOptions) => {
-    return fetchApi<{ name: string; country: string; region: string; timezone: string }>(
+    return fetchApi<{
+      lat: number;
+      lon: number;
+      name: string | null;
+      country: string | null;
+      country_code: string | null;
+      region: string | null;
+      timezone: string | null;
+    }>(
       `/geocode/reverse?lat=${lat}&lon=${lon}`,
       opts,
     );
   },
 
-  // Timezones (simulated longitude approximation — see backend)
+  // Timezones (T2.6: offline IANA lookup; `timezone` null only when
+  // no reliable zone can be established)
   getTimezone: (lat: number, lon: number, opts?: RequestOptions) => {
-    return fetchApi<{ timezone: string; offset_hours: number; name: string }>(
+    return fetchApi<{
+      timezone: string | null;
+      offset: string | null;
+      local_time: string | null;
+      approximate: boolean;
+    }>(
       `/timezones?lat=${lat}&lon=${lon}`,
       opts,
     );

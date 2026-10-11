@@ -238,12 +238,43 @@ describe("event detail caching", () => {
 });
 
 describe("simulated mock endpoints stay no-store", () => {
-  it("search", async () => {
+  it("live merged search is publicly cached (T2.6 SEARCH_TTL)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      liveFetchStub({
+        results: [
+          { id: 1, name: "Tokyo", latitude: 35.6, longitude: 139.6, country: "Japan" },
+        ],
+      }),
+    );
     const res = await searchGET(
-      new NextRequest("http://localhost:3000/api/v1/search?q=tokyo"),
+      new NextRequest("http://localhost:3000/api/v1/search?q=t21tokyo-live"),
     );
     expect(res.status).toBe(200);
-    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    expect(res.headers.get("Cache-Control")).toBe(
+      "public, s-maxage=300, stale-while-revalidate=600",
+    );
+    const body = (await res.json()) as { data: { data_status: { status: string } } };
+    expect(body.data.data_status.status).toBe("live");
+  });
+
+  it("failed search fallbacks stay no-store (never extended via CDN)", async () => {
+    vi.stubGlobal("fetch", deadFetchStub());
+    // Event keyword preserved as SIMULATED…
+    const sim = await searchGET(
+      new NextRequest("http://localhost:3000/api/v1/search?q=t21fire-cachefail"),
+    );
+    expect(sim.status).toBe(200);
+    expect(sim.headers.get("Cache-Control")).toBe("no-store");
+    const simBody = (await sim.json()) as { data: { data_status: { status: string } } };
+    expect(simBody.data.data_status.status).toBe("simulated");
+    // …and total failure answers UNAVAILABLE, also no-store.
+    const unavail = await searchGET(
+      new NextRequest("http://localhost:3000/api/v1/search?q=t21nothing-cachefail&type=location"),
+    );
+    expect(unavail.headers.get("Cache-Control")).toBe("no-store");
+    const unavailBody = (await unavail.json()) as { data: { data_status: { status: string } } };
+    expect(unavailBody.data.data_status.status).toBe("unavailable");
   });
 
   it("stats (nondeterministic mock)", async () => {

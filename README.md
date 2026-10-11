@@ -125,6 +125,9 @@ There is no database, no Redis, no PostgreSQL/PostGIS, no persistent environment
 | Temperature / Precipitation / Clouds / Wind | Open-Meteo | No | Simulated (labelled) |
 | Air quality | Open-Meteo Air Quality model worldwide (no key); AirNow U.S. station observations optional with `AIRNOW_API_KEY` | `AIRNOW_API_KEY` (U.S. stations only) | Simulated (labelled); `bbox` honored globally (U.S.-covering bboxes with a key try AirNow first) |
 | Wildfires | NASA FIRMS | `NASA_FIRMS_API_KEY` | Simulated (labelled) |
+| Location search | Open-Meteo Geocoding (GeoNames data, no key) merged with the bundled event index | No | Bundled events preserved as labelled fallback; `UNAVAILABLE` when nothing honest can be served |
+| Timezone lookup | Offline `@photostructure/tz-lookup` (timezone-boundary-builder data, CC0-1.0) | No (offline, no key) | Genuine IANA zones; offsets computed live |
+| Reverse geocode | None — explicitly `UNAVAILABLE` | — | No compliant no-key provider fits serverless constraints (see Current Limitations) |
 | Satellite imagery | NASA GIBS | No | Tile redirect to GIBS WMTS (allow-listed layers only) |
 
 All upstream base URLs and both API keys are server-side configuration (`src/server/config.ts`); keys are never sent to the frontend.
@@ -204,7 +207,7 @@ All server-only (root `.env`, never `NEXT_PUBLIC_`):
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
 | `CACHE_DEFAULT_TIMEOUT` | No | `300` | Fallback cache TTL (s); per-layer TTLs in code |
-| `USGS_API_URL` / `NASA_EONET_URL` / `NASA_FIRMS_URL` / `NASA_GIBS_URL` / `OPEN_METEO_URL` / `AIRNOW_API_URL` | No | provider defaults | Upstream base URLs (override for tests/proxies) |
+| `USGS_API_URL` / `NASA_EONET_URL` / `NASA_FIRMS_URL` / `NASA_GIBS_URL` / `OPEN_METEO_URL` / `OPEN_METEO_GEOCODING_URL` / `AIRNOW_API_URL` | No | provider defaults | Upstream base URLs (override for tests/proxies) |
 | `AIRNOW_API_KEY` | For live AQI | — | Server-side only; air quality is simulated without it |
 | `NASA_FIRMS_API_KEY` | For live fires | — | Server-side only; wildfires are simulated without it |
 | `REQUEST_TIMEOUT` | No | `8` | Upstream HTTP timeout (seconds, max 30; per-provider `USGS_TIMEOUT` / `EONET_TIMEOUT` / `OPEN_METEO_TIMEOUT` / `AIRNOW_TIMEOUT` / `FIRMS_TIMEOUT` override it) |
@@ -228,17 +231,17 @@ Base URL `/api/v1` (plus unversioned `GET /api/health` for deployment checks). A
 | `GET /api/v1/layers/<layer_id>/data?bbox=&limit=&min_severity=` | Points + stats + `data_status`; validated (`limit` 1–2000, bbox ranges, known severities); cached per layer TTL; `air_quality` honors `bbox` globally (Open-Meteo model; U.S.-covering bboxes with a key try AirNow station observations first) |
 | `GET /api/v1/layers/<layer_id>/heatmap?resolution=&time_range=` | Base64 float32 grid + `data_status` (currently simulated; same schema for future real grids) |
 | `GET /api/v1/events/<id>` | Event detail: live USGS lookup for earthquake ids, live NASA EONET lookup for `eonet-*` ids, live FIRMS observation detail for `fire-<lat>-<lon>` markers (API key required; fields below), all cached 5 min and `LIVE`/`STALE` labelled; provider-confirmed absence → `404`; provider failure, keyless instance, or lookup-less markers (other layers) → labelled `SIMULATED` fallback |
-| `GET /api/v1/search?q=&type=&limit=` | Location/event search over bundled gazetteer + event index (simulated, labelled) |
+| `GET /api/v1/search?q=&type=&limit=` | Live location search (Open-Meteo Geocoding, GeoNames data) merged with the bundled event index (`type=event` stays index-only); `LIVE`/`STALE`/`SIMULATED`/`UNAVAILABLE` labelled per what could actually be served |
 | `GET /api/v1/stats` | Global rollup (simulated, labelled) |
 | `GET /api/v1/stats/historical?metric=&period=&aggregation=` | Placeholder series (simulated, labelled — no fake history presented as measured) |
-| `GET /api/v1/geocode/reverse?lat=&lon=` | Coarse region lookup (simulated, labelled) |
-| `GET /api/v1/timezones?lat=&lon=` | Approximate timezone from longitude only (simulated, labelled — not authoritative) |
+| `GET /api/v1/geocode/reverse?lat=&lon=` | Explicitly `UNAVAILABLE` (no compliant no-key reverse provider fits serverless constraints — never a guessed region) |
+| `GET /api/v1/timezones?lat=&lon=` | Genuine offline IANA timezone lookup (`tz-lookup`, timezone-boundary-builder data); UTC offset/wall-clock computed live, `LIVE` labelled |
 | `GET /api/v1/imagery/gibs/capabilities` | NASA GIBS layer catalogue |
 | `GET /api/v1/imagery/gibs/tile/<layer>/<z>/<x>/<y>` | Redirect to NASA GIBS tile (allow-listed layers only) |
 
 Only the endpoints above exist; no other API surface is implemented.
 
-Live and static-catalogue successes carry `Cache-Control: public, s-maxage=<TTL>, stale-while-revalidate=<2 × TTL>` (per-layer TTLs for layer data, 300 s event detail, 1 h catalogues, 60 s index); health, stale/simulated fallbacks, errors, and throttles carry `no-store`. Full policy table in `docs/development.md` → HTTP caching.
+Live and static-catalogue successes carry `Cache-Control: public, s-maxage=<TTL>, stale-while-revalidate=<2 × TTL>` (per-layer TTLs for layer data, 300 s event detail, 300 s live search, 1 h catalogues, 60 s index); health, stale/simulated/unavailable fallbacks, the wall-clock timezone payload, errors, and throttles carry `no-store`. Full policy table in `docs/development.md` → HTTP caching.
 
 `started_at` is the instance-local boot time (ISO 8601, captured when the server instance loads the health module) — not the deployment time. Serverless isolates boot on demand, so the value resets per instance; never read it as deploy age or global uptime. (It replaces the old `uptime_seconds`, which was always ~`0` on serverless.)
 
@@ -347,7 +350,8 @@ Validate the real renderer manually in a Chromium browser with WebGPU (day/night
 - **NASA FIRMS observations vs persistent event records:** wildfire markers are brightness observations with no individual-event endpoint, so their details stay explicitly `SIMULATED` even when the marker list itself is live.
 - **Simulated heatmaps:** all layers return deterministic seeded grids behind the same schema; real gridded datasets can plug in per layer (`HEATMAP_PROVIDERS`) without frontend changes.
 - **Simulated historical statistics:** `GET /api/v1/stats` and `GET /api/v1/stats/historical` return labelled placeholders, not measured history.
-- **Simulated search/geocoding:** search runs over a bundled gazetteer + event index, reverse-geocode is a coarse region lookup, and the timezone endpoint is a longitude-only approximation — all labelled `SIMULATED`.
+- **Reverse geocoding is explicitly unavailable:** `GET /api/v1/geocode/reverse` returns `UNAVAILABLE` with null place fields. The public Nominatim service caps at 1 request/second *per application* (aggregate across all users) — unenforceable from per-instance serverless state — and Open-Meteo offers no reverse endpoint, so no compliant no-key provider fits. A guessed region is never returned.
+- **Timezone boundaries are dataset-approximate near borders:** `GET /api/v1/timezones` returns genuine IANA zones from an offline dataset, but lossy-compressed boundaries far from populated areas can resolve to the neighbouring zone; offshore points return `Etc/GMT*` ocean zones. Offsets are computed live, so DST rules stay current.
 - **Air quality coverage:** global AQI comes from the Open-Meteo Air Quality model (CAMS, ~45 km grid worldwide / ~11 km Europe) — estimates, not station readings. AirNow contributes U.S. monitoring-station observations only (key required, single central-U.S. query, U.S.-covering bboxes); no per-point AirNow fan-out is performed.
 - **EONET events with missing/empty geometry:** some EONET events carry no usable coordinates; their detail payloads return `lat`/`lon` as `null` rather than fabricated positions.
 - **Single active layer:** the UI shows exactly one layer at a time (multi-layer compositing is a roadmap item, not current behavior).

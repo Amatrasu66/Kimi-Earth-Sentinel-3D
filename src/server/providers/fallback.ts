@@ -519,6 +519,58 @@ const MAJOR_CITIES = [
   { name: "Moscow", country: "Russia", lat: 55.7558, lon: 37.6173, pop: 12500000 },
 ];
 
+/**
+ * Keyword matches against the bundled environmental-event index (T2.6: split
+ * out of `searchMockData` so the live-search merge can reuse the event side
+ * without the bundled gazetteer cities. Output is byte-identical to the
+ * previous inline blocks).
+ */
+export function matchEventIndex(query: string): Record<string, unknown>[] {
+  const q = query.toLowerCase();
+  const results: Record<string, unknown>[] = [];
+  const now = Date.now();
+  if (q.includes("quake") || q.includes("earth") || q.includes("seismic")) {
+    results.push({
+      id: "usgs-12345",
+      type: "event",
+      layer: "earthquakes",
+      name: "M5.2 Earthquake",
+      lat: 35.6762,
+      lon: 139.6503,
+      timestamp: fmtTs(new Date(now - 12 * 3600 * 1000)),
+      snippet: "35km ESE of Tokyo, depth 45km",
+      source: "bundled event index",
+    });
+  }
+  if (q.includes("fire") || q.includes("wild")) {
+    results.push({
+      id: "fire-001",
+      type: "event",
+      layer: "wildfires",
+      name: "Wildfire - California",
+      lat: 37.7749,
+      lon: -122.4194,
+      timestamp: fmtTs(new Date(now - 48 * 3600 * 1000)),
+      snippet: "Active fire, 5,000 acres burned",
+      source: "bundled event index",
+    });
+  }
+  if (q.includes("flood")) {
+    results.push({
+      id: "flood-001",
+      type: "event",
+      layer: "disasters",
+      name: "Severe Flooding",
+      lat: -6.2088,
+      lon: 106.8456,
+      timestamp: fmtTs(new Date(now - 72 * 3600 * 1000)),
+      snippet: "Jakarta region, 50,000 affected",
+      source: "bundled event index",
+    });
+  }
+  return results;
+}
+
 export function searchMockData(query: string, searchType = "all", limit = 20) {
   const q = query.toLowerCase();
   const results: Record<string, unknown>[] = [];
@@ -533,47 +585,12 @@ export function searchMockData(query: string, searchType = "all", limit = 20) {
         lon: city.lon,
         population: city.pop,
         snippet: `${city.name}, ${city.country} - Population: ${city.pop.toLocaleString("en-US")}`,
+        source: "bundled gazetteer",
       });
     }
   }
   if (searchType === "all" || searchType === "event") {
-    const now = Date.now();
-    if (q.includes("quake") || q.includes("earth") || q.includes("seismic")) {
-      results.push({
-        id: "usgs-12345",
-        type: "event",
-        layer: "earthquakes",
-        name: "M5.2 Earthquake",
-        lat: 35.6762,
-        lon: 139.6503,
-        timestamp: fmtTs(new Date(now - 12 * 3600 * 1000)),
-        snippet: "35km ESE of Tokyo, depth 45km",
-      });
-    }
-    if (q.includes("fire") || q.includes("wild")) {
-      results.push({
-        id: "fire-001",
-        type: "event",
-        layer: "wildfires",
-        name: "Wildfire - California",
-        lat: 37.7749,
-        lon: -122.4194,
-        timestamp: fmtTs(new Date(now - 48 * 3600 * 1000)),
-        snippet: "Active fire, 5,000 acres burned",
-      });
-    }
-    if (q.includes("flood")) {
-      results.push({
-        id: "flood-001",
-        type: "event",
-        layer: "disasters",
-        name: "Severe Flooding",
-        lat: -6.2088,
-        lon: 106.8456,
-        timestamp: fmtTs(new Date(now - 72 * 3600 * 1000)),
-        snippet: "Jakarta region, 50,000 affected",
-      });
-    }
+    results.push(...matchEventIndex(query));
   }
   return results.slice(0, limit);
 }
@@ -628,31 +645,4 @@ export function getMockHistoricalData(metric: string, period: string, aggregatio
     }
   }
   return { metric, period, aggregation, values };
-}
-
-export function reverseGeocodeMock(lat: number, lon: number) {
-  const regions = [
-    { name: "North America", lat: [15, 75] as const, lon: [-170, -50] as const },
-    { name: "South America", lat: [-60, 15] as const, lon: [-90, -30] as const },
-    { name: "Europe", lat: [35, 75] as const, lon: [-15, 45] as const },
-    { name: "Africa", lat: [-40, 40] as const, lon: [-20, 55] as const },
-    { name: "Asia", lat: [5, 80] as const, lon: [45, 180] as const },
-    { name: "Oceania", lat: [-50, 0] as const, lon: [110, 180] as const },
-  ];
-  let regionName = "Unknown Region";
-  for (const r of regions) {
-    if (lat >= r.lat[0] && lat <= r.lat[1] && lon >= r.lon[0] && lon <= r.lon[1]) {
-      regionName = r.name;
-      break;
-    }
-  }
-  return {
-    lat: Math.round(lat * 10000) / 10000,
-    lon: Math.round(lon * 10000) / 10000,
-    name: `Location (${lat.toFixed(2)}, ${lon.toFixed(2)})`,
-    country: "Unknown",
-    country_code: "XX",
-    region: regionName,
-    timezone: "UTC",
-  };
 }

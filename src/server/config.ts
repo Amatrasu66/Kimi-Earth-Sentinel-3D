@@ -11,6 +11,7 @@ export const DEFAULTS = {
   OPEN_METEO_URL: "https://api.open-meteo.com/v1",
   AIRNOW_API_URL: "https://www.airnowapi.org/aq/observation",
   NASA_FIRMS_URL: "https://firms.modaps.eosdis.nasa.gov/api",
+  OPEN_METEO_GEOCODING_URL: "https://geocoding-api.open-meteo.com/v1",
   REQUEST_TIMEOUT: 8,
   MAX_UPSTREAM_TIMEOUT_SEC: 30,
   CACHE_DEFAULT_TIMEOUT: 300,
@@ -57,6 +58,10 @@ export const serverConfig = {
   /** Air Quality API lives on a separate host (verified in official docs). */
   get openMeteoAqUrl(): string {
     return envStr("OPEN_METEO_AQ_URL", "https://air-quality-api.open-meteo.com/v1");
+  },
+  /** Geocoding API lives on a separate host (verified in official docs, T2.6). */
+  get openMeteoGeocodingUrl(): string {
+    return envStr("OPEN_METEO_GEOCODING_URL", DEFAULTS.OPEN_METEO_GEOCODING_URL);
   },
   get airnowApiUrl(): string {
     return envStr("AIRNOW_API_URL", DEFAULTS.AIRNOW_API_URL);

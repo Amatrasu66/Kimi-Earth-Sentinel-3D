@@ -22,12 +22,21 @@ function searchUrl(q: string): NextRequest {
 }
 
 describe("search route validation", () => {
-  it("trims the query and preserves normal behavior", async () => {
+  it("trims the query and serves the live merged result", async () => {
+    // T2.6: "tokyo" hits the provider (no event keyword) — stub the upstream.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ results: [] }), { status: 200 })),
+    );
     const res = await searchGET(searchUrl("  tokyo  "));
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { success: boolean; data: { query: string } };
+    const body = (await res.json()) as {
+      success: boolean;
+      data: { query: string; data_status: { status: string } };
+    };
     expect(body.success).toBe(true);
     expect(body.data.query).toBe("tokyo");
+    expect(body.data.data_status.status).toBe("live");
   });
 
   it("rejects too-long and control-character queries with 400, no provider call", async () => {
