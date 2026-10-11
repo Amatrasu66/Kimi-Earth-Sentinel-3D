@@ -14,7 +14,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Kbd } from '@/components/ui/kbd';
-import { statusLabel } from '@/lib/format';
+import { provenanceChipLabel } from '@/lib/provenance';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -24,6 +24,8 @@ interface SettingsModalProps {
   rendererInfo?: RendererInfo;
   activeLayer?: LayerId | null;
   dataStatus?: DataStatus | null;
+  /** Server L1 bit (T3.7): a live result served from cache reads CACHED. */
+  cacheHit?: boolean | null;
 }
 
 /**
@@ -35,10 +37,12 @@ function DiagnosticsPanel({
   rendererInfo,
   activeLayer,
   dataStatus,
+  cacheHit = null,
 }: {
   rendererInfo?: RendererInfo;
   activeLayer?: LayerId | null;
   dataStatus?: DataStatus | null;
+  cacheHit?: boolean | null;
 }) {
   const [health, setHealth] = useState<string | null>(null);
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
@@ -81,7 +85,7 @@ function DiagnosticsPanel({
     ['API latency', latencyMs === null ? '—' : `${latencyMs} ms`],
     ['Last success', lastOk ?? '—'],
     ['Current layer', activeLayer ?? 'none'],
-    ['Data status', dataStatus ? `${statusLabel(dataStatus)} · ${dataStatus.source}` : 'no layer data'],
+    ['Data status', dataStatus ? `${provenanceChipLabel(dataStatus, cacheHit)} · ${dataStatus.source}` : 'no layer data'],
     ['WebGPU', `${hasNavigatorGpu() ? 'navigator.gpu present' : 'no navigator.gpu'} · probe ${webgpuProbe}`],
     ['Active renderer', rendererInfo ? `${rendererInfo.active} · ${rendererInfo.detail}` : 'unknown'],
     ['Renderer source', rendererInfo ? rendererInfo.source : '—'],
@@ -122,6 +126,7 @@ function SettingsBody({
   rendererInfo,
   activeLayer,
   dataStatus,
+  cacheHit = null,
 }: Omit<SettingsModalProps, 'isOpen' | 'onClose'>) {
   return (
     <Tabs defaultValue="globe" className="min-h-0 gap-0">
@@ -187,7 +192,7 @@ function SettingsBody({
         </TabsContent>
 
         <TabsContent value="diagnostics" className="mt-0">
-          <DiagnosticsPanel rendererInfo={rendererInfo} activeLayer={activeLayer} dataStatus={dataStatus} />
+          <DiagnosticsPanel rendererInfo={rendererInfo} activeLayer={activeLayer} dataStatus={dataStatus} cacheHit={cacheHit} />
         </TabsContent>
 
         <TabsContent value="about" className="mt-0 space-y-3">
@@ -205,9 +210,9 @@ function SettingsBody({
 
 // Centered dialog on desktop, bottom sheet on narrow screens — same content,
 // same tab logic, no behavior fork.
-export default function SettingsModal({ isOpen, onClose, isRotating, onToggleRotation, rendererInfo, activeLayer, dataStatus }: SettingsModalProps) {
+export default function SettingsModal({ isOpen, onClose, isRotating, onToggleRotation, rendererInfo, activeLayer, dataStatus, cacheHit = null }: SettingsModalProps) {
   const isMobile = useIsMobile();
-  const bodyProps = { isRotating, onToggleRotation, rendererInfo, activeLayer, dataStatus };
+  const bodyProps = { isRotating, onToggleRotation, rendererInfo, activeLayer, dataStatus, cacheHit };
 
   if (isMobile) {
     return (

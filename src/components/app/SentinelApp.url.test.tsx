@@ -22,9 +22,9 @@ vi.mock('@/hooks/useLayers', () => ({
   useLayers: () => ({ layers: [], loading: false, error: null }),
   useLayerData: (layerId: string | null) => {
     if (layerId === 'earthquakes') {
-      return { data: { layer_id: 'earthquakes', points: QUAKES }, loading: false, error: null, dataStatus: null, refetch: vi.fn() };
+      return { data: { layer_id: 'earthquakes', points: QUAKES }, loading: false, validating: false, error: null, dataStatus: null, meta: { cacheHit: null }, refetch: vi.fn() };
     }
-    return { data: null, loading: false, error: null, dataStatus: null, refetch: vi.fn() };
+    return { data: null, loading: false, validating: false, error: null, dataStatus: null, meta: { cacheHit: null }, refetch: vi.fn() };
   },
   // T3.6 idle prefetch is a no-op in URL-state tests (background concern only).
   useIdlePrefetchLayer: () => {},

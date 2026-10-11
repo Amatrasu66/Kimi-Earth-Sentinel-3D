@@ -95,8 +95,12 @@ function SentinelApp() {
     loading: layerLoading,
     error: layerError,
     dataStatus,
+    meta: layerDataMeta,
     refetch,
   } = useLayerData(activeLayer, { limit: 500 });
+  // Server L1 bit for the provenance strip/chips (T3.7: CACHED reads only
+  // this envelope bit — never SWR/client caching).
+  const layerCacheHit = layerDataMeta.cacheHit;
   // T3.6: conservative idle prefetch of the default-layer candidate (single
   // key, silent, cancelled on layer change — see useIdlePrefetchLayer).
   useIdlePrefetchLayer(activeLayer);
@@ -393,6 +397,7 @@ function SentinelApp() {
             onSearchResultClick={handleSearchResultClick}
             onSettingsClick={() => setIsSettingsOpen(true)}
             dataStatus={dataStatus}
+            cacheHit={layerCacheHit}
             activeLayerName={activeLayerMeta?.name ?? null}
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
@@ -412,6 +417,7 @@ function SentinelApp() {
             loading={layerLoading}
             error={layerError ? layerError.message : null}
             dataStatus={dataStatus}
+            cacheHit={layerCacheHit}
             onClose={handleClosePanel}
             onBackToLayer={handleBackToLayer}
             onEventSelect={handleMarkerClick}
@@ -427,6 +433,7 @@ function SentinelApp() {
             activeLayer={activeLayer}
             dataCount={allDataPoints.length}
             dataStatus={dataStatus}
+            cacheHit={layerCacheHit}
             rendererInfo={rendererInfo}
           />
         }
@@ -442,6 +449,7 @@ function SentinelApp() {
         rendererInfo={rendererInfo}
         activeLayer={activeLayer}
         dataStatus={dataStatus}
+        cacheHit={layerCacheHit}
       />
 
       <MarkerHoverCard point={hoveredPoint} activeLayer={activeLayer} />

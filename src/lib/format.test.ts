@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import {
+  formatAge,
   formatCoordinates,
   formatPointValue,
   formatRelativeTime,
@@ -60,6 +61,33 @@ describe('formatRelativeTime', () => {
     expect(formatRelativeTime('2026-06-01T10:00:00Z')).toBe('2h ago');
     expect(formatRelativeTime(undefined)).toBe('unknown');
     expect(formatRelativeTime('not-a-date')).toBe('unknown');
+  });
+});
+
+describe('formatAge (T3.7 provenance freshness)', () => {
+  const NOW = new Date('2026-06-01T12:00:00Z').getTime();
+
+  it('buckets valid fetched_at values against the supplied clock', () => {
+    expect(formatAge('2026-06-01T11:59:55Z', NOW)).toBe('just now');
+    expect(formatAge('2026-06-01T11:59:30Z', NOW)).toBe('30s ago');
+    expect(formatAge('2026-06-01T11:55:00Z', NOW)).toBe('5 min ago');
+    expect(formatAge('2026-06-01T10:00:00Z', NOW)).toBe('2h ago');
+    expect(formatAge('2026-05-29T12:00:00Z', NOW)).toBe('3d ago');
+  });
+
+  it('returns null for missing or invalid timestamps (explicit unknown, never fabricated)', () => {
+    expect(formatAge(undefined, NOW)).toBeNull();
+    expect(formatAge(null, NOW)).toBeNull();
+    expect(formatAge('', NOW)).toBeNull();
+    expect(formatAge('not-a-date', NOW)).toBeNull();
+  });
+
+  it('never substitutes request time: age derives only from fetched_at + the given now', () => {
+    // Same fetched_at, different clocks → different ages (pure in both args).
+    expect(formatAge('2026-06-01T11:00:00Z', NOW)).toBe('1h ago');
+    expect(formatAge('2026-06-01T11:00:00Z', NOW + 3_600_000)).toBe('2h ago');
+    // Future timestamps clamp to "just now" rather than going negative.
+    expect(formatAge('2026-06-01T12:05:00Z', NOW)).toBe('just now');
   });
 });
 

@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { Crosshair, Cpu } from 'lucide-react';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
-import { formatCoordinates, statusLabel } from '@/lib/format';
+import { formatCoordinates } from '@/lib/format';
+import { provenanceChipLabel, resolveProvenance } from '@/lib/provenance';
 import { cn } from '@/lib/utils';
 import type { DataStatus } from '@/types';
 import type { RendererInfo } from '@/components/globe/EarthRenderer';
@@ -13,6 +14,8 @@ interface StatusDockProps {
   activeLayer: string | null;
   dataCount: number;
   dataStatus?: DataStatus | null;
+  /** Server L1 bit (T3.7): a live result served from cache reads CACHED. */
+  cacheHit?: boolean | null;
   rendererInfo?: RendererInfo | null;
 }
 
@@ -21,7 +24,7 @@ interface StatusDockProps {
  * context · provenance (wide) · UTC · renderer state. In-flow footer
  * row owned by AppShell, 38px, hairline top border, no pill chrome.
  */
-export default function StatusDock({ coordinates, activeLayer, dataCount, dataStatus = null, rendererInfo = null }: StatusDockProps) {
+export default function StatusDock({ coordinates, activeLayer, dataCount, dataStatus = null, cacheHit = null, rendererInfo = null }: StatusDockProps) {
   // Null until client mount: SSR and the first client render must produce
   // identical markup, so the live clock starts only inside useEffect (after
   // hydration) — never from `new Date()` during render.
@@ -37,7 +40,8 @@ export default function StatusDock({ coordinates, activeLayer, dataCount, dataSt
     return () => clearInterval(interval);
   }, []);
 
-  const statusKind = dataStatus?.status ?? 'unknown';
+  const statusKind = resolveProvenance(dataStatus, cacheHit, null).kind;
+  const chipLabel = provenanceChipLabel(dataStatus, cacheHit);
   const statusColor = `var(--status-${statusKind === 'unknown' ? 'neutral' : statusKind})`;
   // Session 6: badge reads e.g. "WebGL · forced" vs "WebGPU · automatic"
   // so a `?renderer=` override is impossible to misunderstand.
@@ -91,13 +95,13 @@ export default function StatusDock({ coordinates, activeLayer, dataCount, dataSt
               <span
                 className="hidden cursor-default items-center gap-1.5 lg:inline-flex"
                 role="status"
-                aria-label={`Data status: ${statusLabel(dataStatus)} · ${dataStatus.source}`}
+                aria-label={`Data status: ${chipLabel} · ${dataStatus.source ?? 'Unknown source'}`}
               >
                 <span className={cn('h-1.5 w-1.5 rounded-full', statusKind === 'live' && 'sentinel-live-dot')} style={{ background: statusColor }} aria-hidden />
                 <span className="text-[11px] font-semibold tracking-[0.08em]" style={{ color: statusColor }}>
-                  {statusLabel(dataStatus)}
+                  {chipLabel}
                 </span>
-                <span className="sentinel-micro max-w-[180px] truncate">{dataStatus.source}</span>
+                <span className="sentinel-micro max-w-[180px] truncate">{dataStatus.source ?? 'Unknown source'}</span>
               </span>
             </TooltipTrigger>
             <TooltipContent side="top" className="border-white/10 bg-sentinel-elev text-xs text-white">

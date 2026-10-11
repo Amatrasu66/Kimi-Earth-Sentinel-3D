@@ -129,6 +129,52 @@ describe('DataPanel event detail', () => {
     expect(screen.getByRole('status', { name: 'Loading event details' })).toBeInTheDocument();
   });
 
+  it('never retains the previous layer provenance after a layer switch', () => {
+    const liveStatus: DataStatus = {
+      status: 'live',
+      source: 'USGS',
+      fetched_at: new Date(Date.now() - 60_000).toISOString(),
+    };
+    const layerView = {
+      ...baseProps,
+      selectedEvent: null,
+      eventDetail: null,
+      dataPoints: [],
+    };
+    const { rerender } = render(<DataPanel {...layerView} dataStatus={liveStatus} />);
+    expect(screen.getByRole('status')).toHaveTextContent('LIVE');
+
+    // Layer switched: new key, no data yet — UNKNOWN with no trace of USGS.
+    rerender(<DataPanel {...layerView} dataStatus={null} />);
+    const banner = screen.getByRole('status');
+    expect(banner).toHaveTextContent('UNKNOWN');
+    expect(banner).not.toHaveTextContent('USGS');
+
+    // Fresh response for the new layer replaces it (no stale retention).
+    rerender(<DataPanel {...layerView} dataStatus={layerStatus} />);
+    expect(screen.getByRole('status')).toHaveTextContent('SIMULATED');
+  });
+
+  it('shows ERROR provenance (not a success state) when the request fails with no payload', () => {
+    const layerView = {
+      ...baseProps,
+      selectedEvent: null,
+      eventDetail: null,
+      dataPoints: [],
+    };
+    render(
+      <DataPanel
+        {...layerView}
+        dataStatus={null}
+        error="Network error — is the API reachable?"
+      />,
+    );
+    const banner = screen.getByRole('status');
+    expect(banner).toHaveTextContent('ERROR');
+    expect(banner).not.toHaveTextContent('LIVE');
+    expect(banner).not.toHaveTextContent('SIMULATED');
+  });
+
   it('labels simulated fallback details honestly', () => {
     const simulated: EventDetail = {
       ...liveDetail,

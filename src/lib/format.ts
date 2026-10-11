@@ -67,12 +67,18 @@ export function metricLabelForLayer(layerId: LayerId | null): string {
   }
 }
 
-/** "Updated 2 min ago" style relative time; falls back to locale date. */
-export function formatRelativeTime(iso: string | undefined): string {
-  if (!iso) return 'unknown';
-  const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return 'unknown';
-  const secs = Math.max(0, Math.floor((Date.now() - t) / 1000));
+/**
+ * Pure age buckets for a provider `fetched_at` timestamp against an
+ * explicit now (T3.7). Returns null when the timestamp is missing or
+ * invalid so callers render an explicit "age unknown" state instead of
+ * fabricating freshness. Never substitutes request time for fetch time —
+ * the caller supplies both values.
+ */
+export function formatAge(fetchedAt: string | null | undefined, nowMs: number): string | null {
+  if (!fetchedAt) return null;
+  const t = new Date(fetchedAt).getTime();
+  if (Number.isNaN(t)) return null;
+  const secs = Math.max(0, Math.floor((nowMs - t) / 1000));
   if (secs < 10) return 'just now';
   if (secs < 60) return `${secs}s ago`;
   const mins = Math.floor(secs / 60);
@@ -81,7 +87,12 @@ export function formatRelativeTime(iso: string | undefined): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   if (days < 30) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString();
+  return new Date(fetchedAt).toLocaleDateString();
+}
+
+/** "Updated 2 min ago" style relative time; falls back to locale date. */
+export function formatRelativeTime(iso: string | undefined): string {
+  return formatAge(iso, Date.now()) ?? 'unknown';
 }
 
 /** "12.34°N, 56.78°W" — handles all hemispheres (BottomBar fix). */

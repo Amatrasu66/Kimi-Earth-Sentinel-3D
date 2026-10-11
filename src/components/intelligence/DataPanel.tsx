@@ -21,6 +21,8 @@ interface DataPanelProps {
   loading: boolean;
   error: string | null;
   dataStatus: DataStatus | null;
+  /** Server L1 bit from the SWR envelope — renders CACHED, never implied. */
+  cacheHit?: boolean | null;
   onClose: () => void;
   onBackToLayer: () => void;
   onEventSelect: (point: DataPoint) => void;
@@ -45,6 +47,7 @@ export default function DataPanel({
   loading,
   error,
   dataStatus,
+  cacheHit = null,
   onClose,
   onBackToLayer,
   onEventSelect,
@@ -110,7 +113,7 @@ export default function DataPanel({
           {/* Provenance strip — always visible while data is shown */}
           {!selectedEvent && (
             <div className="intel-section">
-              <DataStatusBanner status={dataStatus} />
+              <DataStatusBanner status={dataStatus} cacheHit={cacheHit} error={error} />
             </div>
           )}
 

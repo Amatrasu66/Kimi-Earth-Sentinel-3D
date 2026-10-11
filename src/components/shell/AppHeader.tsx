@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Kbd } from '@/components/ui/kbd';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { statusLabel } from '@/lib/format';
+import { provenanceChipLabel, resolveProvenance } from '@/lib/provenance';
 import type { DataStatus } from '@/types';
 
 interface AppHeaderProps {
@@ -14,6 +14,8 @@ interface AppHeaderProps {
   onSettingsClick: () => void;
   /** Compact provenance badge — the header owns provenance at ≥sm widths. */
   dataStatus?: DataStatus | null;
+  /** Server L1 bit (T3.7): a live result served from cache reads CACHED. */
+  cacheHit?: boolean | null;
   activeLayerName?: string | null;
   /** Controlled search text (T3.3 URL state) + change reports. */
   searchQuery: string;
@@ -25,8 +27,9 @@ interface AppHeaderProps {
  * brand+layer | command search | system state. In-flow header row owned
  * by AppShell; translucent so the globe reads through at the top edge.
  */
-export default function AppHeader({ onSearchResultClick, onSettingsClick, dataStatus = null, activeLayerName = null, searchQuery, onSearchQueryChange }: AppHeaderProps) {
-  const statusKind = dataStatus?.status ?? 'unknown';
+export default function AppHeader({ onSearchResultClick, onSettingsClick, dataStatus = null, cacheHit = null, activeLayerName = null, searchQuery, onSearchQueryChange }: AppHeaderProps) {
+  const statusKind = resolveProvenance(dataStatus, cacheHit, null).kind;
+  const chipLabel = provenanceChipLabel(dataStatus, cacheHit);
   const statusColor = `var(--status-${statusKind === 'unknown' ? 'neutral' : statusKind})`;
   const showStatus = dataStatus !== null && dataStatus !== undefined;
 
@@ -68,11 +71,11 @@ export default function AppHeader({ onSearchResultClick, onSettingsClick, dataSt
               <span
                 className="mr-0.5 hidden items-center gap-1.5 sm:inline-flex"
                 role="status"
-                aria-label={`Data status: ${statusLabel(dataStatus ?? undefined)}`}
+                aria-label={`Data status: ${chipLabel}`}
               >
                 <span className={cn('h-1.5 w-1.5 rounded-full', statusKind === 'live' && 'sentinel-live-dot')} style={{ background: statusColor }} aria-hidden />
                 <span className="text-[11px] font-semibold tracking-[0.08em]" style={{ color: statusColor }}>
-                  {statusLabel(dataStatus ?? undefined)}
+                  {chipLabel}
                 </span>
               </span>
             </TooltipTrigger>

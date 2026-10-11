@@ -62,6 +62,8 @@
     /* ——— Semantic status (single source of truth) ——— */
     --status-live: #34d399;
     --status-live-rgb: 52 211 153;
+    --status-cached: #2dd4bf;
+    --status-cached-rgb: 45 212 191;
     --status-simulated: #ffc31f;
     --status-simulated-rgb: 255 195 31;
     --status-stale: #fb923c;
@@ -76,6 +78,8 @@
        states carry stronger washes so simulated can never read as live. */
     --status-live-bg: rgb(var(--status-live-rgb) / 0.07);
     --status-live-border: rgb(var(--status-live-rgb) / 0.3);
+    --status-cached-bg: rgb(var(--status-cached-rgb) / 0.07);
+    --status-cached-border: rgb(var(--status-cached-rgb) / 0.3);
     --status-simulated-bg: rgb(var(--status-simulated-rgb) / 0.07);
     --status-simulated-border: rgb(var(--status-simulated-rgb) / 0.3);
     --status-stale-bg: rgb(var(--status-stale-rgb) / 0.07);
