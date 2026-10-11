@@ -51,6 +51,7 @@ function currentSearch(): string {
 
 beforeEach(() => {
   setUrl('');
+  window.localStorage.clear();
   // jsdom has no matchMedia (used by use-mobile in the tree) — stub it.
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
@@ -95,16 +96,19 @@ describe('URL restore on load (T3.3)', () => {
     expect(screen.queryByRole('button', { name: /M3\.1 Minor Quake/ })).not.toBeInTheDocument();
   });
 
-  it('drops invalid params without provider calls and canonicalizes', async () => {
+  it('defaults invalid params to the first-run layer and canonicalizes', async () => {
     setUrl('?layer=nope&event=..&q=a&sev=extreme&view=map&renderer=webgl');
     const replaceSpy = vi.spyOn(window.history, 'replaceState');
     render(<SentinelApp />);
-    // No layer active: first-run hint stays, no data panel.
-    expect(await screen.findByText('Select layer')).toBeInTheDocument();
-    expect(screen.queryByLabelText(/Event detail|Layer data/)).not.toBeInTheDocument();
-    // Canonical form keeps only the valid passthrough.
+    // T3.8: an invalid layer resolves to the default (earthquakes) through
+    // the normal data path — never an empty "select a layer" stall, never
+    // junk in a provider call. The hint guides exploration instead.
+    expect(await screen.findByText('Getting started')).toBeInTheDocument();
+    expect(screen.queryByText('Select layer')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Layer data')).toBeInTheDocument();
+    // Canonical form keeps the default layer plus the valid passthrough.
     const last = replaceSpy.mock.calls[replaceSpy.mock.calls.length - 1];
-    expect(last?.[2]).toBe('?renderer=webgl');
+    expect(last?.[2]).toBe('?layer=earthquakes&renderer=webgl');
   });
 });
 
@@ -113,8 +117,10 @@ describe('URL sync strategy (T3.3)', () => {
     setUrl('');
     const pushSpy = vi.spyOn(window.history, 'pushState');
     render(<SentinelApp />);
-    fireEvent.click(screen.getByRole('button', { name: 'Toggle Earthquakes layer, shortcut 5' }));
-    expect(pushSpy).toHaveBeenCalledWith(null, '', '?layer=earthquakes');
+    // T3.8: bare entries mount the default via replace (no push spam);
+    // selecting a different layer is a discrete navigation → push.
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle Wildfires layer, shortcut 8' }));
+    expect(pushSpy).toHaveBeenCalledWith(null, '', '?layer=wildfires');
   });
 
   it('replaces (never pushes) on query typing', async () => {
@@ -125,7 +131,9 @@ describe('URL sync strategy (T3.3)', () => {
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'tok' } });
     expect(screen.getByRole('combobox')).toHaveValue('tok');
     expect(pushSpy).not.toHaveBeenCalled();
-    expect(replaceSpy).toHaveBeenLastCalledWith(null, '', '?q=tok');
+    // T3.8: the first-run default is already canonicalized, so typing
+    // preserves it while replacing.
+    expect(replaceSpy).toHaveBeenLastCalledWith(null, '', '?layer=earthquakes&q=tok');
   });
 
   it('clears conflicting event selection when switching layers', async () => {

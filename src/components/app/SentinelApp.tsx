@@ -29,6 +29,7 @@ import { isValidCoordinate } from '@/lib/geo';
 import {
   parseAppUrl,
   serializeAppState,
+  DEFAULT_FIRST_RUN_LAYER,
 } from '@/lib/url-state';
 import type { AppView } from '@/lib/url-state';
 import type { DataPoint, LayerId, EventDetail } from '@/types';
@@ -36,6 +37,29 @@ import type { SeverityFilterValue } from '@/components/intelligence/SeverityFilt
 // (Global styles live in src/app/globals.css — App Router allows global CSS
 // imports only from the root layout, so the old './App.css' import is gone;
 // its contents were merged into globals.css verbatim.)
+
+// T3.8 first-run hint dismissal persistence: one small versioned flag in
+// browser storage, read/written only on the client (never during SSR).
+// Failures (private mode, blocked storage) degrade to session-only memory.
+const FIRST_RUN_HINT_STORAGE_KEY = 'sentinel:first-run-hint-dismissed:v1';
+
+function readFirstRunHintDismissed(): boolean {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return false;
+    return window.localStorage.getItem(FIRST_RUN_HINT_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeFirstRunHintDismissed(): void {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    window.localStorage.setItem(FIRST_RUN_HINT_STORAGE_KEY, '1');
+  } catch {
+    /* storage unavailable — dismissal lasts for this session only */
+  }
+}
 
 // Keyboard shortcut order (1-8). Preserved from the prototype, extended
 // with wildfires now that the backend serves it.
@@ -238,16 +262,30 @@ function SentinelApp() {
     setEventDetailLoading(false);
   }, []);
 
+  // T3.8: one-time first-run hint dismissal, persisted client-only.
+  const handleHintDismiss = useCallback(() => {
+    setHintDismissed(true);
+    writeFirstRunHintDismissed();
+  }, []);
+
   // ---- T3.3 URL-driven state (client-only; SSR output stays deterministic) ----
 
   // Apply one parsed URL to state. Runs once at mount and on every popstate
   // (browser Back/Forward). Invalid values never reach state (parseAppUrl
   // drops them); a validated event id becomes pending until loaded layer
   // data can resolve it to a real point — or it is dropped, never fabricated.
-  const applyUrlState = useCallback((search: string) => {
+  //
+  // T3.8: on the initial mount only (`applyDefaultLayer`), an absent or
+  // invalid `?layer=` resolves to the owner-locked default (earthquakes)
+  // through this same path, so rail, title, panel, URL, dock and markers
+  // stay consistent and data loads via the existing useLayerData hook.
+  // Popstate restores exactly what the URL says (null stays null) so an
+  // explicit close/panel-dismiss is never resurrected by history travel.
+  const applyUrlState = useCallback((search: string, opts?: { applyDefaultLayer?: boolean }) => {
     const parsed = parseAppUrl(search);
     passthroughRef.current = parsed.passthrough;
-    setActiveLayer(parsed.state.layer);
+    const layer = parsed.state.layer ?? (opts?.applyDefaultLayer ? DEFAULT_FIRST_RUN_LAYER : null);
+    setActiveLayer(layer);
     setSearchQuery(parsed.state.q);
     setSeverityFilter(parsed.state.sev);
     setView(parsed.state.view);
@@ -259,7 +297,10 @@ function SentinelApp() {
     setPendingEventId(parsed.state.event);
     // Canonicalize invalid leftovers without history spam (mount junk URLs
     // and hand-edited addresses collapse to the valid subset in place).
-    const canonical = serializeAppState(parsed.state, parsed.passthrough);
+    // With the first-run default this also records `?layer=earthquakes`
+    // for a bare entry URL via replace (no extra history entry, no loop:
+    // re-serializing the applied state is a fixed point).
+    const canonical = serializeAppState({ ...parsed.state, layer }, parsed.passthrough);
     if (canonical !== search) {
       window.history.replaceState(null, '', canonical || window.location.pathname);
     }
@@ -267,11 +308,15 @@ function SentinelApp() {
 
   // Mount-only restore: the live URL is external state, so it is read here —
   // never during render — keeping SSR markup deterministic (same exemption
-  // as StatusDock's clock and the T2.4 sun hook).
+  // as StatusDock's clock and the T2.4 sun hook). The persisted hint
+  // dismissal is read here for the same reason (no storage during SSR).
   useEffect(() => {
     if (restoredRef.current) return;
     restoredRef.current = true;
-    applyUrlState(window.location.search);
+    applyUrlState(window.location.search, { applyDefaultLayer: true });
+    if (readFirstRunHintDismissed()) {
+      setHintDismissed(true);
+    }
   }, [applyUrlState]);
 
   // Resolve a pending event id once its layer's data can answer it. An
@@ -448,7 +493,12 @@ function SentinelApp() {
         }
       />
 
-      {!activeLayer && !hintDismissed && <LayerHint onDismiss={() => setHintDismissed(true)} />}
+      {!hintDismissed && (
+        <LayerHint
+          onDismiss={handleHintDismiss}
+          activeLayerName={activeLayer ? (activeLayerMeta?.name ?? 'Live data') : null}
+        />
+      )}
 
       <SettingsModal
         isOpen={isSettingsOpen}

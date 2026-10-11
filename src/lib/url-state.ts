@@ -47,6 +47,15 @@ export const DEFAULT_URL_STATE: AppUrlState = {
   view: 'globe',
 };
 
+/**
+ * First-run default layer (T3.8, owner-locked): when the application opens
+ * without an explicitly specified (valid) `?layer=`, the client selects
+ * this layer after mount through the existing layer-state/data path.
+ * SSR stays on `DEFAULT_URL_STATE` (layer null) so the static shell is
+ * deterministic; the default is applied client-only in an effect.
+ */
+export const DEFAULT_FIRST_RUN_LAYER: LayerId = 'earthquakes';
+
 export interface ParsedAppUrl {
   state: AppUrlState;
   /** Unknown params (incl. `renderer`), first-wins per key, encounter order. */
