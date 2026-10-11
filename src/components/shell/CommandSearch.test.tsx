@@ -57,3 +57,106 @@ describe('CommandSearch grouped order', () => {
     expect(onResultClick).toHaveBeenCalledWith(1, 2);
   });
 });
+
+// T3.5: the results surface must stay compact and viewport-bounded so the
+// centered globe keeps breathing room; scrolling belongs to the list, and
+// the panel must never resize or shift the layout (absolute overlay).
+describe('CommandSearch bounded results surface (T3.5)', () => {
+  it('constrains the panel and list with viewport-relative caps', async () => {
+    render(<ControlledSearch onResultClick={vi.fn()} />);
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'tok' } });
+    const listbox = await screen.findByRole('listbox');
+
+    // The list scrolls internally within a viewport-relative cap.
+    expect(listbox.className).toContain('overflow-y-auto');
+    expect(listbox.className).toContain('max-h-[min(224px,36vh)]');
+
+    // The panel stays absolutely positioned (no layout shift) and bounded.
+    const panel = listbox.parentElement;
+    expect(panel?.className).toContain('absolute');
+    expect(panel?.className).toContain('max-h-[min(320px,50vh)]');
+    expect(panel?.className).toContain('overflow-hidden');
+  });
+
+  it('keeps keyboard focus indication and the selected row visible contract', async () => {
+    render(<ControlledSearch onResultClick={vi.fn()} />);
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'tok' } });
+    await screen.findByRole('option', { name: /Tokyo/ });
+
+    const box = screen.getByRole('combobox');
+    expect(box.getAttribute('aria-expanded')).toBe('true');
+    // First row is the active descendant before any navigation.
+    expect(box.getAttribute('aria-activedescendant')).toContain('sentinel-search-l1');
+    expect(screen.getByRole('option', { name: /Tokyo/ }).getAttribute('aria-selected')).toBe('true');
+  });
+});
+
+// T3.5: selection closes the surface, preserves the query text, and never
+// fires a new lookup for the committed name; event rows keep the existing
+// destination-navigation behavior (fly to coordinates).
+describe('CommandSearch selection lifecycle (T3.5)', () => {
+  it('location choice closes the surface and preserves the query', async () => {
+    const onResultClick = vi.fn();
+    render(<ControlledSearch onResultClick={onResultClick} />);
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'tok' } });
+    await screen.findByRole('option', { name: /Tokyo/ });
+
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
+    expect(onResultClick).toHaveBeenCalledWith(35.6762, 139.6503);
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(screen.getByRole('combobox')).toHaveValue('Tokyo');
+  });
+
+  it('event choice keeps the existing destination-navigation behavior', async () => {
+    const onResultClick = vi.fn();
+    render(<ControlledSearch onResultClick={onResultClick} />);
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'tok' } });
+    const eventOption = await screen.findByRole('option', { name: /Fire North/ });
+
+    // Pointer selection matches keyboard selection: same coordinates path.
+    fireEvent.click(eventOption);
+    expect(onResultClick).toHaveBeenCalledWith(1, 2);
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(screen.getByRole('combobox')).toHaveValue('Fire North');
+  });
+
+  it('Escape closes the surface without changing the query', async () => {
+    const onResultClick = vi.fn();
+    render(<ControlledSearch onResultClick={onResultClick} />);
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'tok' } });
+    await screen.findByRole('option', { name: /Tokyo/ });
+
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Escape' });
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(screen.getByRole('combobox')).toHaveValue('tok');
+    expect(onResultClick).not.toHaveBeenCalled();
+  });
+
+  it('refocusing after a choice does not resurface stale results; typing re-enables search', async () => {
+    const onResultClick = vi.fn();
+    render(<ControlledSearch onResultClick={onResultClick} />);
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'tok' } });
+    await screen.findByRole('option', { name: /Tokyo/ });
+
+    // Commit the choice: surface closes, query becomes the committed name.
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+
+    // Refocus must not reopen the previous lookup's rows under the new name.
+    fireEvent.focus(screen.getByRole('combobox'));
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+
+    // Fresh typing re-enables the surface (first keystroke consumes the
+    // choice's skip-once flag, the next one runs the debounced lookup).
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Tokyo!' } });
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Tokyo!?' } });
+    await screen.findByRole('listbox');
+  });
+});

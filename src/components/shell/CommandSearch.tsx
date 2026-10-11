@@ -37,6 +37,11 @@ export default function CommandSearch({ onResultClick, className, query, onQuery
   // Set when a result choice (not typing) writes the query: the value effect
   // below must not fire a lookup for it (choosing never searched before).
   const skipNextRef = useRef(false);
+  // T3.5: a committed choice also suppresses focus-reopen until the next
+  // edit. Without this, refocusing the box after choosing "New York" would
+  // reopen the previous lookup's rows under the committed name — a stale,
+  // misleading list. Typing (runSearch) or clearing resets the flag.
+  const committedRef = useRef(false);
   const { results, loading, error, search } = useSearch();
   // Latest lookup via ref so unrelated parent re-renders (hover, sun tick)
   // never reset the debounce window — only the query text restarts it.
@@ -99,6 +104,7 @@ export default function CommandSearch({ onResultClick, className, query, onQuery
   const runSearch = useCallback(
     (value: string) => {
       setHighlight(0);
+      committedRef.current = false;
       if (value.trim().length < 2) setOpen(false);
       onQueryChange(value);
     },
@@ -111,6 +117,7 @@ export default function CommandSearch({ onResultClick, className, query, onQuery
       setOpen(false);
       // A choice writes the name without searching (preserved behavior).
       skipNextRef.current = true;
+      committedRef.current = true;
       onQueryChange(result.name);
       inputRef.current?.blur();
     },
@@ -119,6 +126,7 @@ export default function CommandSearch({ onResultClick, className, query, onQuery
 
   const clear = useCallback(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    committedRef.current = false;
     onQueryChange('');
     setOpen(false);
     setHighlight(0);
@@ -198,7 +206,12 @@ export default function CommandSearch({ onResultClick, className, query, onQuery
           className="h-full border-0 bg-transparent p-0 text-[13px] text-white shadow-none placeholder:text-white/30 focus-visible:ring-0"
           value={query}
           onChange={(e) => runSearch(e.target.value)}
-          onFocus={() => query.trim().length >= 2 && setOpen(true)}
+          onFocus={() => {
+            // Reopen only for an uncommitted query: after a choice the box
+            // holds the committed name (see committedRef) and the previous
+            // lookup's rows must not resurface as if they matched it.
+            if (!committedRef.current && query.trim().length >= 2) setOpen(true);
+          }}
           onKeyDown={onInputKeyDown}
         />
         {query ? (
@@ -216,15 +229,21 @@ export default function CommandSearch({ onResultClick, className, query, onQuery
 
       {open && (
         <div
-          // CSP-1: static cap as a class (no style attribute).
-          className="sentinel-elev panel-enter absolute left-0 right-0 top-full z-50 mt-2 max-h-[380px] overflow-hidden rounded-[10px]"
+          // T3.5: compact, viewport-bounded surface (CSP-1: static caps as
+          // classes, no style attribute). The previous fixed 380px panel hung
+          // from the centered header deep into the stage and hid the globe +
+          // first-run guidance. The min() caps keep the panel small on tall
+          // screens and proportional on short/narrow ones; the list itself
+          // scrolls. Absolute positioning is unchanged, so the globe never
+          // resizes or shifts when results open.
+          className="sentinel-elev panel-enter absolute left-0 right-0 top-full z-50 mt-2 max-h-[min(320px,50vh)] overflow-hidden rounded-[10px]"
         >
           <div className="flex items-center justify-between px-3 pb-1 pt-2.5">
             <span className="sentinel-label">Results</span>
             {results.length > 0 && <span className="sentinel-micro sentinel-mono">{results.length} found</span>}
           </div>
           <Separator className="bg-white/[0.06]" />
-          <div ref={listRef} id="sentinel-search-listbox" role="listbox" aria-label="Search results" className="max-h-[300px] overflow-y-auto p-1.5">
+          <div ref={listRef} id="sentinel-search-listbox" role="listbox" aria-label="Search results" className="max-h-[min(224px,36vh)] overflow-y-auto p-1.5">
             {loading ? (
               <div className="flex items-center justify-center gap-2 px-3 py-8 text-[13px] text-white/40" role="status">
                 <Spinner className="h-4 w-4" /> Searching…
