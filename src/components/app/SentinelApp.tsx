@@ -415,7 +415,7 @@ function SentinelApp() {
   }, []);
 
   return (
-    <div className="dark h-dvh w-screen overflow-hidden" style={{ background: 'var(--sentinel-bg)' }}>
+    <div className="dark h-dvh w-screen overflow-hidden bg-[var(--sentinel-bg)]">
       {/* Skip link for keyboard users */}
       <a
         href="#sentinel-data-panel"

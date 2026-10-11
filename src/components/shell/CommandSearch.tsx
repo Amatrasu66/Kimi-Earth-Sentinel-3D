@@ -216,8 +216,8 @@ export default function CommandSearch({ onResultClick, className, query, onQuery
 
       {open && (
         <div
-          className="sentinel-elev panel-enter absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-[10px]"
-          style={{ maxHeight: 380 }}
+          // CSP-1: static cap as a class (no style attribute).
+          className="sentinel-elev panel-enter absolute left-0 right-0 top-full z-50 mt-2 max-h-[380px] overflow-hidden rounded-[10px]"
         >
           <div className="flex items-center justify-between px-3 pb-1 pt-2.5">
             <span className="sentinel-label">Results</span>

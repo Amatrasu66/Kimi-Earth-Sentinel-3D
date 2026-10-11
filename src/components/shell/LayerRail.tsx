@@ -125,8 +125,8 @@ export default function LayerRail({ activeLayer, onLayerToggle, shortcutLayers =
         role="toolbar"
         aria-label="Environmental layers"
         aria-orientation="horizontal"
-        className="layer-rail flex-row items-center gap-1 overflow-x-auto p-1.5 md:hidden"
-        style={{ scrollbarWidth: 'none' }}
+        // CSP-1: scrollbar hiding as an arbitrary property (no style attr).
+        className="layer-rail flex-row items-center gap-1 overflow-x-auto p-1.5 [scrollbar-width:none] md:hidden"
       >
         {LAYER_CONFIG.map((layer) => {
           const isActive = activeLayer === layer.id;

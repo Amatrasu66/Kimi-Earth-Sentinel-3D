@@ -17,8 +17,13 @@
  *   builder + test). T2.8 extends img-src when real imagery ships.
  *
  * Report-Only on purpose: switching to enforcing is a separate, later task
- * after zero violations are observed across all layers and both renderers.
- */
+  * after zero violations are observed across all layers and both renderers.
+  *
+  * CSP-1: `upgrade-insecure-requests` is deliberately NOT in this
+  * report-only policy — browsers ignore that directive outside an enforced
+  * policy, so shipping it here only produces a permanent console warning
+  * with zero protection. It is reserved for the future enforced policy.
+  */
 const cspDirectives = [
   "default-src 'self'",
   // Next.js App Router requires inline scripts (no nonce plumbing yet).
@@ -32,7 +37,6 @@ const cspDirectives = [
   "base-uri 'self'",
   "form-action 'self'",
   "frame-ancestors 'none'",
-  "upgrade-insecure-requests",
 ].join("; ");
 
 const securityHeaders = [

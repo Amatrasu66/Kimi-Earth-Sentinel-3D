@@ -188,24 +188,16 @@ export default function EarthRenderer({
   if (activeMode === 'dotted') return null;
 
   return (
-    <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1 }}>
+    // CSP-1: static fullscreen geometry as classes (see WebGPUEarth note).
+    <div className="fixed left-0 top-0 z-[1] h-full w-full">
       {activeMode === 'webgpu' ? (
         <Suspense
           fallback={
             <div
               role="status"
               aria-label="Loading WebGPU Earth renderer"
-              style={{
-                position: 'absolute',
-                inset: 0,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: '#020202',
-                color: 'rgba(255,255,255,0.5)',
-                fontSize: 13,
-                letterSpacing: '0.02em',
-              }}
+              // CSP-1: static veil styling as classes (no style attribute).
+              className="absolute inset-0 flex items-center justify-center bg-[#020202] text-[13px] tracking-[0.02em] text-white/50"
             >
               Loading WebGPU Earth…
             </div>
@@ -235,21 +227,12 @@ export default function EarthRenderer({
           sunDirection={sunDirection}
         />
       ) : (
-        <div
-          role="status"
-          aria-label="Initializing Earth renderer"
-          style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: '#020202',
-            color: 'rgba(255,255,255,0.5)',
-            fontSize: 13,
-            letterSpacing: '0.02em',
-          }}
-        >
+          <div
+            role="status"
+            aria-label="Initializing Earth renderer"
+            // CSP-1: static veil styling as classes (no style attribute).
+            className="absolute inset-0 flex items-center justify-center bg-[#020202] text-[13px] tracking-[0.02em] text-white/50"
+          >
           Initializing Earth renderer…
         </div>
       )}

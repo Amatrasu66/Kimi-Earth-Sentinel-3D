@@ -26,13 +26,6 @@ const RENDERER_NAMES: Record<string, string> = {
   dotted: 'Dotted Earth',
 };
 
-/** Status dot colour per renderer — healthy renderers read green. */
-const RENDERER_DOT_COLORS: Record<string, string> = {
-  webgpu: 'var(--status-live)',
-  webgl: 'var(--status-simulated)',
-  dotted: 'var(--status-live)',
-};
-
 /**
  * System dock: one intentional baseline — cursor position · layer
  * context · provenance (wide) · UTC · renderer state. In-flow footer
@@ -136,7 +129,7 @@ export default function StatusDock({ coordinates, activeLayer, dataCount, dataSt
           <span className="flex shrink-0 cursor-default items-center gap-1.5" role="status" aria-label={`Renderer: ${rendererLabel}`}>
             <Cpu className="h-3.5 w-3.5 text-white/40" aria-hidden />
             <span className="sentinel-micro hidden sm:inline">{rendererShort}</span>
-            <span className={cn('h-1.5 w-1.5 rounded-full', rendererInfo?.active === 'webgpu' && 'sentinel-live-dot')} style={{ background: rendererInfo ? (RENDERER_DOT_COLORS[rendererInfo.active] ?? 'var(--status-neutral)') : 'var(--status-neutral)' }} aria-hidden />
+            <span className={cn('h-1.5 w-1.5 rounded-full', rendererInfo?.active === 'webgpu' && 'sentinel-live-dot')} data-renderer-dot={rendererInfo?.active ?? 'loading'} aria-hidden />
           </span>
         </TooltipTrigger>
         <TooltipContent side="top" className="border-white/10 bg-sentinel-elev text-xs text-white">

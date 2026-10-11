@@ -778,7 +778,9 @@ export default function WebGPUEarth({
   return (
     <div
       ref={containerRef}
-      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+      // CSP-1: static geometry as classes — the engine sizes the canvas
+      // through this container, so no style attribute is emitted.
+      className="absolute inset-0 h-full w-full"
       aria-hidden
     />
   );

@@ -50,6 +50,11 @@ describe("security headers (T1.2)", () => {
     // No wildcard origins.
     expect(csp).not.toMatch(/(^|[;\s])\*(;|$)/);
     expect(csp).not.toContain("unsafe-eval");
+    // CSP-1: `upgrade-insecure-requests` is ignored inside a report-only
+    // policy (browsers warn and skip it), so it must not ship here — it is
+    // reserved for the future enforced policy. Regression guard: a
+    // knowingly ineffective directive must never return unnoticed.
+    expect(csp).not.toContain("upgrade-insecure-requests");
     // Same-origin client: API + textures + fonts + workers resolve to self.
     for (const directive of [
       "default-src 'self'",

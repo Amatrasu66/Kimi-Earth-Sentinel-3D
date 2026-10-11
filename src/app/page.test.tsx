@@ -52,4 +52,12 @@ describe('initial shell HTML (T3.2)', () => {
     expect(first).toContain('— —');
     expect(first).not.toMatch(/202\d-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC/);
   });
+
+  it('emits no inline style attributes in the static shell (CSP-1)', () => {
+    // Every `style="..."` in SSR markup is a `style-src 'self'` report, so
+    // the static shell keeps all of its styling in classes. Dynamic values
+    // (provenance colors, hover-card position) only ever render client-side
+    // through React/CSSOM, which the policy does not flag.
+    expect(shellHtml()).not.toContain('style="');
+  });
 });

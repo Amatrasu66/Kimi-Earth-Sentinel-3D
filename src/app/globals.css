@@ -665,6 +665,20 @@ canvas:active {
   animation: sentinel-live-pulse 2s ease-in-out infinite;
 }
 
+/* Renderer status dot (StatusDock): color is a function of the active
+   renderer only, so it rides a data attribute — never a style attribute
+   (CSP-1: keeps SSR markup free of `style="..."` under style-src 'self'). */
+[data-renderer-dot] {
+  background: var(--status-neutral);
+}
+[data-renderer-dot='webgpu'],
+[data-renderer-dot='dotted'] {
+  background: var(--status-live);
+}
+[data-renderer-dot='webgl'] {
+  background: var(--status-simulated);
+}
+
 @keyframes sentinel-live-pulse {
   0%,
   100% {

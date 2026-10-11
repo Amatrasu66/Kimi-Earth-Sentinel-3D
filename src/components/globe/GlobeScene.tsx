@@ -47,7 +47,8 @@ export default function GlobeScene({
   const dpr = getAdaptiveDpr();
 
   return (
-    <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1 }}>
+    // CSP-1: static fullscreen geometry as classes (see WebGPUEarth note).
+    <div className="fixed left-0 top-0 z-[1] h-full w-full">
       <Canvas
         camera={{ position: [0, 0, DEFAULT_CAMERA_DISTANCE], fov: 45, near: 0.1, far: 1000 }}
         dpr={dpr}
