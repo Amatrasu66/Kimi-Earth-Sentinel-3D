@@ -71,7 +71,52 @@ export interface RequestOptions {
   timeoutMs?: number;
 }
 
-async function fetchApi<T>(path: string, options?: FetchOptions): Promise<T> {
+/**
+ * Typed API failure (T3.6): extends Error so existing `toThrow(message)`
+ * expectations keep passing, while carrying the status/code/Retry-After the
+ * SWR retry policy needs. Caller-abort and client-timeout keep the plain
+ * `AbortError` name (existing contract); everything else arrives here.
+ */
+export class ApiError extends Error {
+  /** HTTP status when the failure came from a response (undefined = network-level). */
+  status?: number;
+  /** Server error code from the `{ success:false, error:{code} }` envelope. */
+  code?: string;
+  /** Parsed `Retry-After` seconds (429s only, capped server-side at 60). */
+  retryAfterSec?: number;
+
+  constructor(message: string, opts?: { status?: number; code?: string; retryAfterSec?: number }) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = opts?.status;
+    this.code = opts?.code;
+    this.retryAfterSec = opts?.retryAfterSec;
+  }
+}
+
+export interface EnvelopeMeta {
+  timestamp: string;
+  cache_hit?: boolean;
+  cached_at?: string | null;
+  stale?: boolean;
+  source?: string | null;
+  data_status?: string | null;
+}
+
+/** Parse a `Retry-After` header value into seconds (delta or HTTP date). */
+function parseRetryAfter(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.min(Math.floor(seconds), 60);
+  const at = Date.parse(value);
+  if (!Number.isNaN(at)) return Math.max(0, Math.min(Math.round((at - Date.now()) / 1000), 60));
+  return undefined;
+}
+
+async function fetchEnvelope<T>(
+  path: string,
+  options?: FetchOptions,
+): Promise<{ data: T; meta: EnvelopeMeta; retryAfterSec?: number }> {
   if (!API_BASE) {
     throw new Error(API_CONFIG_ERROR ?? 'API is not configured.');
   }
@@ -113,7 +158,7 @@ async function fetchApi<T>(path: string, options?: FetchOptions): Promise<T> {
       aborted.name = 'AbortError';
       throw aborted;
     }
-    throw new Error('Network error — is the API reachable?');
+    throw new ApiError('Network error — is the API reachable?');
   } finally {
     clearTimeout(timer);
     externalSignal?.removeEventListener('abort', onExternalAbort);
@@ -123,14 +168,43 @@ async function fetchApi<T>(path: string, options?: FetchOptions): Promise<T> {
   try {
     result = (await response.json()) as ApiResponse<T>;
   } catch {
-    throw new Error(`API error: ${response.status} ${response.statusText}`);
+    throw new ApiError(
+      `API error: ${response.status} ${response.statusText}`,
+      { status: response.status, retryAfterSec: parseRetryAfter(response.headers.get('Retry-After')) },
+    );
   }
 
   if (!response.ok || !result.success) {
-    throw new Error(result.error?.message || `API error: ${response.status} ${response.statusText}`);
+    throw new ApiError(result.error?.message || `API error: ${response.status} ${response.statusText}`, {
+      status: response.status,
+      code: result.error?.code,
+      retryAfterSec: parseRetryAfter(response.headers.get('Retry-After')),
+    });
   }
 
-  return result.data;
+  return { data: result.data, meta: result.meta ?? { timestamp: '' } };
+}
+
+async function fetchApi<T>(path: string, options?: FetchOptions): Promise<T> {
+  return (await fetchEnvelope<T>(path, options)).data;
+}
+
+/**
+ * Single canonical layer-data path builder (T3.6): the SWR cache key and
+ * the fetched URL derive from this one representation, so equivalent
+ * parameters can never produce divergent keys. Mirrors the previous inline
+ * builder exactly (falsy values omitted, same param order).
+ */
+export function buildLayerDataPath(
+  layerId: string,
+  params?: { bbox?: string; limit?: number; min_severity?: string },
+): string {
+  const query = new URLSearchParams();
+  if (params?.bbox) query.set('bbox', params.bbox);
+  if (params?.limit) query.set('limit', params.limit.toString());
+  if (params?.min_severity) query.set('min_severity', params.min_severity);
+  const qs = query.toString();
+  return `/layers/${layerId}/data${qs ? `?${qs}` : ''}`;
 }
 
 export const api = {
@@ -143,15 +217,24 @@ export const api = {
     params?: { bbox?: string; limit?: number; min_severity?: string },
     opts?: RequestOptions,
   ) => {
-    const query = new URLSearchParams();
-    if (params?.bbox) query.set('bbox', params.bbox);
-    if (params?.limit) query.set('limit', params.limit.toString());
-    if (params?.min_severity) query.set('min_severity', params.min_severity);
-    const qs = query.toString();
-    return fetchApi<import('@/types').LayerData>(
-      `/layers/${layerId}/data${qs ? `?${qs}` : ''}`,
-      opts,
-    );
+    return fetchApi<import('@/types').LayerData>(buildLayerDataPath(layerId, params), opts);
+  },
+
+  /**
+   * Envelope variant for the SWR data client (T3.6): same request as
+   * getLayerData, but preserves `meta` (server `cache_hit`) and surfaces
+   * `ApiError` (status/code/Retry-After) for the retry policy. Existing
+   * callers keep getLayerData untouched.
+   */
+  fetchLayerDataPath: (path: string, opts?: RequestOptions) =>
+    fetchEnvelope<import('@/types').LayerData>(path, opts),
+
+  getLayerDataEnvelope: (
+    layerId: string,
+    params?: { bbox?: string; limit?: number; min_severity?: string },
+    opts?: RequestOptions,
+  ) => {
+    return fetchEnvelope<import('@/types').LayerData>(buildLayerDataPath(layerId, params), opts);
   },
 
   getLayerHeatmap: (

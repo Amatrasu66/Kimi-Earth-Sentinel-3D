@@ -21,7 +21,7 @@ import StatusDock from '@/components/shell/StatusDock';
 import DataPanel from '@/components/intelligence/DataPanel';
 import SettingsModal from '@/components/panels/SettingsModal';
 import MarkerHoverCard from '@/components/overlays/MarkerHoverCard';
-import { useLayers, useLayerData } from '@/hooks/useLayers';
+import { useLayers, useLayerData, useIdlePrefetchLayer } from '@/hooks/useLayers';
 import { useSunDirection } from '@/hooks/useSunDirection';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { api } from '@/services/api';
@@ -97,6 +97,9 @@ function SentinelApp() {
     dataStatus,
     refetch,
   } = useLayerData(activeLayer, { limit: 500 });
+  // T3.6: conservative idle prefetch of the default-layer candidate (single
+  // key, silent, cancelled on layer change — see useIdlePrefetchLayer).
+  useIdlePrefetchLayer(activeLayer);
   const eventRequestId = useRef(0);
   const eventAbortRef = useRef<AbortController | null>(null);
   const flyToKey = useRef(0);
@@ -407,7 +410,7 @@ function SentinelApp() {
             eventDetail={eventDetail}
             eventDetailLoading={eventDetailLoading}
             loading={layerLoading}
-            error={layerError}
+            error={layerError ? layerError.message : null}
             dataStatus={dataStatus}
             onClose={handleClosePanel}
             onBackToLayer={handleBackToLayer}

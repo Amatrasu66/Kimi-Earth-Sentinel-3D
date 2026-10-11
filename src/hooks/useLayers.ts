@@ -1,10 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { api } from '@/services/api';
+import useSWR, { preload } from 'swr';
+import type { SWRConfiguration } from 'swr';
+import { api, ApiError, buildLayerDataPath } from '@/services/api';
+import { parseBbox } from '@/server/validation';
+import { LAYER_IDS } from '@/types';
 import type { DataStatus, LayerMetadata, LayerData, LayerId } from '@/types';
 
-// Fetch-in-effect data layer with abort cleanup (standard pattern, not
-// derived-state sync) — exempt from set-state-in-effect.
-/* eslint-disable react-hooks/set-state-in-effect */
+// NOTE: the catalogue hook below still fetches in an effect (standard
+// fetch-in-effect pattern with abort cleanup — not derived-state sync).
+// The layer-data hook further down is SWR-based (T3.6).
 
 export function useLayers() {
   const [layers, setLayers] = useState<LayerMetadata[]>([]);
@@ -35,76 +39,332 @@ export function useLayers() {
   return { layers, loading, error };
 }
 
-interface UseLayerDataOptions {
+// ---------------------------------------------------------------------------
+// T3.6 SWR layer-data client.
+// ---------------------------------------------------------------------------
+
+export interface UseLayerDataOptions {
   limit?: number;
   min_severity?: string;
+  bbox?: string;
 }
 
-export function useLayerData(layerId: LayerId | null, options?: UseLayerDataOptions) {
-  const [rawData, setRawData] = useState<LayerData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+export interface LayerDataMeta {
+  /** Server L1 cache hit from the response envelope (null without data). */
+  cacheHit: boolean | null;
+}
 
-  // Decompose options into primitives: callers pass inline object
-  // literals ({ limit: 500 }), whose identity changes every render. Using
-  // the whole object as a dep would refetch in a loop (bug fix).
-  const limit = options?.limit;
-  const minSeverity = options?.min_severity;
-  const requestId = useRef(0);
-  const inflightRef = useRef<AbortController | null>(null);
+export interface LayerDataEnvelope {
+  data: LayerData;
+  meta: LayerDataMeta;
+}
 
-  // Fetch callback keyed on primitives only (not the options object, whose
-// identity changes every render). Stable unless a value actually changes,
-// so the effect below never refetches in a loop. (Replaces useEffectEvent,
-// which is unavailable in the React copy Next.js bundles for the server
-// layer — identical fetch/abort/race-guard semantics.)
-  // Manual refreshes bump `nonce`, which re-runs the fetch effect.
-  const [nonce, setNonce] = useState(0);
-  const refetch = useCallback(() => setNonce((n) => n + 1), []);
+/**
+ * Retry policy (documented, bounded). The backend limiter stays
+ * authoritative: at most 3 backoff retries for transient failures, at most
+ * 2 extra attempts for 429s honoring Retry-After — then the error stands
+ * and the user refreshes explicitly.
+ */
+export const LAYER_RETRY_MAX_ATTEMPTS = 3;
+export const LAYER_RETRY_BASE_MS = 500;
+export const LAYER_RETRY_MAX_MS = 8000;
+export const LAYER_RETRY_JITTER_MS = 250;
+export const LAYER_429_MAX_ATTEMPTS = 2;
+export const LAYER_429_MAX_WAIT_SEC = 30;
 
-  const fetchData = useCallback(() => {
-    if (!layerId) return;
-    const id = ++requestId.current;
+/** Normalize request-affecting params to one canonical shape (key stability). */
+export function normalizeLayerDataParams(
+  params?: UseLayerDataOptions,
+): { limit: number; min_severity?: string; bbox?: string } | null {
+  const limitRaw = Number(params?.limit);
+  // Server default is 500; materialize it so absent/undefined agree.
+  const limit = Number.isFinite(limitRaw)
+    ? Math.max(1, Math.min(2000, Math.floor(limitRaw)))
+    : 500;
+  const out: { limit: number; min_severity?: string; bbox?: string } = { limit };
+  const sev = params?.min_severity;
+  if (typeof sev === 'string') {
+    const valid = ['low', 'moderate', 'high', 'critical'] as const;
+    if ((valid as readonly string[]).includes(sev)) out.min_severity = sev;
+    // Invalid severity is dropped (documented) — never broadened, never sent.
+  }
+  const bbox = params?.bbox;
+  if (typeof bbox === 'string' && bbox.trim() !== '') {
+    // Malformed bbox => no key at all (no provider call on invalid input).
+    if (parseBbox(bbox).error) return null;
+    out.bbox = bbox.trim();
+  }
+  return out;
+}
 
-    setLoading(true);
-    setError(null);
+/**
+ * Canonical SWR key for a layer request — the exact request path, so the
+ * key and the fetched URL can never diverge. Null disables fetching
+ * (no/invalid layer or params): SWR issues no request and reports no error.
+ */
+export function buildLayerDataKey(
+  layerId: string | null,
+  params?: UseLayerDataOptions,
+): string | null {
+  if (layerId === null || !(LAYER_IDS as readonly string[]).includes(layerId)) return null;
+  const normalized = normalizeLayerDataParams(params);
+  if (normalized === null) return null;
+  return buildLayerDataPath(layerId, normalized);
+}
 
-    const controller = new AbortController();
-    inflightRef.current?.abort();
-    inflightRef.current = controller;
+// --- Ref-counted abort registry -------------------------------------------
+// One AbortController per in-flight key, shared by deduplicated consumers.
+// Releasing the last consumer aborts the fetch; a lone unmount can never
+// kill another consumer's shared request (tested). Entries are deleted on
+// release-to-zero, so the registry cannot grow without bound.
+interface KeyEntry {
+  controller: AbortController;
+  refs: number;
+}
 
-    api
-      .getLayerData(
-        layerId,
-        { limit, min_severity: minSeverity },
-        { signal: controller.signal },
-      )
-      .then((layerData) => {
-        if (requestId.current !== id || controller.signal.aborted) return;
-        setRawData(layerData);
-        setLoading(false);
-      })
-      .catch((err: unknown) => {
-        if (requestId.current !== id || controller.signal.aborted) return;
-        setError(err instanceof Error ? err.message : 'Failed to load layer data.');
-        setLoading(false);
-      });
-  }, [layerId, limit, minSeverity]);
+const keyEntries = new Map<string, KeyEntry>();
 
-  // Layer-data fetch with abort cleanup — the standard fetch-in-effect
-  // pattern (not a cascading render).
+export function retainLayerKey(key: string): void {
+  const entry = keyEntries.get(key);
+  if (entry) entry.refs += 1;
+  else keyEntries.set(key, { controller: new AbortController(), refs: 1 });
+}
+
+export function releaseLayerKey(key: string): void {
+  const entry = keyEntries.get(key);
+  if (!entry) return;
+  entry.refs -= 1;
+  if (entry.refs <= 0) {
+    keyEntries.delete(key);
+    try {
+      entry.controller.abort();
+    } catch {
+      /* abort must never throw */
+    }
+  }
+}
+
+function signalForLayerKey(key: string): AbortSignal {
+  let entry = keyEntries.get(key);
+  if (!entry || entry.controller.signal.aborted) {
+    entry = { controller: new AbortController(), refs: entry?.refs ?? 0 };
+    keyEntries.set(key, entry);
+  }
+  return entry.controller.signal;
+}
+
+/** Test seam: forget all registry state. */
+export function resetLayerKeyRegistryForTests(): void {
+  keyEntries.clear();
+}
+
+// --- Retry classification --------------------------------------------------
+
+function isAbortError(err: unknown): boolean {
+  return err instanceof Error && err.name === 'AbortError';
+}
+
+/**
+ * Retryable = network-level failure (no status), HTTP 429 (special-cased
+ * with Retry-After), or HTTP 5xx. Never: caller aborts, client timeouts
+ * (slow upstream — retrying heavy routes multiplies load; the user
+ * refreshes explicitly), or ordinary 4xx (validation/auth/not-found).
+ */
+export function isRetryableLayerError(err: unknown): boolean {
+  if (err instanceof ApiError) {
+    if (err.status === undefined) return true;
+    if (err.status === 429) return true;
+    return err.status >= 500;
+  }
+  return false;
+}
+
+/** Bounded delay for an attempt (retryCount starts at 1): expo + jitter, capped. */
+export function layerRetryDelayMs(err: unknown, retryCount: number): number {
+  if (err instanceof ApiError && err.status === 429) {
+    return Math.min(err.retryAfterSec ?? 1, LAYER_429_MAX_WAIT_SEC) * 1000;
+  }
+  const backoff = LAYER_RETRY_BASE_MS * 2 ** Math.max(0, retryCount - 1);
+  return Math.min(backoff + Math.random() * LAYER_RETRY_JITTER_MS, LAYER_RETRY_MAX_MS);
+}
+
+type OnErrorRetry = NonNullable<SWRConfiguration['onErrorRetry']>;
+
+/**
+ * Shared fetcher: key IS the canonical request path. Derives everything
+ * from the key argument (never a stale closure) and borrows the registry
+ * signal for its key.
+ */
+async function fetchLayerDataKey(key: string): Promise<LayerDataEnvelope> {
+  const signal = signalForLayerKey(key);
+  const { data, meta } = await api.fetchLayerDataPath(key, { signal });
+  return { data, meta: { cacheHit: meta.cache_hit ?? null } };
+}
+
+export interface UseLayerDataResult {
+  data: LayerData | null;
+  /** True during initial load and revalidation (preserves the refetch-spinner UX). */
+  loading: boolean;
+  /** True during any revalidation (new; background-aware callers). */
+  validating: boolean;
+  error: Error | null;
+  dataStatus: DataStatus | null;
+  meta: LayerDataMeta;
+  refetch: () => void;
+}
+
+/**
+ * Typed SWR layer-data hook (T3.6). Same name/signature/return shape as the
+ * previous fetch-in-effect hook, plus `validating` and server `meta`:
+ * - null key (no/invalid layer or params) fetches nothing, errors nothing.
+ * - identical concurrent keys share one request (SWR dedupe); changing the
+ *   key never lets an obsolete response win (SWR key scoping + no
+ *   keepPreviousData across layers).
+ * - same-key revalidation keeps showing current data while refreshing.
+ * - aborts are ref-counted per key (see registry above).
+ */
+export function useLayerData(layerId: LayerId | null, options?: UseLayerDataOptions): UseLayerDataResult {
+  const key = buildLayerDataKey(layerId, options);
+  const mountedRef = useRef(true);
+  const activeKeyRef = useRef<string | null>(null);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
-    fetchData();
+    mountedRef.current = true;
     return () => {
-      inflightRef.current?.abort();
+      mountedRef.current = false;
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     };
-  }, [fetchData, nonce]);
+  }, []);
 
-  // When no layer is selected there is nothing to show. Derived (not
-  // stored) so no cascading setState-in-effect is needed; switching layers
-  // keeps the previous payload visible until the new one arrives.
-  const data = layerId ? rawData : null;
-  const dataStatus: DataStatus | null = data?.data_status ?? null;
+  useEffect(() => {
+    activeKeyRef.current = key;
+  }, [key]);
 
-  return { data, loading: layerId ? loading : false, error, dataStatus, refetch };
+  useEffect(() => {
+    if (!key) return;
+    retainLayerKey(key);
+    return () => releaseLayerKey(key);
+  }, [key]);
+
+  const onErrorRetry: OnErrorRetry = useCallback(
+    (err, retryKey, _config, revalidate, { retryCount }) => {
+      if (!mountedRef.current) return;
+      // Obsolete mid-backoff (layer switched): never refetch a dead key.
+      if (retryKey !== activeKeyRef.current) return;
+      if (isAbortError(err)) return;
+      if (err instanceof ApiError && err.status === 429) {
+        if (retryCount > LAYER_429_MAX_ATTEMPTS) return;
+      } else {
+        if (!isRetryableLayerError(err)) return;
+        if (retryCount > LAYER_RETRY_MAX_ATTEMPTS) return;
+      }
+      const delay = layerRetryDelayMs(err, retryCount);
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = setTimeout(() => {
+        if (!mountedRef.current) return;
+        if (retryKey !== activeKeyRef.current) return;
+        void revalidate({ retryCount });
+      }, delay);
+    },
+    [],
+  );
+
+  const swr = useSWR<LayerDataEnvelope>(key, fetchLayerDataKey, {
+    dedupingInterval: 2000,
+    // Heavy-route quota protection: no focus polling (explicit Refresh
+    // exists); reconnect still revalidates; no interval polling.
+    revalidateOnFocus: false,
+    revalidateOnReconnect: true,
+    refreshInterval: 0,
+    keepPreviousData: false,
+    onErrorRetry,
+  });
+
+  const envelope = swr.data ?? null;
+  const { mutate } = swr;
+  const refetch = useCallback(() => {
+    void mutate();
+  }, [mutate]);
+
+  return {
+    data: envelope?.data ?? null,
+    loading: swr.isLoading || swr.isValidating,
+    validating: swr.isValidating,
+    error: (swr.error as Error | undefined) ?? null,
+    dataStatus: envelope?.data?.data_status ?? null,
+    meta: { cacheHit: envelope?.meta.cacheHit ?? null },
+    refetch,
+  };
+}
+
+// --- Conservative idle prefetch --------------------------------------------
+
+/**
+ * Idle-prefetch policy (T3.6 §8): exactly one candidate — the earthquakes
+ * layer (the T3.8-designated default; the most likely next selection from
+ * first-run) — scheduled via requestIdleCallback (3 s setTimeout fallback),
+ * skipped when hidden/offline/active/already-cached, cancelled on layer
+ * change or unmount, silent on failure, reusing the canonical key/fetcher
+ * so a later selection hits SWR cache with zero new traffic. Bounded by
+ * construction: one key, one attempt per schedule, no retries.
+ */
+export const PREFETCH_CANDIDATE_LAYER: LayerId = 'earthquakes';
+export const PREFETCH_FALLBACK_DELAY_MS = 3000;
+
+export function shouldIdlePrefetch(
+  activeLayer: LayerId | null,
+  visibilityState: string,
+  onLine: boolean,
+): boolean {
+  if (activeLayer === PREFETCH_CANDIDATE_LAYER) return false;
+  if (visibilityState !== 'visible') return false;
+  if (onLine === false) return false;
+  return true;
+}
+
+export function useIdlePrefetchLayer(activeLayer: LayerId | null): void {
+  const activeLayerRef = useRef(activeLayer);
+  useEffect(() => {
+    activeLayerRef.current = activeLayer;
+  }, [activeLayer]);
+
+  useEffect(() => {
+    if (
+      !shouldIdlePrefetch(
+        activeLayer,
+        typeof document === 'undefined' ? 'visible' : document.visibilityState,
+        typeof navigator === 'undefined' ? true : navigator.onLine,
+      )
+    ) {
+      return;
+    }
+    const key = buildLayerDataKey(PREFETCH_CANDIDATE_LAYER, { limit: 500 });
+    if (!key) return;
+    let cancelled = false;
+    const run = () => {
+      if (cancelled) return;
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      if (activeLayerRef.current === PREFETCH_CANDIDATE_LAYER) return;
+      void preload(key, () => fetchLayerDataKey(key)).catch(() => {
+        /* prefetch failures stay silent by design */
+      });
+    };
+    const w = window as unknown as {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    let id: number | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    if (typeof w.requestIdleCallback === 'function') {
+      id = w.requestIdleCallback(run, { timeout: 5000 });
+    } else {
+      timer = setTimeout(run, PREFETCH_FALLBACK_DELAY_MS);
+    }
+    return () => {
+      cancelled = true;
+      if (id !== null) w.cancelIdleCallback?.(id);
+      if (timer !== null) clearTimeout(timer);
+    };
+  }, [activeLayer]);
 }

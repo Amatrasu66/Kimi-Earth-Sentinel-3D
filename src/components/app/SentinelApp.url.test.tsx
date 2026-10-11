@@ -26,6 +26,8 @@ vi.mock('@/hooks/useLayers', () => ({
     }
     return { data: null, loading: false, error: null, dataStatus: null, refetch: vi.fn() };
   },
+  // T3.6 idle prefetch is a no-op in URL-state tests (background concern only).
+  useIdlePrefetchLayer: () => {},
 }));
 
 vi.mock('@/services/api', () => ({
