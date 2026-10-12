@@ -26,6 +26,13 @@ interface SettingsModalProps {
   dataStatus?: DataStatus | null;
   /** Server L1 bit (T3.7): a live result served from cache reads CACHED. */
   cacheHit?: boolean | null;
+  /**
+   * T3.10 (PRD U-04 / P1-18): single-key shortcuts master switch —
+   * turns off `1..8`, `Space`, `?`, and `/` together, persisted by the
+   * caller. `Esc` and blur-while-typing stay active regardless.
+   */
+  singleKeyShortcuts?: boolean;
+  onSingleKeyShortcutsChange?: (enabled: boolean) => void;
 }
 
 /**
@@ -115,6 +122,7 @@ function DiagnosticsPanel({
 const SHORTCUTS: Array<{ keys: string[]; action: string }> = [
   { keys: ['1', '…', '8'], action: 'Toggle environmental layers' },
   { keys: ['Space'], action: 'Pause / resume globe rotation' },
+  { keys: ['?'], action: 'Open settings' },
   { keys: ['/'], action: 'Focus search' },
   { keys: ['↑', '↓', '↵'], action: 'Navigate & fly to search results' },
   { keys: ['Esc'], action: 'Close results → back to layer → close panel' },
@@ -127,6 +135,8 @@ function SettingsBody({
   activeLayer,
   dataStatus,
   cacheHit = null,
+  singleKeyShortcuts = true,
+  onSingleKeyShortcutsChange,
 }: Omit<SettingsModalProps, 'isOpen' | 'onClose'>) {
   return (
     <Tabs defaultValue="globe" className="min-h-0 gap-0">
@@ -152,7 +162,12 @@ function SettingsBody({
               <RotateCw className="mt-0.5 h-4 w-4 shrink-0 text-sentinel-accent" aria-hidden />
               <div>
                 <Label htmlFor="sentinel-rotate" className="text-[13px] font-medium text-white">Auto-rotate</Label>
-                <p className="sentinel-micro mt-0.5">Globe rotates when idle. Also toggled with <Kbd className="border-white/10 bg-white/10 text-white/60">Space</Kbd>.</p>
+                <p className="sentinel-micro mt-0.5">
+                  Globe rotates when idle.
+                  {singleKeyShortcuts && (
+                    <> Also toggled with <Kbd className="border-white/10 bg-white/10 text-white/60">Space</Kbd>.</>
+                  )}
+                </p>
               </div>
             </div>
             <Switch id="sentinel-rotate" checked={isRotating} onCheckedChange={onToggleRotation} aria-label="Toggle globe auto-rotation" className="data-[state=checked]:bg-sentinel-accent" />
@@ -176,6 +191,30 @@ function SettingsBody({
         </TabsContent>
 
         <TabsContent value="shortcuts" className="mt-0">
+          {/* PRD U-04 / P1-18: one switch turns off every single-key entry
+              (WCAG 2.1.4 needs a way out of character-key shortcuts);
+              persisted by the caller so the choice survives reloads. */}
+          <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-white/[0.07] bg-white/[0.03] p-3">
+            <div className="flex items-start gap-2.5">
+              <Keyboard className="mt-0.5 h-4 w-4 shrink-0 text-sentinel-accent" aria-hidden />
+              <div>
+                <Label htmlFor="sentinel-single-key" className="text-[13px] font-medium text-white">Single-key shortcuts</Label>
+                <p className="sentinel-micro mt-0.5">
+                  Turns <Kbd className="border-white/10 bg-white/10 text-white/60">1</Kbd>–<Kbd className="border-white/10 bg-white/10 text-white/60">8</Kbd>
+                  {' '}<Kbd className="border-white/10 bg-white/10 text-white/60">Space</Kbd>
+                  {' '}<Kbd className="border-white/10 bg-white/10 text-white/60">?</Kbd> and
+                  {' '}<Kbd className="border-white/10 bg-white/10 text-white/60">/</Kbd> on or off together.
+                </p>
+              </div>
+            </div>
+            <Switch
+              id="sentinel-single-key"
+              checked={singleKeyShortcuts}
+              onCheckedChange={(v) => onSingleKeyShortcutsChange?.(v)}
+              aria-label="Toggle single-key shortcuts"
+              className="data-[state=checked]:bg-sentinel-accent"
+            />
+          </div>
           <ul className="sentinel-inset divide-y divide-white/[0.05] rounded-lg px-3">
             {SHORTCUTS.map((s) => (
               <li key={s.action} className="flex items-center justify-between gap-3 py-2.5">
@@ -188,7 +227,11 @@ function SettingsBody({
               </li>
             ))}
           </ul>
-          <p className="sentinel-micro mt-2.5 leading-relaxed">Shortcuts are ignored while typing. Press Esc to blur the search field.</p>
+          <p className="sentinel-micro mt-2.5 leading-relaxed">
+            {singleKeyShortcuts
+              ? 'Shortcuts are ignored while typing. Press Esc to blur the search field.'
+              : 'Single-key shortcuts are off. Esc still backs out, and search results navigate with ↑ ↓ ↵ while typing.'}
+          </p>
         </TabsContent>
 
         <TabsContent value="diagnostics" className="mt-0">
@@ -210,9 +253,9 @@ function SettingsBody({
 
 // Centered dialog on desktop, bottom sheet on narrow screens — same content,
 // same tab logic, no behavior fork.
-export default function SettingsModal({ isOpen, onClose, isRotating, onToggleRotation, rendererInfo, activeLayer, dataStatus, cacheHit = null }: SettingsModalProps) {
+export default function SettingsModal({ isOpen, onClose, isRotating, onToggleRotation, rendererInfo, activeLayer, dataStatus, cacheHit = null, singleKeyShortcuts = true, onSingleKeyShortcutsChange }: SettingsModalProps) {
   const isMobile = useIsMobile();
-  const bodyProps = { isRotating, onToggleRotation, rendererInfo, activeLayer, dataStatus, cacheHit };
+  const bodyProps = { isRotating, onToggleRotation, rendererInfo, activeLayer, dataStatus, cacheHit, singleKeyShortcuts, onSingleKeyShortcutsChange };
 
   if (isMobile) {
     return (

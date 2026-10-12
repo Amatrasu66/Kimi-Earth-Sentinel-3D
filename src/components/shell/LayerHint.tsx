@@ -9,6 +9,11 @@ interface LayerHintProps {
    * original select-layer affordance.
    */
   activeLayerName?: string | null;
+  /**
+   * Single-key shortcuts enabled (T3.10 Settings toggle). The hint must
+   * never advertise `1–8` while the map is switched off.
+   */
+  singleKeyShortcuts?: boolean;
 }
 
 /**
@@ -19,7 +24,7 @@ interface LayerHintProps {
  * telling the user to select a layer. Dismissal is persisted by the caller
  * (one-time hint); this component holds no storage state of its own.
  */
-export default function LayerHint({ onDismiss, activeLayerName = null }: LayerHintProps) {
+export default function LayerHint({ onDismiss, activeLayerName = null, singleKeyShortcuts = true }: LayerHintProps) {
   const hasLayer = activeLayerName !== null && activeLayerName !== undefined;
 
   return (
@@ -34,22 +39,36 @@ export default function LayerHint({ onDismiss, activeLayerName = null }: LayerHi
         <>
           <p className="sentinel-label !text-white/70">Getting started</p>
           <p className="sentinel-micro mt-1 leading-relaxed">
-            {activeLayerName} showing. Switch layers from the rail or press{' '}
-            <span className="sentinel-mono text-white/60">1</span>–<span className="sentinel-mono text-white/60">8</span>,
-            drag to explore, select an event for details, or search to fly anywhere.
+            {activeLayerName} showing.{' '}
+            {singleKeyShortcuts ? (
+              <>
+                Switch layers from the rail or press{' '}
+                <span className="sentinel-mono text-white/60">1</span>–<span className="sentinel-mono text-white/60">8</span>,
+                drag to explore, select an event for details, or search to fly anywhere.
+              </>
+            ) : (
+              <>Switch layers from the rail, drag to explore, select an event for details, or search to fly anywhere.</>
+            )}
           </p>
         </>
       ) : (
         <>
           <p className="sentinel-label !text-white/70">Select layer</p>
           <p className="sentinel-micro mt-1 leading-relaxed">
-            Choose an environmental layer from the rail, or press{' '}
-            <span className="sentinel-mono text-white/60">1</span>–<span className="sentinel-mono text-white/60">8</span>.
+            {singleKeyShortcuts ? (
+              <>
+                Choose an environmental layer from the rail, or press{' '}
+                <span className="sentinel-mono text-white/60">1</span>–<span className="sentinel-mono text-white/60">8</span>.
+              </>
+            ) : (
+              <>Choose an environmental layer from the rail.</>
+            )}
           </p>
         </>
       )}
       <button
         onClick={onDismiss}
+        aria-label="Dismiss getting started hint"
         className="sentinel-micro mt-1 text-white/40 underline-offset-2 transition-colors hover:text-white/80 hover:underline"
       >
         Dismiss

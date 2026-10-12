@@ -109,7 +109,8 @@ describe('default layer selection (T3.8 §2)', () => {
       'aria-pressed',
       'true',
     );
-    expect(await screen.findByLabelText('Active layer: Earthquakes')).toBeInTheDocument();
+    // sr-only text since T3.10 (a span aria-label is ignored by AT).
+    expect(await screen.findByText('Active layer: Earthquakes')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Earthquakes' })).toBeInTheDocument();
     expect(screen.getByLabelText('Layer data')).toBeInTheDocument();
     expect(window.location.search).toBe('?layer=earthquakes');
@@ -225,7 +226,8 @@ describe('first-run hint (T3.8 §3)', () => {
     const first = render(<SentinelApp />, { wrapper: wrapperWithCache() });
     await screen.findByText('Getting started');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    // Explicit accessible name since T3.10 ("Dismiss" alone was ambiguous).
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss getting started hint' }));
     expect(screen.queryByText('Getting started')).not.toBeInTheDocument();
     expect(window.localStorage.getItem('sentinel:first-run-hint-dismissed:v1')).toBe('1');
     first.unmount();

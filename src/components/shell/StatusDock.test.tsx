@@ -102,3 +102,33 @@ describe('StatusDock renderer badge (GLOBE-1)', () => {
     );
   });
 });
+
+// T3.10: provenance updates used to announce twice (header chip + dock
+// chip) on top of the panel banner — three live regions for one change.
+// The banner is now the single announcer; the dock chip is a visual copy.
+describe('StatusDock provenance chip (T3.10)', () => {
+  it('keeps provenance out of the live regions while leaving it readable', () => {
+    render(
+      <StatusDock
+        coordinates={null}
+        activeLayer="earthquakes"
+        dataCount={3}
+        dataStatus={{ status: 'live', source: 'USGS', fetched_at: '2026-10-11T00:00:00Z' }}
+      />,
+    );
+
+    // The renderer badge is the only status role left in the dock.
+    const statuses = screen.getAllByRole('status');
+    expect(statuses).toHaveLength(1);
+    expect(statuses[0]).toHaveAttribute('aria-label', expect.stringContaining('Renderer'));
+
+    // The provenance text itself is still present for browse-mode reading.
+    expect(screen.getByText('LIVE')).toBeInTheDocument();
+    expect(screen.getByText('USGS')).toBeInTheDocument();
+  });
+
+  it('exposes cursor coordinates as accessible text instead of a generic aria-label', () => {
+    render(<StatusDock coordinates={{ lat: 12.5, lon: -45.25 }} activeLayer={null} dataCount={0} />);
+    expect(screen.getByText(/Cursor coordinates/)).toBeInTheDocument();
+  });
+});

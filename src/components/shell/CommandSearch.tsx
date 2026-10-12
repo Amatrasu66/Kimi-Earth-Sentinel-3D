@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Kbd } from '@/components/ui/kbd';
 import { Separator } from '@/components/ui/separator';
 import { Spinner } from '@/components/ui/spinner';
+import { hasShortcutModifier, isModalOpen, isTypingTarget } from '@/lib/keyboard';
 import { cn } from '@/lib/utils';
 import type { SearchResult } from '@/types';
 
@@ -20,6 +21,12 @@ interface CommandSearchProps {
    */
   query: string;
   onQueryChange: (q: string) => void;
+  /**
+   * Single-key shortcuts enabled (T3.10 Settings toggle). `/` is a
+   * character key, so it obeys the same switch as `1..8`/`Space` and its
+   * visual hint is hidden while off (WCAG 2.1.4).
+   */
+  singleKeyShortcuts?: boolean;
 }
 
 /**
@@ -27,7 +34,7 @@ interface CommandSearchProps {
  * location/event results, full keyboard navigation, `/` to focus.
  * ARIA combobox contract preserved from the previous header search.
  */
-export default function CommandSearch({ onResultClick, className, query, onQueryChange }: CommandSearchProps) {
+export default function CommandSearch({ onResultClick, className, query, onQueryChange, singleKeyShortcuts = true }: CommandSearchProps) {
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
   const searchRef = useRef<HTMLDivElement>(null);
@@ -87,19 +94,21 @@ export default function CommandSearch({ onResultClick, className, query, onQuery
   }, [query]);
 
   // "/" focuses search when not typing; preserves existing shortcut system.
+  // T3.10 guards: the key obeys the single-key switch, never fires with a
+  // modifier chord (browser/OS territory), and stands down behind an open
+  // modal so focus is never stolen into a hidden input.
   useEffect(() => {
+    if (!singleKeyShortcuts) return;
     const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
-      if (typing) return;
-      if (e.key === '/' && !e.metaKey && !e.ctrlKey) {
-        e.preventDefault();
-        inputRef.current?.focus();
-      }
+      if (hasShortcutModifier(e) || e.repeat) return;
+      if (e.key !== '/') return;
+      if (isTypingTarget(e.target) || isModalOpen()) return;
+      e.preventDefault();
+      inputRef.current?.focus();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [singleKeyShortcuts]);
 
   const runSearch = useCallback(
     (value: string) => {
@@ -223,7 +232,9 @@ export default function CommandSearch({ onResultClick, className, query, onQuery
             <X className="h-3.5 w-3.5" />
           </button>
         ) : (
-          <Kbd className="hidden shrink-0 border-white/10 bg-white/5 text-white/40 sm:inline-flex">/</Kbd>
+          singleKeyShortcuts && (
+            <Kbd className="hidden shrink-0 border-white/10 bg-white/5 text-white/40 sm:inline-flex">/</Kbd>
+          )
         )}
       </div>
 

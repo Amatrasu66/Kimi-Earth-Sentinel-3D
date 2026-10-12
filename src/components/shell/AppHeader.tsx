@@ -20,6 +20,11 @@ interface AppHeaderProps {
   /** Controlled search text (T3.3 URL state) + change reports. */
   searchQuery: string;
   onSearchQueryChange: (q: string) => void;
+  /**
+   * Single-key shortcut map enabled (T3.10 Settings toggle). Gates the `/`
+   * focus-search key and every shortcut hint this header advertises.
+   */
+  singleKeyShortcuts?: boolean;
 }
 
 /**
@@ -27,7 +32,7 @@ interface AppHeaderProps {
  * brand+layer | command search | system state. In-flow header row owned
  * by AppShell; translucent so the globe reads through at the top edge.
  */
-export default function AppHeader({ onSearchResultClick, onSettingsClick, dataStatus = null, cacheHit = null, activeLayerName = null, searchQuery, onSearchQueryChange }: AppHeaderProps) {
+export default function AppHeader({ onSearchResultClick, onSettingsClick, dataStatus = null, cacheHit = null, activeLayerName = null, searchQuery, onSearchQueryChange, singleKeyShortcuts = true }: AppHeaderProps) {
   const statusKind = resolveProvenance(dataStatus, cacheHit, null).kind;
   const chipLabel = provenanceChipLabel(dataStatus, cacheHit);
   const statusColor = `var(--status-${statusKind === 'unknown' ? 'neutral' : statusKind})`;
@@ -49,9 +54,13 @@ export default function AppHeader({ onSearchResultClick, onSettingsClick, dataSt
         </span>
         <span className="sentinel-app-title hidden truncate text-white min-[480px]:block lg:hidden">Sentinel</span>
         {activeLayerName && (
-          <span className="hidden min-w-0 items-center gap-1 lg:flex" aria-label={`Active layer: ${activeLayerName}`}>
+          <span className="hidden min-w-0 items-center gap-1 lg:flex">
+            {/* sr-only text (T3.10): aria-label on a generic span is
+                ignored by assistive tech — this keeps the active layer
+                announced while the visual copy stays hidden from AT. */}
+            <span className="sr-only">Active layer: {activeLayerName}</span>
             <ChevronRight className="h-3.5 w-3.5 shrink-0 text-white/25" aria-hidden />
-            <span className="sentinel-layer-name truncate text-sentinel-accent" title={`Active layer: ${activeLayerName}`}>
+            <span className="sentinel-layer-name truncate text-sentinel-accent" title={`Active layer: ${activeLayerName}`} aria-hidden>
               {activeLayerName}
             </span>
           </span>
@@ -59,8 +68,14 @@ export default function AppHeader({ onSearchResultClick, onSettingsClick, dataSt
       </div>
 
       {/* CENTER — command search, integrated not floating */}
-      <div className="flex min-w-0 justify-center">
-        <CommandSearch onResultClick={onSearchResultClick} className="mx-0 w-full min-w-0 max-w-[420px]" query={searchQuery} onQueryChange={onSearchQueryChange} />
+      <div role="search" className="flex min-w-0 justify-center">
+        <CommandSearch
+          onResultClick={onSearchResultClick}
+          className="mx-0 w-full min-w-0 max-w-[420px]"
+          query={searchQuery}
+          onQueryChange={onSearchQueryChange}
+          singleKeyShortcuts={singleKeyShortcuts}
+        />
       </div>
 
       {/* RIGHT — system state / controls, right-aligned to the same baseline */}
@@ -68,13 +83,14 @@ export default function AppHeader({ onSearchResultClick, onSettingsClick, dataSt
         {showStatus && (
           <Tooltip delayDuration={150}>
             <TooltipTrigger asChild>
-              <span
-                className="mr-0.5 hidden items-center gap-1.5 sm:inline-flex"
-                role="status"
-                aria-label={`Data status: ${chipLabel}`}
-              >
+              {/* Not a live region (T3.10): the panel's DataStatusBanner is
+                  the single announcer for provenance changes — this chip is
+                  a visual copy for pointer users, and was one of three live
+                  regions reacting to the same transition. */}
+              <span className="mr-0.5 hidden items-center gap-1.5 sm:inline-flex">
+                <span className="sr-only">Data status: {chipLabel}</span>
                 <span className={cn('h-1.5 w-1.5 rounded-full', statusKind === 'live' && 'sentinel-live-dot')} style={{ background: statusColor }} aria-hidden />
-                <span className="text-[11px] font-semibold tracking-[0.08em]" style={{ color: statusColor }}>
+                <span className="text-[11px] font-semibold tracking-[0.08em]" style={{ color: statusColor }} aria-hidden>
                   {chipLabel}
                 </span>
               </span>
@@ -86,12 +102,17 @@ export default function AppHeader({ onSearchResultClick, onSettingsClick, dataSt
         )}
         <Tooltip delayDuration={150}>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" onClick={onSettingsClick} aria-label="Open settings" className="h-8 w-8 rounded-[7px] text-white/60 hover:bg-white/10 hover:text-white">
+            {/* id is the T3.10 focus-restore target: Settings is a controlled
+                dialog with no Trigger, so closing it returns focus here. */}
+            <Button variant="ghost" size="icon" id="sentinel-settings-button" onClick={onSettingsClick} aria-label="Open settings" aria-haspopup="dialog" className="h-8 w-8 rounded-[7px] text-white/60 hover:bg-white/10 hover:text-white">
               <Settings className="h-[17px] w-[17px]" />
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom" className="border-white/10 bg-sentinel-elev text-white">
-            <span className="flex items-center gap-2 text-xs">Settings <Kbd className="border-white/10 bg-white/10 text-white/60">?</Kbd></span>
+            <span className="flex items-center gap-2 text-xs">
+              Settings
+              {singleKeyShortcuts && <Kbd className="border-white/10 bg-white/10 text-white/60">?</Kbd>}
+            </span>
           </TooltipContent>
         </Tooltip>
       </div>

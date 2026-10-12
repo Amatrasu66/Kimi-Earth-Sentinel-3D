@@ -52,10 +52,11 @@ export default function MarkerHoverCard({ point, activeLayer = null }: MarkerHov
   const top = Math.max(mousePos.y - 12, 64);
 
   return (
+    // Pointer-only overlay (T3.10): deliberately not a live region — the
+    // old `role="status"` announced every hover sweep. Marker details are
+    // fully available through the event list and the detail panel.
     <div
       className="pointer-events-none fixed z-[60]"
-      role="status"
-      aria-label={point.title ? `Event: ${point.title}` : 'Hovered event'}
       style={{ left, top, transform: 'translateY(-100%)' }}
     >
       <div

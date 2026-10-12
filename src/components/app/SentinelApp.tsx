@@ -43,6 +43,29 @@ import type { SeverityFilterValue } from '@/components/intelligence/SeverityFilt
 // Failures (private mode, blocked storage) degrade to session-only memory.
 const FIRST_RUN_HINT_STORAGE_KEY = 'sentinel:first-run-hint-dismissed:v1';
 
+// T3.10 (PRD U-04 / P1-18): the single-key shortcut map (`1..8`, `Space`,
+// `?`, `/`) can be switched off in Settings → Shortcuts. Same client-only
+// storage contract as the hint flag: read after hydration, default on.
+const SINGLE_KEY_STORAGE_KEY = 'sentinel:single-key-shortcuts:v1';
+
+function readSingleKeyShortcuts(): boolean {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return true;
+    return window.localStorage.getItem(SINGLE_KEY_STORAGE_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+function writeSingleKeyShortcuts(enabled: boolean): void {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    window.localStorage.setItem(SINGLE_KEY_STORAGE_KEY, enabled ? '1' : '0');
+  } catch {
+    /* storage unavailable — the setting lasts for this session only */
+  }
+}
+
 function readFirstRunHintDismissed(): boolean {
   try {
     if (typeof window === 'undefined' || !window.localStorage) return false;
@@ -80,6 +103,14 @@ const SHORTCUT_LAYERS: LayerId[] = [
 // so GlobeScene/WebGPUEarth skip re-renders on shell-only state updates.
 const StableEarthRenderer = memo(EarthRenderer);
 
+/** True when focus is inside the data panel (or nowhere — Safari mouse clicks
+ * leave focus on <body>, and both cases must be restored). */
+function focusTargetWithinPanel(): boolean {
+  const panel = document.getElementById('sentinel-data-panel');
+  const active = document.activeElement;
+  return !!panel && (!!active && (active === document.body || panel.contains(active)));
+}
+
 function SentinelApp() {
   const [activeLayer, setActiveLayer] = useState<LayerId | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<DataPoint | null>(null);
@@ -89,6 +120,9 @@ function SentinelApp() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isRotating, setIsRotating] = useState(true);
   const [hintDismissed, setHintDismissed] = useState(false);
+  // T3.10: single-key shortcuts on by default; persisted after hydration
+  // (SSR output always renders the enabled variant — see the restore effect).
+  const [singleKeyShortcuts, setSingleKeyShortcuts] = useState(true);
   const [allDataPoints, setAllDataPoints] = useState<DataPoint[]>([]);
   // T3.3 URL-driven state: search text, severity display filter ('all' =
   // unfiltered default), and globe/list view ('globe' default; `list` shares
@@ -242,8 +276,20 @@ function SentinelApp() {
     setFlyTo({ lat, lon, key: flyToKey.current });
   }, []);
 
+  // ---- T3.10 focus restoration ----
+  // Closing the panel, swapping it back to the layer view, dismissing the
+  // hint, or closing Settings unmounts the focused control (or the whole
+  // surface). Without a request the browser drops focus to <body>,
+  // stranding keyboard users at the top of the document. Handlers record
+  // where focus should land; the effect below applies it after the commit
+  // that changed state (so the restored panel is found under its final
+  // label/content). Settings needs this explicitly: the dialog is
+  // controlled with no Trigger, so Radix has nothing to restore to.
+  const pendingFocusRef = useRef<'panel' | 'workspace' | 'settings' | null>(null);
+
   // Handle close data panel
   const handleClosePanel = useCallback(() => {
+    const restoreFocus = focusTargetWithinPanel();
     eventRequestId.current += 1; // invalidate any in-flight detail fetch
     eventAbortRef.current?.abort();
     setActiveLayer(null);
@@ -251,22 +297,58 @@ function SentinelApp() {
     setEventDetail(null);
     setEventDetailLoading(false);
     setAllDataPoints([]);
+    if (restoreFocus) pendingFocusRef.current = 'workspace';
   }, []);
 
   // Handle back to layer view
   const handleBackToLayer = useCallback(() => {
+    const restoreFocus = focusTargetWithinPanel();
     eventRequestId.current += 1;
     eventAbortRef.current?.abort();
     setSelectedEvent(null);
     setEventDetail(null);
     setEventDetailLoading(false);
+    if (restoreFocus) pendingFocusRef.current = 'panel';
   }, []);
 
   // T3.8: one-time first-run hint dismissal, persisted client-only.
   const handleHintDismiss = useCallback(() => {
+    const hint = document.querySelector('[role="note"][aria-label="Getting started hint"]');
+    const restoreFocus = !!hint && hint.contains(document.activeElement);
     setHintDismissed(true);
     writeFirstRunHintDismissed();
+    if (restoreFocus) pendingFocusRef.current = 'workspace';
   }, []);
+
+  // T3.10: Settings → Shortcuts master switch (PRD U-04 / P1-18).
+  const handleSingleKeyShortcutsChange = useCallback((enabled: boolean) => {
+    setSingleKeyShortcuts(enabled);
+    writeSingleKeyShortcuts(enabled);
+  }, []);
+
+  // Closing Settings returns focus to its opener button when focus was
+  // inside the dialog (Esc, the dialog close control). A `?`-opened dialog
+  // also lands there — the stable, discoverable entry point.
+  const handleCloseSettings = useCallback(() => {
+    const dialog = document.querySelector('[role="dialog"], [role="alertdialog"]');
+    const restoreFocus = !!dialog && dialog.contains(document.activeElement);
+    setIsSettingsOpen(false);
+    if (restoreFocus) pendingFocusRef.current = 'settings';
+  }, []);
+
+  // Applied after the commit that consumed the request above.
+  useEffect(() => {
+    const target = pendingFocusRef.current;
+    if (!target) return;
+    pendingFocusRef.current = null;
+    const node =
+      target === 'panel'
+        ? document.getElementById('sentinel-data-panel')
+        : target === 'settings'
+          ? document.getElementById('sentinel-settings-button')
+          : document.getElementById('sentinel-workspace');
+    node?.focus();
+  }, [activeLayer, selectedEvent, hintDismissed, isSettingsOpen]);
 
   // ---- T3.3 URL-driven state (client-only; SSR output stays deterministic) ----
 
@@ -317,6 +399,7 @@ function SentinelApp() {
     if (readFirstRunHintDismissed()) {
       setHintDismissed(true);
     }
+    setSingleKeyShortcuts(readSingleKeyShortcuts());
   }, [applyUrlState]);
 
   // Resolve a pending event id once its layer's data can answer it. An
@@ -386,33 +469,21 @@ function SentinelApp() {
     return () => window.removeEventListener('popstate', onPopState);
   }, [applyUrlState]);
 
-  // Keyboard shortcuts (ignored while typing in inputs)
+  // Keyboard shortcuts (ignored while typing in inputs; owned by the hook —
+  // including `?` opening Settings and the Settings-open guard).
   useKeyboardShortcuts({
     shortcutLayers: SHORTCUT_LAYERS,
     toggleLayer: handleLayerToggle,
     backToLayer: handleBackToLayer,
     closePanel: handleClosePanel,
-    closeSettings: () => setIsSettingsOpen(false),
+    closeSettings: handleCloseSettings,
+    openSettings: () => setIsSettingsOpen(true),
     toggleRotation: () => setIsRotating((prev) => !prev),
     hasSelection: selectedEvent !== null,
     hasActiveLayer: activeLayer !== null,
     isSettingsOpen,
+    singleKeyShortcuts,
   });
-
-  // "?" opens settings (not part of the layer/rotation shortcut map).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
-      if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === '?') {
-        e.preventDefault();
-        setIsSettingsOpen(true);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
 
   return (
     <div className="dark h-dvh w-screen overflow-hidden bg-[var(--sentinel-bg)]">
@@ -446,9 +517,16 @@ function SentinelApp() {
             activeLayerName={activeLayerMeta?.name ?? null}
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
+            singleKeyShortcuts={singleKeyShortcuts}
           />
         }
-        rail={<LayerRail activeLayer={activeLayer} onLayerToggle={handleLayerToggle} shortcutLayers={SHORTCUT_LAYERS} />}
+        rail={
+          <LayerRail
+            activeLayer={activeLayer}
+            onLayerToggle={handleLayerToggle}
+            shortcutLayers={singleKeyShortcuts ? SHORTCUT_LAYERS : []}
+          />
+        }
         stage={
           <GlobeStage
             dataPoints={allDataPoints}
@@ -497,18 +575,21 @@ function SentinelApp() {
         <LayerHint
           onDismiss={handleHintDismiss}
           activeLayerName={activeLayer ? (activeLayerMeta?.name ?? 'Live data') : null}
+          singleKeyShortcuts={singleKeyShortcuts}
         />
       )}
 
       <SettingsModal
         isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
+        onClose={handleCloseSettings}
         isRotating={isRotating}
         onToggleRotation={() => setIsRotating((prev) => !prev)}
         rendererInfo={rendererInfo}
         activeLayer={activeLayer}
         dataStatus={dataStatus}
         cacheHit={layerCacheHit}
+        singleKeyShortcuts={singleKeyShortcuts}
+        onSingleKeyShortcutsChange={handleSingleKeyShortcutsChange}
       />
 
       <MarkerHoverCard point={hoveredPoint} activeLayer={activeLayer} />

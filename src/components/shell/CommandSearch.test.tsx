@@ -160,3 +160,50 @@ describe('CommandSearch selection lifecycle (T3.5)', () => {
     await screen.findByRole('listbox');
   });
 });
+
+// T3.10: "/" is a character key, so it obeys the single-key switch and the
+// standard guards — never focus-stealing behind a modal or a chord.
+describe('CommandSearch "/" shortcut guards (T3.10)', () => {
+  it('focuses the input when no modal is open', () => {
+    render(<ControlledSearch onResultClick={vi.fn()} />);
+    fireEvent.keyDown(window, { key: '/' });
+    expect(document.activeElement).toBe(screen.getByRole('combobox'));
+  });
+
+  it('stands down behind an open modal', () => {
+    render(
+      <>
+        <ControlledSearch onResultClick={vi.fn()} />
+        <div role="dialog" aria-label="settings">settings</div>
+      </>,
+    );
+    fireEvent.keyDown(window, { key: '/' });
+    expect(document.activeElement).not.toBe(screen.getByRole('combobox'));
+  });
+
+  it('ignores modifier chords', () => {
+    render(<ControlledSearch onResultClick={vi.fn()} />);
+    fireEvent.keyDown(window, { key: '/', ctrlKey: true });
+    expect(document.activeElement).not.toBe(screen.getByRole('combobox'));
+  });
+
+  it('is switchable off together with the rest of the single-key map', () => {
+    function SingleKeyOff() {
+      const [query, setQuery] = useState('');
+      return (
+        <CommandSearch
+          onResultClick={vi.fn()}
+          query={query}
+          onQueryChange={setQuery}
+          singleKeyShortcuts={false}
+        />
+      );
+    }
+    render(<SingleKeyOff />);
+
+    fireEvent.keyDown(window, { key: '/' });
+    expect(document.activeElement).not.toBe(screen.getByRole('combobox'));
+    // The dead key is no longer advertised.
+    expect(screen.queryByText('/')).not.toBeInTheDocument();
+  });
+});

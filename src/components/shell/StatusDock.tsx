@@ -73,10 +73,20 @@ export default function StatusDock({ coordinates, activeLayer, dataCount, dataSt
       <div className="flex min-w-0 items-center gap-2.5">
         <Tooltip delayDuration={200}>
           <TooltipTrigger asChild>
-            <span className="flex shrink-0 cursor-default items-center gap-1.5" aria-label={coordinates ? `Cursor coordinates ${formatCoordinates(coordinates.lat, coordinates.lon)}` : 'No hovered coordinate'}>
-              <Crosshair className="h-3.5 w-3.5 text-white/30" aria-hidden />
-              <span className="sentinel-micro sentinel-mono whitespace-nowrap text-white/50">
-                {coordinates ? formatCoordinates(coordinates.lat, coordinates.lon) : '— —'}
+            <span className="flex shrink-0 cursor-default items-center gap-1.5">
+              {/* Text alternative for the coordinates (T3.10): the visual
+                  readout is hidden from AT instead of relying on aria-label
+                  of a generic span, which assistive tech ignores. */}
+              <span className="sr-only">
+                {coordinates
+                  ? `Cursor coordinates ${formatCoordinates(coordinates.lat, coordinates.lon)}`
+                  : 'No hovered coordinate'}
+              </span>
+              <span aria-hidden className="flex items-center gap-1.5">
+                <Crosshair className="h-3.5 w-3.5 text-white/30" />
+                <span className="sentinel-micro sentinel-mono whitespace-nowrap text-white/50">
+                  {coordinates ? formatCoordinates(coordinates.lat, coordinates.lon) : '— —'}
+                </span>
               </span>
             </span>
           </TooltipTrigger>
@@ -99,16 +109,19 @@ export default function StatusDock({ coordinates, activeLayer, dataCount, dataSt
         {dataStatus && (
           <Tooltip delayDuration={200}>
             <TooltipTrigger asChild>
-              <span
-                className="hidden cursor-default items-center gap-1.5 lg:inline-flex"
-                role="status"
-                aria-label={`Data status: ${chipLabel} · ${dataStatus.source ?? 'Unknown source'}`}
-              >
-                <span className={cn('h-1.5 w-1.5 rounded-full', statusKind === 'live' && 'sentinel-live-dot')} style={{ background: statusColor }} aria-hidden />
-                <span className="text-[11px] font-semibold tracking-[0.08em]" style={{ color: statusColor }}>
+              {/* Visual copy only (T3.10): the panel banner is the single
+                  live region announcing provenance; a second and third
+                  `role="status"` here and in the header made every fetch
+                  announce three times. Text stays readable in browse mode. */}
+              <span className="hidden cursor-default items-center gap-1.5 lg:inline-flex">
+                <span className="sr-only">
+                  Data status: {chipLabel} · {dataStatus.source ?? 'Unknown source'}
+                </span>
+                <span aria-hidden className={cn('h-1.5 w-1.5 rounded-full', statusKind === 'live' && 'sentinel-live-dot')} style={{ background: statusColor }} />
+                <span aria-hidden className="text-[11px] font-semibold tracking-[0.08em]" style={{ color: statusColor }}>
                   {chipLabel}
                 </span>
-                <span className="sentinel-micro max-w-[180px] truncate">{dataStatus.source ?? 'Unknown source'}</span>
+                <span aria-hidden className="sentinel-micro max-w-[180px] truncate">{dataStatus.source ?? 'Unknown source'}</span>
               </span>
             </TooltipTrigger>
             <TooltipContent side="top" className="border-white/10 bg-sentinel-elev text-xs text-white">

@@ -60,6 +60,9 @@ export default function DataPanel({
   return (
     <section
       id="sentinel-data-panel"
+      // Skip-link target (T3.10): focusable so in-page navigation moves
+      // focus here instead of leaving it on the document body.
+      tabIndex={-1}
       aria-label={selectedEvent ? 'Event detail' : 'Layer data'}
       className="intel-shell panel-enter min-h-0 w-full max-md:max-h-[52dvh]"
     >
