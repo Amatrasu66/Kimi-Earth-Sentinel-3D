@@ -205,3 +205,43 @@ No critical or high findings. Lows/advisories recorded, none fixed in this audit
   viewports, screen reader, contrast, Axe) throughout. Phase 3 as a whole
   is still **NOT complete** — this addendum closes the design-documentation
   gap only; the T3.14 disposition and every other §1 remainder stand.
+
+---
+
+## 4. Addendum — T3.17 SentinelApp decomposition (follow-up, original record above untouched)
+
+- **What changed:** `src/components/app/SentinelApp.tsx` (661 → **305 lines**)
+  is now a composition root. All orchestration moved to cohesive,
+  explicitly-typed hooks in `src/components/app/`, each with its own
+  lifecycle and no new dependencies:
+  - `useAppUrlState` — URL↔state sync, first-run default, push/replace
+    conventions, popstate (pure parsing still in `src/lib/url-state.ts`).
+  - `useEventSelection` — selected marker + race-safe, abortable detail
+    fetch (stable opener identity preserves the memoized renderer).
+  - `usePendingEventResolution` — deep-link id resolved against fresh layer
+    data or dropped, never fabricated.
+  - `useFocusRestore` — focus request/apply lifecycle + surface checks.
+  - `useFirstRunHint` / `useSingleKeyShortcuts` — persisted client-only
+    flags. `useFlyTo` — validated flight destination + retrigger key.
+  - `SHORTCUT_LAYERS` order moved to its owner, `src/hooks/useKeyboardShortcuts.ts`.
+- **Tests:** the URL/search/firstrun/a11y/view/keyboard/renderer/SSR suites
+  (45+ integration tests) pass unchanged against the new boundaries —
+  they cover the extracted URL lifecycle through its consumer. New focused
+  suites pin each lifecycle directly: `useEventSelection` (race, abort,
+  failure fallback, unmount), `usePendingEventResolution` (resolve, drop,
+  stale-wait, selection-wins), `useFocusRestore` (targets, fallbacks,
+  containment), `useFirstRunHint` + `useSingleKeyShortcuts` (persistence,
+  hydration restore, storage-failure degradation), `useFlyTo`
+  (validation, retrigger key). Full suite: 660/660 across 71 files;
+  `lint`, `typecheck`, `next build` green.
+- **Reassessment:** the ≤250-line criterion is **NOT met** (305 lines, 55
+  over — 251 even excluding blanks/comments). Blocker, precisely: the
+  remaining file is imports (24, one per consumed region/hook), hook
+  composition + five local states + data-presentation wiring, four thin
+  navigation handlers, keyboard wiring, and ~130 lines of region JSX for
+  eight shell regions. Reaching 250 would require splitting presentational
+  composition into prop-drilled components, a single oversized controller
+  hook, or comment/formatting compression — all explicitly rejected by the
+  task's own avoid-list. No behaviour changed; no visual equivalence is
+  claimed from unit tests (owner-manual browser verification still
+  required). Phase 3 disposition unchanged.

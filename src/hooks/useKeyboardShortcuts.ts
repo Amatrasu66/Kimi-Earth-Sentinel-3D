@@ -2,6 +2,20 @@ import { useEffect } from 'react';
 import type { LayerId } from '@/types';
 import { hasShortcutModifier, isActivatableTarget, isTypingTarget } from '@/lib/keyboard';
 
+// Keyboard shortcut order (1-8). Preserved from the prototype, extended
+// with wildfires now that the backend serves it. Index i maps to number
+// key i+1; the rail and the app consume this same order.
+export const SHORTCUT_LAYERS: LayerId[] = [
+  'temperature',
+  'precipitation',
+  'clouds',
+  'wind',
+  'earthquakes',
+  'disasters',
+  'air_quality',
+  'wildfires',
+];
+
 export interface ShortcutActions {
   /** Ordered layer ids; index i is toggled by number key i+1. */
   shortcutLayers: LayerId[];

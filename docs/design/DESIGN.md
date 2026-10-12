@@ -298,8 +298,10 @@ belongs to Phase 4. All viewports need owner-manual verification.
   over new abstractions; the T3.12 cleanup removed 13 dead selectors, 3
   dead keyframes and 9 dead tokens — check `globals-css.test.ts` before
   adding anything back.
-- State lives in `SentinelApp` + `useLayerData`/`useSearch`/
-  `useKeyboardShortcuts`/`useSunDirection`; URL is the shareable state
+- State lives in focused app hooks (`useAppUrlState`, `useEventSelection`,
+  `usePendingEventResolution`, `useFocusRestore`, `useFirstRunHint`,
+  `useSingleKeyShortcuts`, `useFlyTo`) composed by `SentinelApp`, plus
+  `useLayerData`/`useSearch`/`useKeyboardShortcuts`/`useSunDirection`; URL is the shareable state
   (`src/lib/url-state.ts`, history push/replace, no `useSearchParams`, no
   RSC refresh); renderer choice (`?renderer=`) stays orthogonal to
   layer/data state.
