@@ -51,6 +51,16 @@ npm test                # vitest run (node API tests + jsdom UI tests)
 npm run build           # next build
 ```
 
+## Audit trail
+
+- `docs/audit/current-state-reconciliation.md` — Phase 0 finding reconciliation and the
+  authoritative task plan (owner decisions in §13).
+- `docs/audit/phase-3-review-gates.md` — T3.14 requirement matrix: what is complete,
+  partial, deferred, or awaiting owner-manual verification (browser, screenshot,
+  responsive and GPU checks are owner-manual by decision — do not reintroduce automated
+  browser testing without a new owner decision).
+- `docs/audit/heatmap-decision.md` — per-layer heatmap/imagery source decisions (T2.8).
+
 ## Diagnosing production connectivity
 
 1. Open the deployed app → Settings → Diagnostics. It shows the configured API base + source, backend health + latency, current layer/provenance, the server-cache hit/miss (L1 `meta.cache_hit` only — never inferred from SWR), the OS motion preference, WebGPU support, and the active renderer. `Copy report` copies exactly the displayed rows (no secrets, no key-bearing URLs) for pasting into a troubleshooting note; clipboard failure shows a status message instead of throwing.
