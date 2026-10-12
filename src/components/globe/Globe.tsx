@@ -11,6 +11,7 @@ import {
 } from '@/lib/geo';
 import { SEVERITY_COLORS } from '@/types';
 import type { DataPoint, SeverityLevel } from '@/types';
+import { advanceFlight, autoRotateActive, startFlight } from '@/lib/motion';
 
 interface GlobeProps {
   activeLayer: string | null;
@@ -21,6 +22,13 @@ interface GlobeProps {
   isRotating?: boolean;
   /** Search fly-to target; `key` retriggers. Null = no flight. */
   flyTo?: { lat: number; lon: number; key: number } | null;
+  /**
+   * OS reduced-motion preference (T3.11, supplied by GlobeScene from the
+   * shared subscription). Disables auto-rotate, cloud drift and starfield
+   * motion, and turns fly-to into an instant jump. Manual drag/zoom stay
+   * available; control damping is interaction feedback, not ambient motion.
+   */
+  reducedMotion?: boolean;
   /**
    * World-space sun direction (T2.4, real-time UTC position from
    * `useSunDirection`). Drives the directional light so the lit side tracks
@@ -115,14 +123,15 @@ function EarthSphere() {
   );
 }
 
-function CloudLayer({ radius = 5, speed = 0.0008 }: { radius?: number; speed?: number }) {
+function CloudLayer({ radius = 5, speed = 0.0008, reducedMotion = false }: { radius?: number; speed?: number; reducedMotion?: boolean }) {
   const cloudRef = useRef<THREE.Mesh>(null);
 
   const [cloudMap] = useTexture(['/textures/earth-clouds.png']);
 
-  // Frame-rate independent drift; no per-frame allocation.
+  // Frame-rate independent drift; no per-frame allocation. Suppressed under
+  // reduced motion (T3.11) — non-essential ambient movement.
   useFrame((_, delta) => {
-    if (cloudRef.current) {
+    if (!reducedMotion && cloudRef.current) {
       cloudRef.current.rotation.y += speed * delta * 60;
     }
   });
@@ -305,8 +314,6 @@ function MarkerSystem({
   );
 }
 
-const EASE_IN_OUT = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
-
 export default function Globe({
   dataPoints,
   onMarkerClick,
@@ -314,6 +321,7 @@ export default function Globe({
   rotationSpeed = 0.0003,
   isRotating = true,
   flyTo = null,
+  reducedMotion = false,
   sunDirection,
 }: GlobeProps) {
   const groupRef = useRef<THREE.Group>(null);
@@ -325,17 +333,21 @@ export default function Globe({
   } | null>(null);
   const { gl } = useThree();
 
-  // Start a fly-to flight when a new target arrives (Phase 4).
+  // Start a fly-to flight when a new target arrives (Phase 4). Under
+  // reduced motion the globe jumps to the destination instead (T3.11).
   useEffect(() => {
     if (!flyTo || !groupRef.current) return;
     if (!isValidCoordinate(flyTo.lat, flyTo.lon)) return;
-    flightRef.current = {
-      t: 0,
-      duration: 1.4,
-      from: groupRef.current.quaternion.clone(),
-      to: quaternionForLatLon(flyTo.lat, flyTo.lon),
-    };
-  }, [flyTo]);
+    if (reducedMotion) {
+      groupRef.current.quaternion.copy(quaternionForLatLon(flyTo.lat, flyTo.lon));
+      flightRef.current = null;
+      return;
+    }
+    flightRef.current = startFlight(
+      groupRef.current.quaternion.clone(),
+      quaternionForLatLon(flyTo.lat, flyTo.lon),
+    );
+  }, [flyTo, reducedMotion]);
 
   // Interruptible: any user drag on the canvas cancels the flight.
   useEffect(() => {
@@ -352,27 +364,26 @@ export default function Globe({
   }, [gl]);
 
   // Rotation animation: slerp flight wins over auto-rotate; delta-based.
-  // useFrame re-subscribes on each render, so reading `isRotating` from the
-  // closure is correct without a ref.
+  // useFrame re-subscribes on each render, so reading `isRotating` and
+  // `reducedMotion` from the closure is correct without a ref. A flight
+  // still in progress when the preference flips to reduce lands instantly
+  // (advanceFlight) instead of continuing its travel animation.
   useFrame((_, rawDelta) => {
     const group = groupRef.current;
     if (!group) return;
     const delta = Math.min(rawDelta, 0.1);
     const flight = flightRef.current;
     if (flight) {
-      flight.t += delta / flight.duration;
-      const k = EASE_IN_OUT(Math.min(flight.t, 1));
-      group.quaternion.slerpQuaternions(flight.from, flight.to, k);
-      if (flight.t >= 1) flightRef.current = null;
-    } else if (isRotating) {
+      flightRef.current = advanceFlight(group.quaternion, flight, delta, reducedMotion);
+    } else if (autoRotateActive(isRotating, reducedMotion)) {
       group.rotation.y += rotationSpeed * delta * 60;
     }
   });
 
   return (
     <group ref={groupRef}>
-      {/* Stars background */}
-      <Stars radius={100} depth={50} count={2500} factor={4} saturation={0} fade speed={1} />
+      {/* Stars background (static under reduced motion — T3.11) */}
+      <Stars radius={100} depth={50} count={2500} factor={4} saturation={0} fade speed={reducedMotion ? 0 : 1} />
 
       {/* Lighting */}
       <ambientLight intensity={0.1} />
@@ -383,7 +394,7 @@ export default function Globe({
       <EarthSphere />
 
       {/* Clouds */}
-      <CloudLayer radius={5} speed={0.0008} />
+      <CloudLayer radius={5} speed={0.0008} reducedMotion={reducedMotion} />
 
       {/* Atmosphere */}
       <Atmosphere radius={5} />

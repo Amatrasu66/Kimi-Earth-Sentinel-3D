@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import Globe from './Globe';
 import { DEFAULT_CAMERA_DISTANCE } from './earthConfig';
+import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion';
 import type { DataPoint, LayerId } from '@/types';
 
 interface GlobeSceneProps {
@@ -45,6 +46,10 @@ export default function GlobeScene({
   sunDirection,
 }: GlobeSceneProps) {
   const dpr = getAdaptiveDpr();
+  // T3.11: shared reduced-motion subscription, forwarded into the Canvas.
+  // A preference flip re-renders (no remount, no renderer reset); the globe
+  // reads it in its frame loop and flight effect.
+  const reducedMotion = usePrefersReducedMotion();
 
   return (
     // CSP-1: static fullscreen geometry as classes (see WebGPUEarth note).
@@ -70,6 +75,7 @@ export default function GlobeScene({
             isRotating={isRotating}
             rotationSpeed={0.0003}
             flyTo={flyTo}
+            reducedMotion={reducedMotion}
             sunDirection={sunDirection}
           />
         </Suspense>

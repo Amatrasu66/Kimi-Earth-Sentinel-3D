@@ -46,10 +46,11 @@ import type { DataPoint, SeverityLevel } from '@/types';
 
 import { DEFAULT_CAMERA_DISTANCE, DEFAULT_SUN_DIRECTION, EARTH_RADIUS } from './earthConfig';
 import type { EarthStatus } from './earthConfig';
+import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion';
+import { advanceFlight, autoRotateActive, startFlight } from '@/lib/motion';
 
 /** Marker lift above the surface — small vs. radius, avoids z-fighting. */
 const MARKER_ALTITUDE = EARTH_RADIUS * 1.012;
-
 interface WebGPUEarthProps {
   dataPoints: DataPoint[];
   onMarkerClick: (point: DataPoint) => void;
@@ -62,9 +63,6 @@ interface WebGPUEarthProps {
   sunDirection?: [number, number, number];
   onStatus?: (status: EarthStatus) => void;
 }
-
-const EASE_IN_OUT = (t: number) =>
-  t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
 
 /**
  * Rejects if `promise` neither resolves nor rejects within `ms`.
@@ -127,10 +125,14 @@ export default function WebGPUEarth({
     callbacksRef.current = { onMarkerClick, onMarkerHover, onStatus };
   });
 
-  const controlRef = useRef({ isRotating, rotationSpeed });
+  const controlRef = useRef({ isRotating, rotationSpeed, reducedMotion: false });
+  // T3.11: the OS motion preference joins the engine's control state so a
+  // mid-session change takes effect with no remount — the frame loop and
+  // flight requests read it from this ref every time.
+  const reducedMotion = usePrefersReducedMotion();
   useEffect(() => {
-    controlRef.current = { isRotating, rotationSpeed };
-  }, [isRotating, rotationSpeed]);
+    controlRef.current = { isRotating, rotationSpeed, reducedMotion };
+  }, [isRotating, rotationSpeed, reducedMotion]);
 
   const pointsRef = useRef<DataPoint[]>([]);
   const sunRef = useRef(sunDirection);
@@ -204,12 +206,17 @@ export default function WebGPUEarth({
       const group = groupRef.current;
       if (!group) return;
       try {
-        flight.current = {
-          t: 0,
-          duration: 1.4,
-          from: group.quaternion.clone(),
-          to: quaternionForLatLon(target.lat, target.lon),
-        };
+        // T3.11: under reduced motion the globe jumps to the destination —
+        // no travel animation, and no obsolete flight left running.
+        if (controlRef.current.reducedMotion) {
+          group.quaternion.copy(quaternionForLatLon(target.lat, target.lon));
+          flight.current = null;
+          return;
+        }
+        flight.current = startFlight(
+          group.quaternion.clone(),
+          quaternionForLatLon(target.lat, target.lon),
+        );
       } catch {
         flight.current = null;
       }
@@ -523,19 +530,12 @@ export default function WebGPUEarth({
         typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null;
       resizeObserver?.observe(container);
 
-      // Late-arriving fly-to requested before init finished.
+      // Late-arriving fly-to requested before init finished. Routed
+      // through the same request handle so reduced-motion jumps apply here
+      // too (T3.11) instead of a duplicated flight construction.
       const pendingFly = flyToRef.current;
       if (pendingFly) {
-        try {
-          flight.current = {
-            t: 0,
-            duration: 1.4,
-            from: group.quaternion.clone(),
-            to: quaternionForLatLon(pendingFly.lat, pendingFly.lon),
-          };
-        } catch {
-          flight.current = null;
-        }
+        requestFlightRef.current({ lat: pendingFly.lat, lon: pendingFly.lon });
       }
 
       // Surface asynchronous GPU failures (shader/pipeline compile errors,
@@ -613,14 +613,21 @@ export default function WebGPUEarth({
 
         const current = flight.current;
         if (current) {
-          current.t += delta / current.duration;
-          const k = EASE_IN_OUT(Math.min(current.t, 1));
-          group.quaternion.slerpQuaternions(current.from, current.to, k);
-          if (current.t >= 1) flight.current = null;
-        } else if (controlRef.current.isRotating) {
+          // A flight in progress when the preference flips to reduce lands
+          // instantly instead of continuing its travel animation (T3.11).
+          flight.current = advanceFlight(
+            group.quaternion,
+            current,
+            delta,
+            controlRef.current.reducedMotion,
+          );
+        } else if (autoRotateActive(controlRef.current.isRotating, controlRef.current.reducedMotion)) {
           group.rotation.y += controlRef.current.rotationSpeed * delta * 60;
         }
-        clouds.rotation.y += 0.0008 * delta * 60;
+        // Non-essential ambient drift, suppressed under reduced motion.
+        if (!controlRef.current.reducedMotion) {
+          clouds.rotation.y += 0.0008 * delta * 60;
+        }
         controls.update();
         try {
           activeRenderer.render(scene, camera);

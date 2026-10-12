@@ -33,6 +33,7 @@
 import { memo, useEffect, useRef } from 'react';
 import { geoGraticule, geoOrthographic, geoPath } from 'd3-geo';
 import { filterValidPoints } from '@/lib/geo';
+import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion';
 import { SEVERITY_COLORS } from '@/types';
 import type { DataPoint, SeverityLevel } from '@/types';
 import type { RendererInfo } from '../EarthRenderer';
@@ -95,14 +96,6 @@ function getPixelRatio(): number {
   return Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2);
 }
 
-function prefersReducedMotion(): boolean {
-  try {
-    return Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-  } catch {
-    return false;
-  }
-}
-
 function DottedEarth({
   dataPoints,
   onMarkerClick = () => {},
@@ -145,7 +138,16 @@ function DottedEarth({
     requestFlightRef.current({ lat: flyTo.lat, lon: flyTo.lon });
   }, [flyTo]);
 
-  const reducedMotionRef = useRef(false);
+  // T3.11: the shared preference subscription replaces the engine-local
+  // matchMedia read. The value flows into the mount-once engine through
+  // this ref (same pattern as controlRef) so a mid-session OS change takes
+  // effect with no remount; the redraw restarts or settles the loop.
+  const reducedMotion = usePrefersReducedMotion();
+  const reducedMotionRef = useRef(reducedMotion);
+  useEffect(() => {
+    reducedMotionRef.current = reducedMotion;
+    requestDrawRef.current();
+  }, [reducedMotion]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -184,8 +186,6 @@ function DottedEarth({
     let lastX = 0;
     let lastY = 0;
     let travel = 0;
-
-    reducedMotionRef.current = prefersReducedMotion();
 
     const emit = (phase: DottedEarthStatus['phase'], detail: string) => {
       if (cancelled) return;
@@ -498,16 +498,6 @@ function DottedEarth({
     };
     document.addEventListener('visibilitychange', onVisibility);
 
-    const motionQuery =
-      typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-        ? window.matchMedia('(prefers-reduced-motion: reduce)')
-        : null;
-    const onMotionChange = (event: MediaQueryListEvent) => {
-      reducedMotionRef.current = event.matches;
-      requestDraw();
-    };
-    motionQuery?.addEventListener?.('change', onMotionChange);
-
     // Initial frame (static when reduced motion, spinning otherwise).
     requestDraw();
 
@@ -517,7 +507,6 @@ function DottedEarth({
       raf = 0;
       resizeObserver?.disconnect();
       document.removeEventListener('visibilitychange', onVisibility);
-      motionQuery?.removeEventListener?.('change', onMotionChange);
       canvas.removeEventListener('pointerdown', onPointerDown);
       canvas.removeEventListener('pointermove', onPointerMove);
       canvas.removeEventListener('pointerup', onPointerUp);
