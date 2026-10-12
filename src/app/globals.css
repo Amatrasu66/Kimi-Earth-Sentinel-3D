@@ -25,18 +25,11 @@
     --shell-padding: 12px;
     --panel-padding: 16px;
     --hairline: rgba(255, 255, 255, 0.08);
-    --surface-0: #060708;
     --surface-1: rgba(12, 14, 18, 0.88);
-    --surface-2: rgba(19, 22, 28, 0.94);
-    --text-primary: #f2f3f4;
-    --text-secondary: rgba(242, 243, 244, 0.6);
-    --text-muted: rgba(242, 243, 244, 0.38);
-    --accent: #ffc31f;
     /* Radius discipline: shell 10px, panel 12px, controls 6-8px,
        pills only for semantic status. No 16-24px bubbles. */
     --radius-shell: 10px;
     --radius-panel: 12px;
-    --radius-control: 7px;
     /* ——— Sentinel surfaces ——— */
     --sentinel-bg: #050607;
     /* Header/dock chrome: translucent near-black shared by AppHeader/StatusDock. */
@@ -46,7 +39,8 @@
     --sentinel-elev: rgba(20, 23, 29, 0.92);
     --sentinel-border: rgba(255, 255, 255, 0.08);
     --sentinel-border-strong: rgba(255, 255, 255, 0.14);
-    --sentinel-accent: #ffc31f;
+    /* Amber lives in --sentinel-accent-rgb alone (see below); the old
+       --sentinel-accent hex twin was removed in T3.12 as dead. */
     /* Space-separated triplet so Tailwind can apply <alpha-value>:
        rgb(var(--sentinel-accent-rgb) / 0.12). Single source for amber. */
     --sentinel-accent-rgb: 255 195 31;
@@ -70,8 +64,6 @@
     --status-stale-rgb: 251 146 60;
     --status-unavailable: #f87171;
     --status-unavailable-rgb: 248 113 113;
-    --status-info: #60a5fa;
-    --status-info-rgb: 96 165 250;
     --status-neutral: #9ca3af;
     --status-neutral-rgb: 156 163 175;
     /* Provenance surface washes — banner/badge backgrounds. Abnormal
@@ -117,24 +109,13 @@
     --radius: 0.625rem;
 
     /* ——— Sentinel motion vocabulary ———
-       fast     150ms — micro-interactions (hover, focus, toggles)
-       normal   220ms — standard UI transitions (panels, lists, search)
-       emphasis 300ms — larger state changes (drawers, layout shifts)
-       Panels use ease-out; nothing loops except spinners/pulses.
-       The globe owns ambient motion — UI motion stays subordinate. */
+       --motion-fast (150ms) is the only motion token consumed in CSS
+       (list-row entrances); panel/drawer transitions use their literal
+       150–300ms durations. Panels use ease-out; nothing loops except
+       spinners/pulses. The globe owns ambient motion — UI motion stays
+       subordinate. */
     --motion-fast: 150ms;
-    --motion-normal: 220ms;
-    --motion-emphasis: 300ms;
-    --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 
-    --sidebar-background: 220 12% 5%;
-    --sidebar-foreground: 0 0% 96%;
-    --sidebar-primary: 45 100% 56%;
-    --sidebar-primary-foreground: 220 12% 5%;
-    --sidebar-accent: 220 9% 13%;
-    --sidebar-accent-foreground: 0 0% 96%;
-    --sidebar-border: 220 9% 15%;
-    --sidebar-ring: 45 100% 56%;
     --chart-background: oklch(1 0 0);
     --chart-foreground: oklch(0.145 0.004 285);
     --chart-foreground-muted: oklch(0.55 0.014 260);
@@ -193,8 +174,8 @@
 
   body {
     @apply bg-background text-foreground;
-    margin: 0;
-    padding: 0;
+    /* Body margin reset comes from Tailwind preflight; body padding is the
+       UA default (0). Only app-specific base rules stay here. */
     overflow: hidden;
     font-family: 'Instrument Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     background: var(--sentinel-bg);
@@ -204,9 +185,10 @@
     touch-action: manipulation;
   }
 
+  /* No #root selector: this Next.js app renders <html>/<body> directly
+     (a #root mount node was a Vite-era leftover that never matches). */
   html,
-  body,
-  #root {
+  body {
     width: 100%;
     height: 100%;
     overflow: hidden;
@@ -223,14 +205,6 @@
     background: var(--sentinel-chrome);
     backdrop-filter: blur(20px) saturate(1.2);
     -webkit-backdrop-filter: blur(20px) saturate(1.2);
-  }
-
-  .sentinel-floating {
-    background: var(--sentinel-panel);
-    backdrop-filter: blur(20px) saturate(1.2);
-    -webkit-backdrop-filter: blur(20px) saturate(1.2);
-    border: 1px solid var(--sentinel-border);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255, 255, 255, 0.04) inset;
   }
 
   .sentinel-panel {
@@ -252,35 +226,10 @@
     border: 1px solid rgba(255, 255, 255, 0.06);
   }
 
-  /* Restrained Aceternity-style spotlight for active layer buttons */
-  .sentinel-spot {
-    position: relative;
-    overflow: hidden;
-  }
-  .sentinel-spot::before {
-    content: '';
-    position: absolute;
-    inset: -1px;
-    border-radius: inherit;
-    background: radial-gradient(120px circle at var(--spot-x, 50%) var(--spot-y, 0%), rgb(var(--sentinel-accent-rgb) / 0.14), transparent 70%);
-    opacity: 0;
-    transition: opacity 200ms ease;
-    pointer-events: none;
-  }
-  .sentinel-spot:hover::before,
-  .sentinel-spot[data-active='true']::before {
-    opacity: 1;
-  }
-
-  /* Restrained active state: thin accent border + quiet tonal shift.
-     No outer glow — the globe owns atmosphere, not the chrome. */
-  .sentinel-active-ring {
-    border: 1px solid rgb(var(--sentinel-accent-rgb) / 0.4) !important;
-    box-shadow: none;
-  }
-
   /* Typography scale — weight and size carry hierarchy, never raw brightness.
-     Product identity > layer name > primary values > section labels > metadata. */
+     Product identity > layer name > primary values > section labels > metadata.
+     (T3.12: the unused .sentinel-active-ring override was removed — active
+     states live in the components' Tailwind classes.) */
   .sentinel-app-title {
     font-size: 14px;
     font-weight: 650;
@@ -302,24 +251,12 @@
     font-weight: 600;
     letter-spacing: 0.01em;
   }
-  .sentinel-panel-title {
-    font-size: 13px;
-    font-weight: 600;
-  }
   .sentinel-label {
     font-size: 11px;
     font-weight: 500;
     letter-spacing: 0.04em;
     text-transform: uppercase;
     color: var(--sentinel-text-3);
-  }
-  .sentinel-body {
-    font-size: 13px;
-    line-height: 1.55;
-  }
-  .sentinel-meta {
-    font-size: 12px;
-    color: var(--sentinel-text-2);
   }
   .sentinel-micro {
     font-size: 11px;
@@ -477,12 +414,6 @@
   .intel-section + .intel-section {
     border-top: 1px solid var(--hairline);
   }
-  .intel-flat {
-    background: transparent;
-    border: 0;
-    border-radius: 0;
-    box-shadow: none;
-  }
 
   /* Layer rail instrument: one vertical rail, single axis, quiet states. */
   .layer-rail {
@@ -562,34 +493,6 @@ canvas:active {
    nothing loops except spinners/pulses.
    prefers-reduced-motion disables all non-essential motion. */
 
-/* Initial loading veil (progressive globe init, not a full-app blocker) */
-.loading-screen {
-  position: fixed;
-  inset: 0;
-  background: #050607;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  z-index: 1000;
-}
-
-.loading-ring {
-  width: 36px;
-  height: 36px;
-  border: 2px solid var(--sentinel-accent-soft);
-  border-top-color: var(--sentinel-accent);
-  border-radius: 50%;
-  animation: sentinel-spin 0.9s linear infinite;
-}
-
-@keyframes sentinel-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 /* Panel entrance: 220ms rise, no bounce */
 @keyframes sentinel-panel-in {
   from {
@@ -602,21 +505,8 @@ canvas:active {
   }
 }
 
-@keyframes sentinel-fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
 .panel-enter {
   animation: sentinel-panel-in 220ms ease-out both;
-}
-
-.modal-enter {
-  animation: sentinel-fade-in 180ms ease-out both;
 }
 
 /* List rows: 150ms rise on mount only (stable keys mean filter changes reuse
@@ -634,30 +524,6 @@ canvas:active {
 
 .row-enter {
   animation: sentinel-row-in var(--motion-fast) ease-out both;
-}
-
-/* Shimmer for skeletons (uses shadcn Skeleton base + this sheen) */
-.shimmer {
-  position: relative;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.04);
-}
-.shimmer::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, transparent 25%, rgba(255, 255, 255, 0.06) 50%, transparent 75%);
-  background-size: 200% 100%;
-  animation: sentinel-shimmer 1.4s infinite;
-}
-
-@keyframes sentinel-shimmer {
-  0% {
-    background-position: -200% 0;
-  }
-  100% {
-    background-position: 200% 0;
-  }
 }
 
 /* Live-data pulse dot only (single small element may pulse) */
@@ -689,15 +555,9 @@ canvas:active {
   }
 }
 
-/* Legacy classes kept for compat */
-.marker-pulse {
-  animation: sentinel-live-pulse 2s ease-in-out infinite;
-}
-.panel-exit {
-  animation: sentinel-fade-in 150ms ease-out reverse both;
-}
-
-/* Reduced motion: kill entrances, shimmer, pulses */
+/* Reduced motion: kill entrances and pulses (T3.11: loading spinners,
+   skeletons and status dots freeze visibly-static — state changes and
+   loading text stay visible, only the looping is removed). */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
