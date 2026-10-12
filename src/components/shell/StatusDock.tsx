@@ -66,11 +66,11 @@ export default function StatusDock({ coordinates, activeLayer, dataCount, dataSt
 
   return (
     <footer
-      className="sentinel-chrome flex h-[var(--status-height)] items-center justify-between gap-3 border-t border-white/[0.07] px-3 sm:px-4"
+      className="sentinel-chrome flex h-[var(--status-height)] items-center justify-between gap-2.5 border-t border-white/[0.07] px-2.5 sm:px-3 md:px-4"
       aria-label="Status bar"
     >
-      {/* Left: position + layer + provenance (wide screens) */}
-      <div className="flex min-w-0 items-center gap-2.5">
+      {/* Left: position + layer + provenance (tablet+) */}
+      <div className="flex min-w-0 items-center gap-2">
         <Tooltip delayDuration={200}>
           <TooltipTrigger asChild>
             <span className="flex shrink-0 cursor-default items-center gap-1.5">
@@ -98,7 +98,7 @@ export default function StatusDock({ coordinates, activeLayer, dataCount, dataSt
         <span className="hidden h-3 w-px bg-white/10 sm:block" aria-hidden />
 
         {activeLayer ? (
-          <span className="sentinel-mono hidden max-w-[220px] truncate text-[11px] sm:block" title={`Active layer: ${activeLayer}`}>
+          <span className="sentinel-mono hidden max-w-[140px] truncate text-[11px] sm:block" title={`Active layer: ${activeLayer}`}>
             <span className="text-sentinel-accent">{activeLayer}</span>
             <span className="text-white/35"> · {dataCount}</span>
           </span>
@@ -113,7 +113,7 @@ export default function StatusDock({ coordinates, activeLayer, dataCount, dataSt
                   live region announcing provenance; a second and third
                   `role="status"` here and in the header made every fetch
                   announce three times. Text stays readable in browse mode. */}
-              <span className="hidden cursor-default items-center gap-1.5 lg:inline-flex">
+              <span className="hidden cursor-default items-center gap-1.5 md:inline-flex">
                 <span className="sr-only">
                   Data status: {chipLabel} · {dataStatus.source ?? 'Unknown source'}
                 </span>
@@ -121,7 +121,7 @@ export default function StatusDock({ coordinates, activeLayer, dataCount, dataSt
                 <span aria-hidden className="text-[11px] font-semibold tracking-[0.08em]" style={{ color: statusColor }}>
                   {chipLabel}
                 </span>
-                <span aria-hidden className="sentinel-micro max-w-[180px] truncate">{dataStatus.source ?? 'Unknown source'}</span>
+                <span aria-hidden className="sentinel-micro max-w-[140px] truncate">{dataStatus.source ?? 'Unknown source'}</span>
               </span>
             </TooltipTrigger>
             <TooltipContent side="top" className="border-white/10 bg-sentinel-elev text-xs text-white">

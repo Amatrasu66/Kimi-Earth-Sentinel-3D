@@ -191,3 +191,35 @@ describe('DataPanel event detail', () => {
     expect(screen.getByLabelText(/Data status: SIMULATED/i)).toBeInTheDocument();
   });
 });
+
+describe('DataPanel responsive layout (T3.9)', () => {
+  it('constrains panel height on mobile with max-md:max-h-[52dvh]', () => {
+    render(<DataPanel {...baseProps} eventDetail={liveDetail} />);
+    const panel = screen.getByLabelText('Event detail');
+    expect(panel).toHaveClass('max-md:max-h-[52dvh]');
+    expect(panel).toHaveClass('min-h-0');
+    expect(panel).toHaveClass('w-full');
+  });
+
+  it('uses intel-shell with panel-enter animation', () => {
+    render(<DataPanel {...baseProps} eventDetail={liveDetail} />);
+    const panel = screen.getByLabelText('Event detail');
+    expect(panel).toHaveClass('intel-shell');
+    expect(panel).toHaveClass('panel-enter');
+  });
+
+  it('has ScrollArea with border-t for content', () => {
+    render(<DataPanel {...baseProps} eventDetail={liveDetail} />);
+    const scrollArea = screen.getByLabelText('Event detail').querySelector('[data-radix-scroll-area-viewport]')?.parentElement;
+    expect(scrollArea).toBeInTheDocument();
+  });
+
+  it('title row uses flex with min-w-0 for truncation', () => {
+    render(<DataPanel {...baseProps} eventDetail={liveDetail} />);
+    const title = screen.getByText('Event detail');
+    expect(title).toHaveClass('truncate');
+    const titleRow = title.parentElement;
+    expect(titleRow).toHaveClass('flex');
+    expect(titleRow).toHaveClass('min-w-0');
+  });
+});

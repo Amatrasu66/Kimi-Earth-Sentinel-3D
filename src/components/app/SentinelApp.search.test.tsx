@@ -113,9 +113,9 @@ describe('search overlay keeps the globe mounted (T3.5)', () => {
     expect(screen.getByRole('combobox')).toHaveValue('New York');
 
     // Viewport-bounded panel: compact cap, internal list scroll.
-    expect(listbox.className).toContain('max-h-[min(224px,36vh)]');
+    expect(listbox.className).toContain('max-h-[min(224px,36dvh)]');
     const panel = listbox.parentElement;
-    expect(panel?.className).toContain('max-h-[min(320px,50vh)]');
+    expect(panel?.className).toContain('max-h-[min(320px,50dvh)]');
 
     // The globe is never gated on search: stage globe, renderer stub, and
     // first-run guidance all stay mounted while results are open.

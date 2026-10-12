@@ -35,6 +35,7 @@ export default function ValueHistogram({
     <div
       role="img"
       aria-label={`${label} spread across ${model.count} current points, ranging ${model.min} to ${model.max}${unit ? ` ${unit}` : ''}`}
+      className="min-h-[140px]"
     >
       <div className="sentinel-label mb-1 flex items-baseline justify-between">
         <span>{label} spread</span>

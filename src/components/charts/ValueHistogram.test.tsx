@@ -46,3 +46,34 @@ describe('ValueHistogram', () => {
     expect(model!.max).toBe(7.0);
   });
 });
+
+describe('ValueHistogram responsive layout (T3.9)', () => {
+  it('has minimum height constraint for narrow containers', () => {
+    const pts = [4.1, 4.5, 5.0, 5.2, 6.1, 6.8, 7.0].map((m, i) => point(`c${i}`, m));
+    const { container } = render(<ValueHistogram points={pts} activeLayer="earthquakes" />);
+    const root = container.querySelector('[role="img"]');
+    expect(root).toHaveClass('min-h-[140px]');
+  });
+
+  it('BarChart uses aspectRatio and ParentSize for responsiveness', () => {
+    const pts = [4.1, 4.5, 5.0, 5.2, 6.1, 6.8, 7.0].map((m, i) => point(`d${i}`, m));
+    const { container } = render(<ValueHistogram points={pts} activeLayer="earthquakes" />);
+    const barChart = container.querySelector('div[style*="aspect-ratio"]');
+    expect(barChart).toBeInTheDocument();
+  });
+
+  it('shows label and count in header row', () => {
+    const pts = [4.1, 4.5, 5.0, 5.2, 6.1, 6.8, 7.0].map((m, i) => point(`e${i}`, m));
+    render(<ValueHistogram points={pts} activeLayer="earthquakes" />);
+    expect(screen.getByText('Magnitude spread')).toBeInTheDocument();
+    expect(screen.getByText('n=7')).toBeInTheDocument();
+  });
+
+  it('shows min/max values in footer', () => {
+    const pts = [4.1, 4.5, 5.0, 5.2, 6.1, 6.8, 7.0].map((m, i) => point(`f${i}`, m));
+    render(<ValueHistogram points={pts} activeLayer="earthquakes" />);
+    // Numbers render via String(): 7.0 prints as "7"; unit suffix included.
+    expect(screen.getByText('4.1 magnitude')).toBeInTheDocument();
+    expect(screen.getByText('7 magnitude')).toBeInTheDocument();
+  });
+});

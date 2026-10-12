@@ -70,12 +70,12 @@ describe('CommandSearch bounded results surface (T3.5)', () => {
 
     // The list scrolls internally within a viewport-relative cap.
     expect(listbox.className).toContain('overflow-y-auto');
-    expect(listbox.className).toContain('max-h-[min(224px,36vh)]');
+    expect(listbox.className).toContain('max-h-[min(224px,36dvh)]');
 
     // The panel stays absolutely positioned (no layout shift) and bounded.
     const panel = listbox.parentElement;
     expect(panel?.className).toContain('absolute');
-    expect(panel?.className).toContain('max-h-[min(320px,50vh)]');
+    expect(panel?.className).toContain('max-h-[min(320px,50dvh)]');
     expect(panel?.className).toContain('overflow-hidden');
   });
 

@@ -518,7 +518,7 @@
       grid-template-rows: minmax(0, 1fr) auto;
       grid-template-areas: 'stage' 'rail';
     }
-    .sentinel-stage-cell { min-height: 38dvh; }
+    .sentinel-stage-cell { min-height: 50dvh; }
     .sentinel-shell {
       grid-template-rows: var(--header-height) minmax(0, 1fr) var(--status-height);
     }

@@ -29,9 +29,14 @@ export default function LayerHint({ onDismiss, activeLayerName = null, singleKey
 
   return (
     <div
-      className="panel-enter fixed z-40 w-max max-w-[220px] border-l-2 border-sentinel-accent/60 py-1 pl-3 pr-2
-        bottom-[132px] left-1/2 -translate-x-1/2
-        md:bottom-auto md:left-[calc(var(--shell-padding)+var(--rail-width)+4px)] md:top-1/2 md:-translate-x-0 md:-translate-y-1/2"
+      // T3.9: below md the workspace stacks (stage / rail / panel) and the
+      // panel is open on first run (default layer), so a bottom-anchored
+      // hint would sit on top of the rail or the panel's own controls.
+      // Anchor below the header instead: it overlays only globe stage area,
+      // stays dismissible, and never covers rail/panel interactions. At md+
+      // the rail column exists again, so the rail-centered annotation stays.
+      className="panel-enter fixed left-4 top-[calc(var(--header-height)+8px)] z-40 w-max max-w-[220px] border-l-2 border-sentinel-accent/60 py-1 pl-3 pr-2
+        md:left-[calc(var(--shell-padding)+var(--rail-width)+4px)] md:top-1/2 md:-translate-y-1/2"
       role="note"
       aria-label="Getting started hint"
     >

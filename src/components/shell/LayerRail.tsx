@@ -137,8 +137,10 @@ export default function LayerRail({ activeLayer, onLayerToggle, shortcutLayers =
               aria-label={`Toggle ${layer.label} layer`}
               aria-pressed={isActive}
               title={layer.label}
+              // T3.9: 44px touch targets on the pointer-coarse strip (the
+              // desktop vertical rail keeps its 40px pointer-first sizing).
               className={cn(
-                'flex h-10 min-w-10 flex-1 items-center justify-center rounded-[7px] border transition-colors duration-150',
+                'flex h-11 min-w-11 flex-1 items-center justify-center rounded-[7px] border transition-colors duration-150',
                 isActive
                   ? 'border-sentinel-accent/30 bg-sentinel-accent/[0.1] text-sentinel-accent'
                   : 'border-transparent text-white/45 active:bg-white/[0.07] active:text-white/90',

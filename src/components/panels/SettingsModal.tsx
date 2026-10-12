@@ -155,7 +155,7 @@ function SettingsBody({
         </TabsList>
       </div>
 
-      <div className="max-h-[55vh] overflow-y-auto overscroll-contain p-4">
+      <div className="max-h-[55dvh] overflow-y-auto overscroll-contain p-4">
         <TabsContent value="globe" className="mt-0 space-y-3">
           <div className="sentinel-inset flex items-center justify-between gap-3 rounded-lg p-3">
             <div className="flex items-start gap-2.5">
@@ -278,7 +278,11 @@ export default function SettingsModal({ isOpen, onClose, isRotating, onToggleRot
   return (
     <Dialog open={isOpen} onOpenChange={(v) => !v && onClose()}>
       <DialogContent
-        className="sentinel-panel max-h-[85vh] w-[520px] gap-0 overflow-hidden border-white/10 bg-sentinel-panel p-0 text-white sm:max-w-[520px]"
+        // T3.9: dvh caps (not vh) so the dialog never extends under mobile
+        // browser chrome on tablet widths, where this centered dialog — not
+        // the bottom sheet — is used. w-full + max-w keeps <520px viewports
+        // bounded (the base max-w-[calc(100%-2rem)] no longer has to).
+        className="sentinel-panel max-h-[85dvh] w-full max-w-[520px] gap-0 overflow-hidden border-white/10 bg-sentinel-panel p-0 text-white"
         aria-describedby={undefined}
       >
         <DialogHeader className="border-b border-white/[0.07] px-4 py-3 text-left">

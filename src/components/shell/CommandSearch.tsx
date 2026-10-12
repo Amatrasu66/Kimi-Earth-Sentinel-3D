@@ -246,15 +246,16 @@ export default function CommandSearch({ onResultClick, className, query, onQuery
           // first-run guidance. The min() caps keep the panel small on tall
           // screens and proportional on short/narrow ones; the list itself
           // scrolls. Absolute positioning is unchanged, so the globe never
-          // resizes or shifts when results open.
-          className="sentinel-elev panel-enter absolute left-0 right-0 top-full z-50 mt-2 max-h-[min(320px,50vh)] overflow-hidden rounded-[10px]"
+          // resizes or shifts when results open. T3.9: dvh (not vh) so the
+          // caps track mobile browser chrome.
+          className="sentinel-elev panel-enter absolute left-0 right-0 top-full z-50 mt-2 max-h-[min(320px,50dvh)] overflow-hidden rounded-[10px]"
         >
           <div className="flex items-center justify-between px-3 pb-1 pt-2.5">
             <span className="sentinel-label">Results</span>
             {results.length > 0 && <span className="sentinel-micro sentinel-mono">{results.length} found</span>}
           </div>
           <Separator className="bg-white/[0.06]" />
-          <div ref={listRef} id="sentinel-search-listbox" role="listbox" aria-label="Search results" className="max-h-[min(224px,36vh)] overflow-y-auto p-1.5">
+          <div ref={listRef} id="sentinel-search-listbox" role="listbox" aria-label="Search results" className="max-h-[min(224px,36dvh)] overflow-y-auto p-1.5">
             {loading ? (
               <div className="flex items-center justify-center gap-2 px-3 py-8 text-[13px] text-white/40" role="status">
                 <Spinner className="h-4 w-4" /> Searching…

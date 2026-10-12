@@ -17,7 +17,11 @@ export default function SeverityFilter({
 }) {
   return (
     <div
-      className="flex items-center gap-0.5 rounded-[7px] border border-white/[0.07] bg-white/[0.02] p-0.5"
+      // T3.9: five nowrap segments overflow narrow panels (e.g. 308px tablet
+      // / ~344px phone content widths vs ~460px worst-case row). Wrapping
+      // keeps every count visible — nothing is clipped or dropped. On wide
+      // panels the row still fits on one line, so desktop is unchanged.
+      className="flex flex-wrap items-center gap-0.5 rounded-[7px] border border-white/[0.07] bg-white/[0.02] p-0.5"
       role="group"
       aria-label="Filter by severity"
     >

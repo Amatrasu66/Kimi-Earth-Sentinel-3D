@@ -132,3 +132,86 @@ describe('StatusDock provenance chip (T3.10)', () => {
     expect(screen.getByText(/Cursor coordinates/)).toBeInTheDocument();
   });
 });
+
+describe('StatusDock responsive layout (T3.9)', () => {
+  it('uses responsive footer padding and gap', () => {
+    render(
+      <StatusDock
+        coordinates={null}
+        activeLayer="earthquakes"
+        dataCount={10}
+        dataStatus={{ status: 'live', source: 'USGS', fetched_at: '2026-10-11T00:00:00Z' }}
+        rendererInfo={{ active: 'dotted', detail: 'ready', textures: { loaded: 0, total: 0 }, source: 'automatic' }}
+      />,
+    );
+    const footer = screen.getByRole('contentinfo');
+    expect(footer).toHaveClass('gap-2.5');
+    expect(footer).toHaveClass('px-2.5');
+    expect(footer).toHaveClass('sm:px-3');
+    expect(footer).toHaveClass('md:px-4');
+  });
+
+  it('shows provenance chip at md breakpoint', () => {
+    render(
+      <StatusDock
+        coordinates={null}
+        activeLayer="earthquakes"
+        dataCount={10}
+        dataStatus={{ status: 'live', source: 'USGS', fetched_at: '2026-10-11T00:00:00Z' }}
+      />,
+    );
+    const chip = screen.getByText('LIVE').parentElement;
+    expect(chip).toHaveClass('md:inline-flex');
+  });
+
+  it('shows active layer name at sm with constrained max-width', () => {
+    render(
+      <StatusDock
+        coordinates={null}
+        activeLayer="earthquakes"
+        dataCount={10}
+      />,
+    );
+    const layerName = screen.getByText('earthquakes').parentElement;
+    expect(layerName).toHaveClass('max-w-[140px]');
+  });
+
+  it('shows UTC clock at md breakpoint', () => {
+    render(
+      <StatusDock
+        coordinates={null}
+        activeLayer="earthquakes"
+        dataCount={10}
+      />,
+    );
+    const clock = screen.getByLabelText('Current UTC time');
+    expect(clock).toHaveClass('md:block');
+  });
+
+  it('shows renderer short name at sm breakpoint', () => {
+    render(
+      <StatusDock
+        coordinates={null}
+        activeLayer="earthquakes"
+        dataCount={10}
+        rendererInfo={{ active: 'dotted', detail: 'ready', textures: { loaded: 0, total: 0 }, source: 'automatic' }}
+      />,
+    );
+    const rendererText = screen.getByText('Dotted Earth · automatic');
+    expect(rendererText).toHaveClass('sm:inline');
+  });
+
+  it('left zone uses min-w-0 and responsive gap', () => {
+    render(
+      <StatusDock
+        coordinates={null}
+        activeLayer="earthquakes"
+        dataCount={10}
+        dataStatus={{ status: 'live', source: 'USGS', fetched_at: '2026-10-11T00:00:00Z' }}
+      />,
+    );
+    const leftZone = screen.getByText('earthquakes').parentElement?.parentElement;
+    expect(leftZone).toHaveClass('min-w-0');
+    expect(leftZone).toHaveClass('gap-2');
+  });
+});
