@@ -151,7 +151,10 @@ describe('default layer selection (T3.8 §2)', () => {
   it('preserves search, severity, and view params alongside the default', async () => {
     setUrl('?q=tokyo&sev=high&view=list');
     render(<SentinelApp />, { wrapper: wrapperWithCache() });
-    await screen.findByLabelText('Layer data');
+    // T3.15 list presentation: the stage carries the primary event list
+    // while the panel stands down — so the list stage (not 'Layer data')
+    // is the expected surface, with the same canonical URL contract.
+    await screen.findByTestId('list-stage');
     expect(window.location.search).toBe('?layer=earthquakes&q=tokyo&sev=high&view=list');
     expect(screen.getByRole('combobox')).toHaveValue('tokyo');
   });

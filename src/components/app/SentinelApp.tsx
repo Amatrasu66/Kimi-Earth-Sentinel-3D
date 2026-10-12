@@ -16,6 +16,7 @@ import AppShell from '@/components/shell/AppShell';
 import AppHeader from '@/components/shell/AppHeader';
 import LayerRail from '@/components/shell/LayerRail';
 import GlobeStage from '@/components/shell/GlobeStage';
+import ListStage from '@/components/shell/ListStage';
 import LayerHint from '@/components/shell/LayerHint';
 import StatusDock from '@/components/shell/StatusDock';
 import DataPanel from '@/components/intelligence/DataPanel';
@@ -103,12 +104,19 @@ const SHORTCUT_LAYERS: LayerId[] = [
 // so GlobeScene/WebGPUEarth skip re-renders on shell-only state updates.
 const StableEarthRenderer = memo(EarthRenderer);
 
-/** True when focus is inside the data panel (or nowhere — Safari mouse clicks
- * leave focus on <body>, and both cases must be restored). */
-function focusTargetWithinPanel(): boolean {
-  const panel = document.getElementById('sentinel-data-panel');
+/** True when focus is inside a data surface (panel or list stage) or
+ *  nowhere — Safari mouse clicks leave focus on <body>, and all cases
+ *  must be restored when the surface unmounts or swaps content. */
+function focusWithinDataSurface(): boolean {
   const active = document.activeElement;
-  return !!panel && (!!active && (active === document.body || panel.contains(active)));
+  if (!active) return false;
+  if (active === document.body) {
+    return !!document.getElementById('sentinel-data-panel') || !!document.getElementById('sentinel-list-stage');
+  }
+  return (
+    !!document.getElementById('sentinel-data-panel')?.contains(active) ||
+    !!document.getElementById('sentinel-list-stage')?.contains(active)
+  );
 }
 
 function SentinelApp() {
@@ -125,8 +133,10 @@ function SentinelApp() {
   const [singleKeyShortcuts, setSingleKeyShortcuts] = useState(true);
   const [allDataPoints, setAllDataPoints] = useState<DataPoint[]>([]);
   // T3.3 URL-driven state: search text, severity display filter ('all' =
-  // unfiltered default), and globe/list view ('globe' default; `list` shares
-  // the same panel list — no dedicated toggle control yet, see docs).
+  // unfiltered default), and globe/list view ('globe' default). The header
+  // `View` toggle (T3.15) is the visible control: `globe` shows the stage
+  // globe + panel, `list` swaps the stage for the primary event list
+  // (list, then detail on selection) while the panel stands down.
   // Initial values are deterministic SSR-safe constants; the live URL is
   // applied once after mount (see the restore effect below).
   const [searchQuery, setSearchQuery] = useState('');
@@ -289,7 +299,7 @@ function SentinelApp() {
 
   // Handle close data panel
   const handleClosePanel = useCallback(() => {
-    const restoreFocus = focusTargetWithinPanel();
+    const restoreFocus = focusWithinDataSurface();
     eventRequestId.current += 1; // invalidate any in-flight detail fetch
     eventAbortRef.current?.abort();
     setActiveLayer(null);
@@ -302,7 +312,7 @@ function SentinelApp() {
 
   // Handle back to layer view
   const handleBackToLayer = useCallback(() => {
-    const restoreFocus = focusTargetWithinPanel();
+    const restoreFocus = focusWithinDataSurface();
     eventRequestId.current += 1;
     eventAbortRef.current?.abort();
     setSelectedEvent(null);
@@ -326,6 +336,16 @@ function SentinelApp() {
     writeSingleKeyShortcuts(enabled);
   }, []);
 
+  // T3.15: globe/list presentation switch. Presentation-only: layer,
+  // search, severity, selection and fetched data are untouched — the
+  // existing URL-sync effect records `view` (a real switch pushes a
+  // Back-restorable entry; clicking the active view is a no-op write).
+  // The `renderer` passthrough is never touched: view controls the
+  // presentation, `?renderer=` controls the globe implementation.
+  const handleViewChange = useCallback((next: AppView) => {
+    setView(next);
+  }, []);
+
   // Closing Settings returns focus to its opener button when focus was
   // inside the dialog (Esc, the dialog close control). A `?`-opened dialog
   // also lands there — the stable, discoverable entry point.
@@ -336,14 +356,17 @@ function SentinelApp() {
     if (restoreFocus) pendingFocusRef.current = 'settings';
   }, []);
 
-  // Applied after the commit that consumed the request above.
+  // Applied after the commit that consumed the request above. The panel
+  // target falls back to the list stage: in `list` mode the panel stands
+  // down to the event detail, so returning from a detail lands on the
+  // primary list instead of a missing node.
   useEffect(() => {
     const target = pendingFocusRef.current;
     if (!target) return;
     pendingFocusRef.current = null;
     const node =
       target === 'panel'
-        ? document.getElementById('sentinel-data-panel')
+        ? (document.getElementById('sentinel-data-panel') ?? document.getElementById('sentinel-list-stage'))
         : target === 'settings'
           ? document.getElementById('sentinel-settings-button')
           : document.getElementById('sentinel-workspace');
@@ -487,24 +510,31 @@ function SentinelApp() {
 
   return (
     <div className="dark h-dvh w-screen overflow-hidden bg-[var(--sentinel-bg)]">
-      {/* Skip link for keyboard users */}
+      {/* Skip link for keyboard users — targets the primary data surface
+          of the active presentation (panel in globe mode, list in list mode). */}
       <a
-        href="#sentinel-data-panel"
-         className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-16 focus:z-[300] focus:rounded-md focus:bg-sentinel-accent focus:px-3 focus:py-1.5 focus:text-xs focus:font-semibold focus:text-black"
+        href={view === 'list' ? '#sentinel-list-stage' : '#sentinel-data-panel'}
+        className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-16 focus:z-[300] focus:rounded-md focus:bg-sentinel-accent focus:px-3 focus:py-1.5 focus:text-xs focus:font-semibold focus:text-black"
       >
-        Skip to data panel
+        {view === 'list' ? 'Skip to event list' : 'Skip to data panel'}
       </a>
-      {/* 3D Globe - Full viewport background (WebGPU Earth, WebGL fallback) */}
-      <StableEarthRenderer
-        activeLayer={activeLayer}
-        dataPoints={allDataPoints}
-        onMarkerClick={handleMarkerClick}
-        onMarkerHover={handleMarkerHover}
-        isRotating={isRotating}
-        flyTo={flyTo}
-        sunDirection={sunDirection}
-        onActiveRenderer={setRendererInfo}
-      />
+      {/* Globe renderers (dotted default in the stage cell, WebGPU/WebGL
+          fullscreen when forced). Unmounted in list mode so the primary
+          list is the only presentation — and no hidden canvas stays in
+          the accessibility tree. The `renderer` URL param is preserved
+          untouched and re-applies on return to globe mode. */}
+      {view === 'globe' && (
+        <StableEarthRenderer
+          activeLayer={activeLayer}
+          dataPoints={allDataPoints}
+          onMarkerClick={handleMarkerClick}
+          onMarkerHover={handleMarkerHover}
+          isRotating={isRotating}
+          flyTo={flyTo}
+          sunDirection={sunDirection}
+          onActiveRenderer={setRendererInfo}
+        />
+      )}
 
       {/* Composition grid: header / rail+stage+panel / status share one system */}
       <AppShell
@@ -518,6 +548,8 @@ function SentinelApp() {
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
             singleKeyShortcuts={singleKeyShortcuts}
+            view={view}
+            onViewChange={handleViewChange}
           />
         }
         rail={
@@ -528,17 +560,46 @@ function SentinelApp() {
           />
         }
         stage={
-          <GlobeStage
-            dataPoints={allDataPoints}
-            onMarkerClick={handleMarkerClick}
-            onMarkerHover={handleMarkerHover}
-            isRotating={isRotating}
-            flyTo={flyTo}
-            onActiveRenderer={setRendererInfo}
-          />
+          view === 'list' ? (
+            <ListStage
+              activeLayer={activeLayer}
+              layerMeta={activeLayerMeta}
+              dataPoints={allDataPoints}
+              selectedEvent={selectedEvent}
+              eventDetail={eventDetail}
+              eventDetailLoading={eventDetailLoading}
+              loading={layerLoading}
+              error={layerError ? layerError.message : null}
+              dataStatus={dataStatus}
+              cacheHit={layerCacheHit}
+              severityFilter={severityFilter}
+              onSeverityChange={setSeverityFilter}
+              onEventSelect={handleMarkerClick}
+              onRefresh={refetch}
+              onClose={handleClosePanel}
+              onBackToLayer={handleBackToLayer}
+            />
+          ) : (
+            <GlobeStage
+              dataPoints={allDataPoints}
+              onMarkerClick={handleMarkerClick}
+              onMarkerHover={handleMarkerHover}
+              isRotating={isRotating}
+              flyTo={flyTo}
+              onActiveRenderer={setRendererInfo}
+            />
+          )
         }
         panel={
-          activeLayer || selectedEvent ? (
+          // List mode: the stage is the primary presentation (list, then
+          // detail on selection — the same swap the panel performs in
+          // globe mode), so the panel stands down entirely and no row is
+          // ever rendered twice. Globe mode: the existing panel (layer
+          // overview incl. the keyboard-accessible list alternative, or
+          // the event detail).
+          view === 'list'
+            ? null
+            : activeLayer || selectedEvent ? (
           <DataPanel
             activeLayer={activeLayer}
             layerMeta={activeLayerMeta}

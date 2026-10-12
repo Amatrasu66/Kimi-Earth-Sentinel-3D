@@ -2,6 +2,8 @@
 
 import { Settings, Globe, ChevronRight } from 'lucide-react';
 import CommandSearch from '@/components/shell/CommandSearch';
+import ViewToggle from '@/components/shell/ViewToggle';
+import type { AppView } from '@/lib/url-state';
 import { Button } from '@/components/ui/button';
 import { Kbd } from '@/components/ui/kbd';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
@@ -25,6 +27,13 @@ interface AppHeaderProps {
    * focus-search key and every shortcut hint this header advertises.
    */
   singleKeyShortcuts?: boolean;
+  /**
+   * Globe/list presentation (T3.3 URL state, T3.15 toggle). Optional so
+   * existing header harnesses keep compiling; the app always passes it.
+   */
+  view?: AppView;
+  /** Presentation-only switch — handled by the app's URL-state sync. */
+  onViewChange?: (next: AppView) => void;
 }
 
 /**
@@ -32,7 +41,7 @@ interface AppHeaderProps {
  * brand+layer | command search | system state. In-flow header row owned
  * by AppShell; translucent so the globe reads through at the top edge.
  */
-export default function AppHeader({ onSearchResultClick, onSettingsClick, dataStatus = null, cacheHit = null, activeLayerName = null, searchQuery, onSearchQueryChange, singleKeyShortcuts = true }: AppHeaderProps) {
+export default function AppHeader({ onSearchResultClick, onSettingsClick, dataStatus = null, cacheHit = null, activeLayerName = null, searchQuery, onSearchQueryChange, singleKeyShortcuts = true, view = 'globe', onViewChange }: AppHeaderProps) {
   const statusKind = resolveProvenance(dataStatus, cacheHit, null).kind;
   const chipLabel = provenanceChipLabel(dataStatus, cacheHit);
   const statusColor = `var(--status-${statusKind === 'unknown' ? 'neutral' : statusKind})`;
@@ -80,6 +89,7 @@ export default function AppHeader({ onSearchResultClick, onSettingsClick, dataSt
 
       {/* RIGHT — system state / controls, right-aligned to the same baseline */}
       <div className="flex min-w-0 items-center justify-end gap-1.5 sm:gap-2">
+        <ViewToggle view={view} onViewChange={onViewChange} />
         {showStatus && (
           <Tooltip delayDuration={150}>
             <TooltipTrigger asChild>
