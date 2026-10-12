@@ -1,6 +1,9 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
-import SettingsModal from '@/components/panels/SettingsModal';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, within, cleanup } from '@testing-library/react';
+import SettingsModal, {
+  buildDiagnosticRows,
+  formatDiagnosticReport,
+} from '@/components/panels/SettingsModal';
 import type { RendererInfo } from '@/components/globe/EarthRenderer';
 import type { DataStatus } from '@/types';
 
@@ -135,11 +138,184 @@ describe('SettingsModal responsive layout (T3.9)', () => {
     expect(screen.getByText(/Earth textures:/)).toBeInTheDocument();
   });
 
+  it('About tab credits FIRMS and GIBS (T3.13)', () => {
+    renderSettings();
+    selectTab(/About/);
+    expect(screen.getByText(/NASA FIRMS/)).toBeInTheDocument();
+    expect(screen.getByText(/NASA GIBS/)).toBeInTheDocument();
+    expect(screen.getByText(/NASA Visible Earth/)).toBeInTheDocument();
+  });
+
   it('Single-key shortcuts switch is present and functional', () => {
     renderSettings();
     selectTab(/Shortcuts/);
     const switchControl = screen.getByRole('switch', { name: 'Toggle single-key shortcuts' });
     expect(switchControl).toBeInTheDocument();
     expect(switchControl).toBeChecked();
+  });
+});
+
+// Controllable reduced-motion double for the Diagnostics tab.
+function mockReducedMotion(initialMatches: boolean) {
+  const matches = initialMatches;
+  const listeners = new Set<() => void>();
+  const mql = {
+    matches: initialMatches,
+    media: '(prefers-reduced-motion: reduce)',
+    addEventListener: vi.fn((_type: string, cb: () => void) => {
+      listeners.add(cb);
+    }),
+    removeEventListener: vi.fn((_type: string, cb: () => void) => {
+      listeners.delete(cb);
+    }),
+  };
+  const prev = window.matchMedia;
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: vi.fn(() => {
+      mql.matches = matches;
+      return mql;
+    }),
+  });
+  return {
+    restore() {
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        writable: true,
+        value: prev,
+      });
+    },
+  };
+}
+
+function mockClipboard(writeText: (text: string) => Promise<void>) {
+  const prev = navigator.clipboard;
+  const writeTextFn = vi.fn(writeText);
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    writable: true,
+    value: { writeText: writeTextFn },
+  });
+  return {
+    writeTextFn,
+    restore() {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        writable: true,
+        value: prev,
+      });
+    },
+  };
+}
+
+describe('SettingsModal diagnostics content (T3.13)', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('shows the motion preference and server-cache rows from live state', () => {
+    const mm = mockReducedMotion(false);
+    try {
+      renderSettings();
+      selectTab(/Diagnostics/);
+      expect(screen.getByText('Motion preference')).toBeInTheDocument();
+      expect(screen.getByText('Full')).toBeInTheDocument();
+      expect(screen.getByText('Server cache')).toBeInTheDocument();
+      // cacheHit={false} renders a miss, never an implied hit.
+      expect(screen.getByText(/miss \(fresh provider response\)/)).toBeInTheDocument();
+    } finally {
+      mm.restore();
+    }
+  });
+
+  it('reports a reduced system motion preference truthfully', () => {
+    const mm = mockReducedMotion(true);
+    try {
+      renderSettings();
+      selectTab(/Diagnostics/);
+      expect(screen.getByText(/Reduced \(system\)/)).toBeInTheDocument();
+    } finally {
+      mm.restore();
+    }
+  });
+
+  it('copies exactly the displayed report and confirms success', async () => {
+    const mm = mockReducedMotion(false);
+    const clip = mockClipboard(() => Promise.resolve());
+    try {
+      renderSettings();
+      selectTab(/Diagnostics/);
+      fireEvent.click(screen.getByRole('button', { name: 'Copy diagnostics report' }));
+      await screen.findByText('Report copied.');
+      expect(clip.writeTextFn).toHaveBeenCalledTimes(1);
+      const copied = String(clip.writeTextFn.mock.calls[0]?.[0] ?? '');
+      expect(copied).toContain('Earth Sentinel 3D diagnostics');
+      expect(copied).toContain('API base: /api/v1');
+      expect(copied).toContain('Current layer: earthquakes');
+      expect(copied).toContain('Motion preference: Full');
+      // Never secrets or key-bearing parameters.
+      expect(copied).not.toMatch(/api_key|API_KEY|token|secret|password/i);
+      expect(copied).not.toMatch(/[?&](key|api_key|token)=/i);
+    } finally {
+      clip.restore();
+      mm.restore();
+    }
+  });
+
+  it('reports clipboard failure gracefully instead of throwing', async () => {
+    const mm = mockReducedMotion(false);
+    const clip = mockClipboard(() => Promise.reject(new Error('denied')));
+    try {
+      renderSettings();
+      selectTab(/Diagnostics/);
+      fireEvent.click(screen.getByRole('button', { name: 'Copy diagnostics report' }));
+      await screen.findByText(/Copy failed/);
+      expect(screen.getByRole('button', { name: 'Copy diagnostics report' })).toBeInTheDocument();
+    } finally {
+      clip.restore();
+      mm.restore();
+    }
+  });
+});
+
+describe('diagnostic row builder (T3.13)', () => {
+  const base = {
+    apiBase: '/api/v1',
+    apiSource: 'same-origin · dev build',
+    health: 'ok · sentinel v1.0.0',
+    latencyMs: 12,
+    lastOk: '2026-10-12T00:00:00.000Z',
+    activeLayer: 'earthquakes' as const,
+    dataStatus: { status: 'live', source: 'USGS', fetched_at: '2026-10-12T00:00:00.000Z' } as DataStatus,
+    webgpuProbe: 'supported (test)',
+    navigatorGpu: true,
+    rendererInfo: mockRendererInfo,
+  };
+
+  it('distinguishes server cache hit, miss, and unknown', () => {
+    const hit = Object.fromEntries(buildDiagnosticRows({ ...base, reducedMotion: false, cacheHit: true }));
+    const miss = Object.fromEntries(buildDiagnosticRows({ ...base, reducedMotion: false, cacheHit: false }));
+    const unknown = Object.fromEntries(buildDiagnosticRows({ ...base, reducedMotion: false, cacheHit: null }));
+    expect(hit['Server cache']).toMatch(/hit/);
+    expect(miss['Server cache']).toMatch(/miss/);
+    expect(unknown['Server cache']).toBe('—');
+  });
+
+  it('falls back honestly when health or layer data is missing', () => {
+    const rows = Object.fromEntries(
+      buildDiagnosticRows({ ...base, reducedMotion: false, cacheHit: null, health: null, dataStatus: null, activeLayer: null }),
+    );
+    expect(rows['Backend health']).toBe('checking…');
+    expect(rows['Data status']).toBe('no layer data');
+    expect(rows['Current layer']).toBe('none');
+  });
+
+  it('formats the copied report from the same rows the UI shows', () => {
+    const rows = buildDiagnosticRows({ ...base, reducedMotion: true, cacheHit: true });
+    const text = formatDiagnosticReport(rows);
+    expect(text).toContain('Motion preference: Reduced (system)');
+    expect(text).toContain('Server cache: hit');
+    expect(text.split('\n')).toHaveLength(rows.length + 1);
   });
 });

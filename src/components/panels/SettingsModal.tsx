@@ -5,6 +5,7 @@ import { RotateCw, Activity, Keyboard, Info } from 'lucide-react';
 import { api, getApiConfig } from '@/services/api';
 import { hasNavigatorGpu, probeWebGpuSupport } from '@/lib/webgpu';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion';
 import type { RendererInfo } from '@/components/globe/EarthRenderer';
 import type { DataStatus, LayerId } from '@/types';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -40,6 +41,75 @@ interface SettingsModalProps {
  * Shows only safe values: configured API base, backend health + latency,
  * current layer/provenance, and renderer capability. Never any secret.
  */
+export interface DiagnosticRowInput {
+  apiBase: string;
+  apiSource: string;
+  health: string | null;
+  latencyMs: number | null;
+  lastOk: string | null;
+  activeLayer?: LayerId | null;
+  dataStatus?: DataStatus | null;
+  cacheHit?: boolean | null;
+  /** OS reduced-motion preference (T3.11 second rotation gate). */
+  reducedMotion: boolean;
+  webgpuProbe: string;
+  navigatorGpu: boolean;
+  rendererInfo?: RendererInfo;
+}
+
+/**
+ * Pure row builder (T3.13): the rendered list AND the copyable report both
+ * consume these rows, so the copied text can never drift from what the UI
+ * describes. Every value is already-known client state — no extra network
+ * requests, no secrets, no provider URLs (keys could hide in query params).
+ */
+export function buildDiagnosticRows(input: DiagnosticRowInput): Array<[string, string]> {
+  const {
+    apiBase,
+    apiSource,
+    health,
+    latencyMs,
+    lastOk,
+    activeLayer,
+    dataStatus,
+    cacheHit,
+    reducedMotion,
+    webgpuProbe,
+    navigatorGpu,
+    rendererInfo,
+  } = input;
+  return [
+    ['API base', apiBase],
+    ['API source', apiSource],
+    ['Backend health', health ?? 'checking…'],
+    ['API latency', latencyMs === null ? '—' : `${latencyMs} ms`],
+    ['Last success', lastOk ?? '—'],
+    ['Current layer', activeLayer ?? 'none'],
+    ['Data status', dataStatus ? `${provenanceChipLabel(dataStatus, cacheHit ?? null)} · ${dataStatus.source}` : 'no layer data'],
+    // Server L1 meaning only: CACHED comes exclusively from meta.cache_hit
+    // (T3.6/T3.7) — SWR/client revalidation never implies it.
+    ['Server cache', cacheHit === true ? 'hit (served from server cache)' : cacheHit === false ? 'miss (fresh provider response)' : '—'],
+    ['Motion preference', reducedMotion ? 'Reduced (system) — auto-rotate and fly-to animations off' : 'Full'],
+    ['WebGPU', `${navigatorGpu ? 'navigator.gpu present' : 'no navigator.gpu'} · probe ${webgpuProbe}`],
+    ['Active renderer', rendererInfo ? `${rendererInfo.active} · ${rendererInfo.detail}` : 'unknown'],
+    ['Renderer source', rendererInfo ? rendererInfo.source : '—'],
+    ['Earth textures', rendererInfo ? `${rendererInfo.textures.loaded}/${rendererInfo.textures.total} loaded` : '—'],
+    [
+      'WebGPU frames',
+      rendererInfo?.active === 'webgpu'
+        ? (rendererInfo.frames !== undefined
+            ? `${rendererInfo.frames} submitted — scene is rendering`
+            : '0 — loop has not submitted a frame yet')
+        : 'n/a (WebGL path)',
+    ],
+  ];
+}
+
+/** Serialize the exact rows the UI shows, with a plain header line. */
+export function formatDiagnosticReport(rows: Array<[string, string]>): string {
+  return ['Earth Sentinel 3D diagnostics', ...rows.map(([label, value]) => `${label}: ${value}`)].join('\n');
+}
+
 function DiagnosticsPanel({
   rendererInfo,
   activeLayer,
@@ -55,6 +125,8 @@ function DiagnosticsPanel({
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
   const [lastOk, setLastOk] = useState<string | null>(null);
   const [webgpuProbe, setWebgpuProbe] = useState<string>('checking…');
+  const [copyState, setCopyState] = useState<'idle' | 'ok' | 'fail'>('idle');
+  const reducedMotion = usePrefersReducedMotion();
   const config = getApiConfig();
 
   useEffect(() => {
@@ -85,37 +157,66 @@ function DiagnosticsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const rows: Array<[string, string]> = [
-    ['API base', config.base || 'not configured'],
-    ['API source', `${config.source}${config.isProduction ? ' · production build' : ' · dev build'}`],
-    ['Backend health', config.error ? config.error : (health ?? 'checking…')],
-    ['API latency', latencyMs === null ? '—' : `${latencyMs} ms`],
-    ['Last success', lastOk ?? '—'],
-    ['Current layer', activeLayer ?? 'none'],
-    ['Data status', dataStatus ? `${provenanceChipLabel(dataStatus, cacheHit)} · ${dataStatus.source}` : 'no layer data'],
-    ['WebGPU', `${hasNavigatorGpu() ? 'navigator.gpu present' : 'no navigator.gpu'} · probe ${webgpuProbe}`],
-    ['Active renderer', rendererInfo ? `${rendererInfo.active} · ${rendererInfo.detail}` : 'unknown'],
-    ['Renderer source', rendererInfo ? rendererInfo.source : '—'],
-    ['Earth textures', rendererInfo ? `${rendererInfo.textures.loaded}/${rendererInfo.textures.total} loaded` : '—'],
-    [
-      'WebGPU frames',
-      rendererInfo?.active === 'webgpu'
-        ? (rendererInfo.frames !== undefined
-            ? `${rendererInfo.frames} submitted — scene is rendering`
-            : '0 — loop has not submitted a frame yet')
-        : 'n/a (WebGL path)',
-    ],
-  ];
+  const rows = buildDiagnosticRows({
+    apiBase: config.base || 'not configured',
+    apiSource: `${config.source}${config.isProduction ? ' · production build' : ' · dev build'}`,
+    health: config.error ? config.error : health,
+    latencyMs,
+    lastOk,
+    activeLayer,
+    dataStatus,
+    cacheHit,
+    reducedMotion,
+    webgpuProbe,
+    navigatorGpu: hasNavigatorGpu(),
+    rendererInfo,
+  });
+
+  // Copyable troubleshooting report (T3.13): serializes exactly the rows
+  // above — nothing more. Clipboard failure (permissions, insecure context)
+  // surfaces as a status message, never a throw. The rows contain no
+  // secrets or key-bearing URLs by construction (see buildDiagnosticRows).
+  const copyReport = async () => {
+    try {
+      const clipboard = typeof navigator !== 'undefined' ? navigator.clipboard : undefined;
+      if (!clipboard || typeof clipboard.writeText !== 'function') {
+        throw new Error('clipboard unavailable');
+      }
+      await clipboard.writeText(formatDiagnosticReport(rows));
+      setCopyState('ok');
+    } catch {
+      setCopyState('fail');
+    }
+  };
 
   return (
-    <dl className="sentinel-inset space-y-1.5 rounded-lg p-3">
-      {rows.map(([label, value]) => (
-        <div key={label} className="flex items-baseline justify-between gap-3">
-          <dt className="sentinel-micro flex-shrink-0">{label}</dt>
-          <dd className="break-all text-right text-xs text-white/80">{value}</dd>
-        </div>
-      ))}
-    </dl>
+    <div className="space-y-2.5">
+      <dl className="sentinel-inset space-y-1.5 rounded-lg p-3">
+        {rows.map(([label, value]) => (
+          <div key={label} className="flex items-baseline justify-between gap-3">
+            <dt className="sentinel-micro flex-shrink-0">{label}</dt>
+            <dd className="break-all text-right text-xs text-white/80">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className="flex items-center justify-between gap-3">
+        <span className="sentinel-micro" role="status">
+          {copyState === 'ok'
+            ? 'Report copied.'
+            : copyState === 'fail'
+              ? 'Copy failed — clipboard unavailable.'
+              : 'Copy these details for troubleshooting.'}
+        </span>
+        <button
+          type="button"
+          onClick={() => void copyReport()}
+          aria-label="Copy diagnostics report"
+          className="sentinel-micro shrink-0 rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+        >
+          Copy report
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -242,8 +343,8 @@ function SettingsBody({
           <div className="sentinel-inset rounded-lg p-3">
             <div className="sentinel-section-title text-white">Earth Sentinel 3D v1.0.0</div>
             <Separator className="my-2 bg-white/[0.07]" />
-            <p className="sentinel-micro leading-relaxed">Data sources: NASA EONET, USGS, NOAA, AirNow, Open-Meteo</p>
-            <p className="sentinel-micro mt-1 leading-relaxed">Earth textures: NASA Visible Earth (Blue Marble)</p>
+            <p className="sentinel-micro leading-relaxed">Data sources: NASA EONET, USGS, NASA FIRMS, NOAA, AirNow, Open-Meteo</p>
+            <p className="sentinel-micro mt-1 leading-relaxed">Earth textures: NASA Visible Earth (Blue Marble), NASA GIBS</p>
           </div>
         </TabsContent>
       </div>
