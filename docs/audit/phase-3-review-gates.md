@@ -180,3 +180,28 @@ No critical or high findings. Lows/advisories recorded, none fixed in this audit
 - Decorative lucide icons lack `aria-hidden` in several labelled buttons (e.g. the dock
   `Cpu` icon); practically skipped inside labelled controls but not guaranteed — 
 ...[truncated 3580 chars]
+
+---
+
+## 3. Addendum — T3.16 design documentation (follow-up, original record above untouched)
+
+- **New file:** `docs/design/DESIGN.md` (created by T3.16 at the PRD T3.1
+  path) — an evidence-based record of the design system as built: dark-only
+  direction, colour/semantic/provenance/severity tokens with values,
+  typography conventions, shell regions (incl. the T3.15 view toggle) and
+  responsive rules, component/interaction conventions, globe and renderer
+  behaviour, motion and accessibility handling, CSS/SSR-CSP rules, and
+  contributor guidelines. No styling, tokens, or behaviour were changed to
+  write it; it duplicates neither `docs/development.md` nor this report.
+- **T3.1 reassessed against the PRD acceptance criteria:** `DESIGN.md` now
+  exists; tokens-as-CSS-vars plus Tailwind mapping and the paired
+  severity scale were already complete (T3.12, `globals-css.test.ts`).
+  Still open: `docs/design/audit.md` was never written (sequenced after the
+  cancelled T0.3 screenshots), and `docs/design/preflight.md` remains
+  unticked for the same reason — a preflight still has no owner-verified
+  visual baseline to check against.
+- **Documentation is not verification:** the new document marks
+  code-established behaviour apart from owner-manual checks (GPU pixels,
+  viewports, screen reader, contrast, Axe) throughout. Phase 3 as a whole
+  is still **NOT complete** — this addendum closes the design-documentation
+  gap only; the T3.14 disposition and every other §1 remainder stand.

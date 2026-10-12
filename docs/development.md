@@ -59,6 +59,10 @@ npm run build           # next build
   partial, deferred, or awaiting owner-manual verification (browser, screenshot,
   responsive and GPU checks are owner-manual by decision — do not reintroduce automated
   browser testing without a new owner decision).
+- `docs/design/DESIGN.md` — T3.16 record of the design system as built (tokens,
+  typography, shell regions, component conventions, globe/renderer behaviour, motion
+  and accessibility handling, CSS/SSR-CSP rules). Descriptive only; visual and
+  GPU verification remain owner-manual.
 - `docs/audit/heatmap-decision.md` — per-layer heatmap/imagery source decisions (T2.8).
 
 ## Diagnosing production connectivity
