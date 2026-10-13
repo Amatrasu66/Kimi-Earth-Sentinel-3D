@@ -38,11 +38,9 @@ import {
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import {
   filterValidPoints,
-  latLonToVector3Into,
   quaternionForLatLon,
 } from '@/lib/geo';
-import { SEVERITY_COLORS } from '@/types';
-import type { DataPoint, SeverityLevel } from '@/types';
+import type { DataPoint } from '@/types';
 
 import { DEFAULT_CAMERA_DISTANCE, DEFAULT_SUN_DIRECTION, EARTH_RADIUS } from './earthConfig';
 import type { EarthStatus } from './earthConfig';
@@ -54,6 +52,7 @@ import {
   resolveTextureTier,
 } from './textureTiers';
 import type { TextureSlot } from './textureTiers';
+import { MARKER_CAPACITY, writeMarkersToInstancedMesh } from './markerSync';
 
 /** Marker lift above the surface — small vs. radius, avoids z-fighting. */
 const MARKER_ALTITUDE = EARTH_RADIUS * 1.012;
@@ -268,19 +267,13 @@ export default function WebGPUEarth({
     syncMarkersRef.current = (points) => {
       const mesh = markerMeshRef.current;
       if (!mesh) return;
-      mesh.count = points.length;
-      points.forEach((point, i) => {
-        latLonToVector3Into(markerVec, point.lat, point.lon, MARKER_ALTITUDE);
-        markerDummy.position.copy(markerVec);
-        markerDummy.lookAt(0, 0, 0);
-        markerDummy.scale.setScalar(1);
-        markerDummy.updateMatrix();
-        mesh.setMatrixAt(i, markerDummy.matrix);
-        markerColor.set(SEVERITY_COLORS[point.severity as SeverityLevel] ?? SEVERITY_COLORS.low);
-        mesh.setColorAt(i, markerColor);
+      // T4.3: one shared writer with the WebGL path — instance N always
+      // maps to points[N], clamped to the preallocated capacity.
+      writeMarkersToInstancedMesh(mesh, points, MARKER_ALTITUDE, {
+        dummy: markerDummy,
+        color: markerColor,
+        vec: markerVec,
       });
-      mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
       // New markers need one presented frame (loop self-stops if idle).
       // Same routing as above: safe before the loop machinery exists.
       wakeLoopRef.current();
@@ -506,7 +499,13 @@ export default function WebGPUEarth({
         const markerMaterial = track(
           new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.9 }),
         );
-        const markers = new THREE.InstancedMesh(markerGeometry, markerMaterial, 1);
+        // T4.3: preallocate the full server-limit capacity once
+        // (MARKER_CAPACITY mirrors MAX_LIMIT = 2000). The previous
+        // capacity-1 allocation could not hold more than one marker:
+        // writes past index 0 fall outside the instance buffer while
+        // `count` still claimed N instances.
+        const markers = new THREE.InstancedMesh(markerGeometry, markerMaterial, MARKER_CAPACITY);
+        markers.count = 0;
         markers.frustumCulled = false;
         markerMeshRef.current = markers;
         group.add(markers);

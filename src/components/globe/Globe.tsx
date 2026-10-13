@@ -7,12 +7,11 @@ import { atmosphereVertexShader, atmosphereFragmentShader } from '@/shaders/atmo
 import {
   filterValidPoints,
   isValidCoordinate,
-  latLonToVector3Into,
   quaternionForLatLon,
 } from '@/lib/geo';
-import { SEVERITY_COLORS } from '@/types';
-import type { DataPoint, SeverityLevel } from '@/types';
+import type { DataPoint } from '@/types';
 import { advanceFlight, autoRotateActive, frameLoopActive, startFlight } from '@/lib/motion';
+import { writeMarkersToInstancedMesh } from './markerSync';
 
 interface GlobeProps {
   activeLayer: string | null;
@@ -178,13 +177,6 @@ function CloudLayer({ radius = 5, speed = 0.0008, reducedMotion = false, isRotat
   );
 }
 
-const MARKER_COLORS: Record<SeverityLevel, THREE.Color> = {
-  low: new THREE.Color(SEVERITY_COLORS.low),
-  moderate: new THREE.Color(SEVERITY_COLORS.moderate),
-  high: new THREE.Color(SEVERITY_COLORS.high),
-  critical: new THREE.Color(SEVERITY_COLORS.critical),
-};
-
 function MarkerSystem({
   points,
   radius = 5,
@@ -240,26 +232,16 @@ function MarkerSystem({
     };
   }, [geometry, material]);
 
-  // Position instances + per-severity colors
+  // Position instances + per-severity colors (T4.3: one shared writer
+  // with the WebGPU path — instance N always maps to validPoints[N]).
   useEffect(() => {
     const mesh = meshRef.current;
     if (!mesh) return;
-
-    mesh.count = validPoints.length;
-
-    validPoints.forEach((point, i) => {
-      latLonToVector3Into(tmpVec, point.lat, point.lon, radius * 1.01);
-      dummy.position.copy(tmpVec);
-      dummy.lookAt(0, 0, 0);
-      dummy.scale.setScalar(1);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(i, dummy.matrix);
-      tmpColor.copy(MARKER_COLORS[point.severity as SeverityLevel] ?? MARKER_COLORS.low);
-      mesh.setColorAt(i, tmpColor);
+    writeMarkersToInstancedMesh(mesh, validPoints, radius * 1.01, {
+      dummy,
+      color: tmpColor,
+      vec: tmpVec,
     });
-
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   }, [validPoints, radius, dummy, tmpColor, tmpVec]);
 
   // Throttled raycasting: at most one pick per animation frame, stable
