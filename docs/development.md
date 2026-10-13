@@ -63,6 +63,12 @@ npm run build           # next build
   typography, shell regions, component conventions, globe/renderer behaviour, motion
   and accessibility handling, CSS/SSR-CSP rules). Descriptive only; visual and
   GPU verification remain owner-manual.
+- `docs/design/audit.md` — T3.19 design audit in four evidence classes
+  (code-verified / previously-reported / owner-verification / open decisions),
+  incl. the owner-manual register and doc-vs-code discrepancies.
+- `docs/design/preflight.md` — T3.19 honest status matrix for the Taste
+  Section-14 checklist (complete / owner-verification / deferred /
+  not-complete / N/A with reasons, not blindly ticked).
 - `docs/audit/heatmap-decision.md` — per-layer heatmap/imagery source decisions (T2.8).
 
 ## Diagnosing production connectivity

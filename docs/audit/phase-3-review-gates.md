@@ -286,3 +286,32 @@ No critical or high findings. Lows/advisories recorded, none fixed in this audit
   files** (constrained workers); `next build` green. No behaviour changed;
   no visual equivalence claimed (owner-manual browser verification still
   required). Phase 3 disposition unchanged.
+
+---
+
+## 6. Addendum — T3.19 design audit + preflight (follow-up, original record above untouched)
+
+- **New files (PRD paths):** `docs/design/audit.md` — findings in four
+  evidence classes (code-verified / previously-reported / owner-verification
+  / open decisions), with stays-list, five doc-vs-code discrepancies and the
+  owner-manual register; `docs/design/preflight.md` — the skill Section-14
+  matrix honestly statused (32 Complete incl. 1 recorded deviation,
+  1 Not complete, 1 Deferred, 4 Owner-verification in-matrix, 23 N/A).
+  Documentation-only: no source, tokens, behaviour or dependencies changed.
+- **Discrepancies worth noting:** pre-existing em dashes in ~6 user-visible
+  status/error strings (preflight “zero em-dash” item left Not complete —
+  copy change needs an owner decision); `status.info` dead mapping /
+  missing `status.cached` mapping and the absent `z-1000` class carried over
+  from the T3.16 audit; reconciliation's 302-line `SentinelApp` note now
+  reads 305 (historical doc left intact).
+- **T3.2 explicitly NOT amended:** the 250-line `SentinelApp.tsx` criterion
+  stays **partial** per the T3.18 evidence and proposal (re-scope to
+  orchestration logic vs composition JSX, or a future state-owning
+  workspace split). No silent PRD amendment, no completion declared.
+- **Phase 3 disposition unchanged (NOT complete):** documentation gaps
+  closed; remaining requirements are owner-manual verification (render/GPU,
+  viewports, screen reader, contrast, Axe, Web Vitals, clipboard flow),
+  owner decisions (bottom sheet, icon pass, table view, em-dash copy,
+  renderer/budget Phase-4 items), and the partial T3.2 numeric tail.
+- **Evidence:** `lint` + `typecheck` clean; full suite 660/660 across 71
+  files (constrained workers, docs-only delta); `next build` green.
