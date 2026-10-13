@@ -245,3 +245,44 @@ No critical or high findings. Lows/advisories recorded, none fixed in this audit
   task's own avoid-list. No behaviour changed; no visual equivalence is
   claimed from unit tests (owner-manual browser verification still
   required). Phase 3 disposition unchanged.
+
+---
+
+## 5. Addendum — T3.18 composition-boundary audit (follow-up, original record above untouched)
+
+- **Method:** re-measured `src/components/app/SentinelApp.tsx` (**305 physical
+  lines**, 251 code-only) and inspected every remaining responsibility
+  against the T3.18 candidate list (workspace / overlay / frame composition).
+  T3.17 modules were reused as-is; no orchestration logic moved back.
+- **Verdict: NO further extraction — T3.2 stays PARTIAL.** Each candidate
+  fails the task's own cohesion tests:
+  - *Workspace composition* (stage + panel switch, ~26 JSX lines): would
+    take ~7 props (view, shared presentation bundle, globe extras) to move
+    a single conditional — prop drilling that clarifies nothing, and on its
+    own still lands at ~275, not 250.
+  - *Overlay composition* (hint + settings + hover + skip, ~28 JSX lines):
+    ~12 unrelated props across four independent lifecycles — the banned
+    "component for every fragment" shape.
+  - *Frame composition:* `AppShell` already owns the frame; nothing remains.
+  - Navigation handlers + keyboard wiring into one hook would need ~10
+    inputs (opaque config); a data-plumbing hook saves ~26 lines at the cost
+    of a new module yet still misses 250. The only combination reaching 250
+    stacks individually-unjustified moves — i.e. gaming the number.
+- **Architectural conflict (precise):** the remainder is imports (24, one per
+  consumed region/hook), hook composition + five local states + SWR
+  presentation wiring, four thin navigation handlers, keyboard wiring, and
+  ~130 lines of region JSX for eight shell regions. That is the irreducible
+  job of a composition root; the 250-line cap for an 8-region shell with two
+  full presentations cannot be met without damage. Precedent: `DottedEarth`
+  (543), `SettingsModal` (397), `CommandSearch` (342) all exceed 250 and are
+  accepted — the criterion as literally written is unsatisfiable repo-wide
+  without re-scaffolding renderers (out of scope).
+- **Proposal (smallest honest path):** re-scope the criterion to
+  orchestration logic (every extracted module ≤181 lines — satisfied) and
+  exempt composition-region JSX as for renderers; reserve a future
+  `WorkspaceContent` split for when the workspace gains owned local state
+  (e.g. stage-local controls), not speculatively.
+- **Evidence:** `lint` + `typecheck` clean; full suite **660/660 across 71
+  files** (constrained workers); `next build` green. No behaviour changed;
+  no visual equivalence claimed (owner-manual browser verification still
+  required). Phase 3 disposition unchanged.

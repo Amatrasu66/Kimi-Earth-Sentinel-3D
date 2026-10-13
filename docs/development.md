@@ -110,6 +110,7 @@ npm run build           # next build
   - `useFirstRunHint` / `useSingleKeyShortcuts` — persisted client-only flags (hint dismissal, shortcut master switch).
   - `useFlyTo` — validated camera-flight destination with retrigger key.
 - Creation order is load-bearing (documented in `SentinelApp`): selection takes a stable layer ref, the URL hook takes the selection callbacks, data hooks take the URL hook's layer, and pending resolution is declared last. The layer ref mirror applies before resolution so same-flush restores observe the current layer.
+- **T3.18 audit outcome:** the remaining ~305-line composition root (hook wiring, four navigation callbacks, keyboard map, eight region JSX subtrees) was audited for further boundaries and deliberately left intact — workspace/overlay/frame splits would only drill props without owning logic (see `phase-3-review-gates.md` §5). No orchestration logic was moved back into `SentinelApp`.
 
 ## Layer data client (T3.6)
 
