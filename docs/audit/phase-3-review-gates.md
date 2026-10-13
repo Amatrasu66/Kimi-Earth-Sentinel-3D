@@ -346,3 +346,30 @@ No critical or high findings. Lows/advisories recorded, none fixed in this audit
   GPU modes, failure-path behaviour, and 2K/4K visual quality (no
   screenshots, GPU, or E2E automation in CI — same standing as all Phase 3
   visual items).
+
+---
+
+## 8. Addendum — T4.2 render-loop discipline (Phase 4 link; Phase 3 disposition unchanged — NOT complete)
+
+- **Audit result:** the dotted engine was already fully disciplined (gated
+  tick, visibility cancel/resume with clock reset, clamped deltas, full
+  cleanup) — verified, not changed. Real gaps were the two 3D loops, which
+  rendered every rAF while fully idle (early returns inside still-running
+  callbacks are not a paused loop).
+- **What changed:** shared `frameLoopActive` gate (`src/lib/motion.ts`);
+  WebGL runs `frameloop="demand"` with self-perpetuation, explicit
+  invalidates (data/flight/toggle/motion/sun/textures/resize/visibility)
+  and drei-owned interaction invalidation; WebGPU runs an `ensureLoop`
+  gate (one wake primitive for drag, controls, resize, visibility,
+  markers, sun, flights, preference flips; self-stopping; clock reset on
+  return); cloud drift follows activity on both 3D paths (a paused globe is
+  still — reduced-motion behaviour unchanged). No geometry, shaders, camera,
+  textures, DPR caps, fallback chain, URL or provenance changes.
+- **Evidence:** `DottedEarth.loop.test.tsx` (idle/rotate/hidden/flight/drag/
+  unmount/churn), `motion.test.ts` gate matrix, full suite **682/682
+  across 73 files** (constrained workers); `lint`, `typecheck`,
+  `next build`, `textures:report` (both tiers MET) green. Scheduling
+  contracts only — frame rates and GPU behaviour need a real browser.
+- **Owner-manual:** stillness-vs-staleness in both 3D modes (markers, camera
+  and lighting after layer/prop/resize/visibility changes), damping feel,
+  rotation/flight/drift interplay, hidden-tab resume, and everything in §7.

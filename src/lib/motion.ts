@@ -66,3 +66,26 @@ export function advanceFlight<Q, G extends SlerpTarget<Q>>(
 export function autoRotateActive(isRotating: boolean, reducedMotion: boolean): boolean {
   return isRotating && !reducedMotion;
 }
+
+/** Frame-scheduling policy for the on-demand loops (T4.2). */
+export interface FrameActivity {
+  /** A fly-to flight is interpolating toward its destination. */
+  flightActive: boolean;
+  /** A pointer drag is in progress. */
+  dragging: boolean;
+  isRotating: boolean;
+  reducedMotion: boolean;
+}
+
+/**
+ * Whether the next frame is earned. Flights and drags always are;
+ * ambient rotation only when enabled by the user AND allowed by the OS
+ * preference. Anything else (hover sweeps, prop commits without visual
+ * change) must schedule an explicit single frame instead of running the
+ * loop. All three engines share this gate so idle means idle everywhere.
+ */
+export function frameLoopActive(activity: FrameActivity): boolean {
+  if (activity.flightActive) return true;
+  if (activity.dragging) return true;
+  return autoRotateActive(activity.isRotating, activity.reducedMotion);
+}

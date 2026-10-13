@@ -138,6 +138,9 @@ export default function WebGPUEarth({
   const reducedMotion = usePrefersReducedMotion();
   useEffect(() => {
     controlRef.current = { isRotating, rotationSpeed, reducedMotion };
+    // Rotation re-enabled or motion restored needs frames again; the gate
+    // stops the loop itself when still idle.
+    wakeLoopRef.current();
   }, [isRotating, rotationSpeed, reducedMotion]);
 
   const pointsRef = useRef<DataPoint[]>([]);
@@ -155,6 +158,9 @@ export default function WebGPUEarth({
   const syncMarkersRef = useRef<(points: DataPoint[]) => void>(() => {});
   const requestFlightRef = useRef<(target: { lat: number; lon: number }) => void>(() => {});
   const setSunRef = useRef<(dir: [number, number, number]) => void>(() => {});
+  // Wake handle: presents one current frame (the loop self-stops when idle).
+  // Assigned once the loop machinery exists; noop before that.
+  const wakeLoopRef = useRef<() => void>(() => {});
 
   // Keep the canonical valid-points array in ONE place: instance index N
   // always maps to validPoints[N] for count, positions and picking.
@@ -207,6 +213,14 @@ export default function WebGPUEarth({
     // Mutable per-frame state owned by the loop (never React state).
     const flight: { current: Flight | null } = { current: null };
     const clock = { last: performance.now() };
+    // True while a pointer drag holds the globe (cleared on up/cancel/
+    // click/leave so the gate can never stick open).
+    let dragging = false;
+    let loopRunning = false;
+    // Set once the loop machinery below has executed; pre-completion wake
+    // calls (e.g. a fly-to during texture download) safely no-op, and the
+    // initial `ensureLoop()` then presents the latest state unconditionally.
+    let loopReady = false;
 
     requestFlightRef.current = (target) => {
       const group = groupRef.current;
@@ -217,12 +231,14 @@ export default function WebGPUEarth({
         if (controlRef.current.reducedMotion) {
           group.quaternion.copy(quaternionForLatLon(target.lat, target.lon));
           flight.current = null;
+          wakeLoopRef.current();
           return;
         }
         flight.current = startFlight(
           group.quaternion.clone(),
           quaternionForLatLon(target.lat, target.lon),
         );
+        wakeLoopRef.current();
       } catch {
         flight.current = null;
       }
@@ -243,6 +259,10 @@ export default function WebGPUEarth({
       sunVec = new THREE.Vector3(...dir).normalize();
       if (sunLight) sunLight.position.copy(sunVec).multiplyScalar(10);
       if (sunUniform) sunUniform.value.copy(sunVec);
+      // Moved light needs one presented frame (loop self-stops if idle).
+      // Routed through the wake handle: pre-loop-setup calls safely no-op
+      // (the initial ensureLoop presents the latest state unconditionally).
+      wakeLoopRef.current();
     };
 
     syncMarkersRef.current = (points) => {
@@ -261,6 +281,9 @@ export default function WebGPUEarth({
       });
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      // New markers need one presented frame (loop self-stops if idle).
+      // Same routing as above: safe before the loop machinery exists.
+      wakeLoopRef.current();
     };
 
     const init = async () => {
@@ -328,6 +351,13 @@ export default function WebGPUEarth({
       controls.maxDistance = 30;
       controls.zoomSpeed = 0.5;
       controls.rotateSpeed = 0.5;
+      const onControlsChange = () => {
+        // Drag/zoom/damping decay each earn their frames; silence between
+        // events lets the gate settle the loop.
+        ensureLoop();
+      };
+      controls.addEventListener('change', onControlsChange);
+      controls.addEventListener('start', onControlsChange);
       controls.enableDamping = true;
       controls.dampingFactor = 0.05;
 
@@ -517,18 +547,28 @@ export default function WebGPUEarth({
       const onPointerDown = (e: MouseEvent) => {
         downX = e.clientX;
         downY = e.clientY;
+        // A held drag earns frames for its duration; release settles.
+        dragging = true;
+        ensureLoop();
+      };
+      const endDrag = () => {
+        dragging = false;
       };
       const onClick = (e: MouseEvent) => {
+        dragging = false;
         if (Math.hypot(e.clientX - downX, e.clientY - downY) > 6) return;
         const hit = pick(e);
         if (hit) callbacksRef.current.onMarkerClick(hit);
       };
       const onPointerLeave = () => {
+        dragging = false;
         pending = null;
         callbacksRef.current.onMarkerHover(null);
       };
       canvas.addEventListener('pointermove', onPointerMove);
       canvas.addEventListener('pointerdown', onPointerDown);
+      canvas.addEventListener('pointerup', endDrag);
+      canvas.addEventListener('pointercancel', endDrag);
       canvas.addEventListener('click', onClick);
       canvas.addEventListener('pointerleave', onPointerLeave);
 
@@ -539,6 +579,8 @@ export default function WebGPUEarth({
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
         activeRenderer.setSize(w, h);
+        // A resized backbuffer must be presented (loop self-stops if idle).
+        ensureLoop();
       };
       resize();
       const resizeObserver =
@@ -618,14 +660,53 @@ export default function WebGPUEarth({
       // canvas held its clear color (black) forever while status reported
       // "ready". The render call below is the actual frame submission —
       // without it nothing is ever displayed.
+      // T4.2 on-demand: the loop runs only while `frameActive()` holds
+      // (flight, drag, or enabled rotation) and stops itself otherwise —
+      // an idle globe keeps its last presented frame for free. Every wake
+      // source funnels through `ensureLoop()` below. Function declarations
+      // (not const arrows) so pre-completion callers — texture-await gaps
+      // can outlive user input — never hit TDZ; `loopReady` still gates
+      // actual scheduling until this block has executed.
       let framesSubmitted = 0;
       let readyEmitted = false;
-      activeRenderer.setAnimationLoop(() => {
+
+      function frameActive(): boolean {
+        return (
+          flight.current !== null ||
+          dragging ||
+          autoRotateActive(controlRef.current.isRotating, controlRef.current.reducedMotion)
+        );
+      }
+
+      function submitFrame(): boolean {
+        try {
+          activeRenderer.render(scene, camera);
+        } catch (err) {
+          // Stop the dead loop immediately; the error status below makes
+          // EarthRenderer swap in the WebGL fallback.
+          loopRunning = false;
+          activeRenderer.setAnimationLoop(null);
+          fail(
+            `WebGPU frame render failed: ${err instanceof Error ? err.message : 'unknown error'}`,
+          );
+          return false;
+        }
+        return true;
+      }
+
+      function ensureLoop(): void {
+        if (!loopReady || loopRunning || cancelled) return;
+        loopRunning = true;
+        activeRenderer.setAnimationLoop(frame);
+      }
+
+      function frame(): void {
         if (cancelled) return;
         const now = performance.now();
         const delta = Math.min((now - clock.last) / 1000, 0.1);
         clock.last = now;
 
+        const active = frameActive();
         const current = flight.current;
         if (current) {
           // A flight in progress when the preference flips to reduce lands
@@ -639,22 +720,14 @@ export default function WebGPUEarth({
         } else if (autoRotateActive(controlRef.current.isRotating, controlRef.current.reducedMotion)) {
           group.rotation.y += controlRef.current.rotationSpeed * delta * 60;
         }
-        // Non-essential ambient drift, suppressed under reduced motion.
-        if (!controlRef.current.reducedMotion) {
+        // Ambient drift follows activity (T4.2 idle policy): a still globe
+        // stays still — drift must never force a permanent loop. Reduced
+        // motion still suppresses it outright.
+        if (!controlRef.current.reducedMotion && active) {
           clouds.rotation.y += 0.0008 * delta * 60;
         }
         controls.update();
-        try {
-          activeRenderer.render(scene, camera);
-        } catch (err) {
-          // Stop the dead loop immediately; the error status below makes
-          // EarthRenderer swap in the WebGL fallback.
-          activeRenderer.setAnimationLoop(null);
-          fail(
-            `WebGPU frame render failed: ${err instanceof Error ? err.message : 'unknown error'}`,
-          );
-          return;
-        }
+        if (!submitFrame()) return;
         framesSubmitted += 1;
         // 'ready' means the loop has actually submitted frames — never
         // merely that `renderer.init()` resolved.
@@ -667,7 +740,35 @@ export default function WebGPUEarth({
             frames: framesSubmitted,
           });
         }
-      });
+        if (!frameActive()) {
+          loopRunning = false;
+          activeRenderer.setAnimationLoop(null);
+        }
+      }
+
+      // Hidden tabs schedule nothing (rAF is platform-gated too, but the
+      // flag, hover throttle and clock must follow explicitly): stop the
+      // loop without disposing anything; on return, reset the clock (no
+      // background-pause jump) and present exactly one current frame —
+      // `ensureLoop` self-stops again when idle.
+      const onVisibility = () => {
+        if (document.hidden) {
+          loopRunning = false;
+          activeRenderer.setAnimationLoop(null);
+          if (raf !== 0) cancelAnimationFrame(raf);
+          raf = 0;
+          return;
+        }
+        clock.last = performance.now();
+        ensureLoop();
+      };
+      document.addEventListener('visibilitychange', onVisibility);
+
+      loopReady = true;
+      wakeLoopRef.current = () => {
+        ensureLoop();
+      };
+      ensureLoop();
 
       // Live debug handle for real-browser A/B inspection (Session 5+6):
       // `__SENTINEL_WEBGPU__.stats()` returns frame count, canvas geometry,
@@ -713,6 +814,7 @@ export default function WebGPUEarth({
 
       // Teardown for THIS successful init (overwrites the outer cleanup).
       teardown.current = () => {
+        loopRunning = false;
         activeRenderer.setAnimationLoop(null);
         try {
           delete (window as unknown as { __SENTINEL_WEBGPU__?: unknown }).__SENTINEL_WEBGPU__;
@@ -720,12 +822,17 @@ export default function WebGPUEarth({
           /* best-effort */
         }
         resizeObserver?.disconnect();
+        document.removeEventListener('visibilitychange', onVisibility);
         canvas.removeEventListener('pointermove', onPointerMove);
         canvas.removeEventListener('pointerdown', onPointerDown);
+        canvas.removeEventListener('pointerup', endDrag);
+        canvas.removeEventListener('pointercancel', endDrag);
         canvas.removeEventListener('click', onClick);
         canvas.removeEventListener('pointerleave', onPointerLeave);
         canvas.removeEventListener('pointerdown', cancelFlight);
         canvas.removeEventListener('wheel', cancelFlight);
+        controls.removeEventListener('change', onControlsChange);
+        controls.removeEventListener('start', onControlsChange);
         try {
           controls.dispose();
         } catch {

@@ -5,6 +5,7 @@ import {
   advanceFlight,
   autoRotateActive,
   easeInOutCubic,
+  frameLoopActive,
   startFlight,
 } from './motion';
 
@@ -83,5 +84,18 @@ describe('globe motion policy (T3.11)', () => {
     expect(autoRotateActive(true, true)).toBe(false);
     expect(autoRotateActive(false, false)).toBe(false);
     expect(autoRotateActive(false, true)).toBe(false);
+  });
+
+  it('earns frames for flights and drags, gates ambient rotation on permission', () => {
+    // A flight or drag always earns frames — even under reduced motion the
+    // single presenting frame is still required (jump landing, drag view).
+    expect(frameLoopActive({ flightActive: true, dragging: false, isRotating: false, reducedMotion: true })).toBe(true);
+    expect(frameLoopActive({ flightActive: false, dragging: true, isRotating: false, reducedMotion: true })).toBe(true);
+    // Ambient rotation only with the user switch AND motion permission.
+    expect(frameLoopActive({ flightActive: false, dragging: false, isRotating: true, reducedMotion: false })).toBe(true);
+    expect(frameLoopActive({ flightActive: false, dragging: false, isRotating: true, reducedMotion: true })).toBe(false);
+    expect(frameLoopActive({ flightActive: false, dragging: false, isRotating: false, reducedMotion: false })).toBe(false);
+    // Fully idle: nothing scheduled.
+    expect(frameLoopActive({ flightActive: false, dragging: false, isRotating: false, reducedMotion: true })).toBe(false);
   });
 });

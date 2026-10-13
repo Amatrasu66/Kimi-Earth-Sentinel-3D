@@ -57,6 +57,10 @@ export default function GlobeScene({
       <Canvas
         camera={{ position: [0, 0, DEFAULT_CAMERA_DISTANCE], fov: 45, near: 0.1, far: 1000 }}
         dpr={dpr}
+        // T4.2 on-demand: render only on invalidate (interaction via drei,
+        // prop/state/resize/visibility via Globe) instead of every rAF.
+        // Hidden tabs pause by platform gating; resume paints one frame.
+        frameloop="demand"
         gl={{
           antialias: true,
           alpha: false,

@@ -12,7 +12,7 @@ import {
 } from '@/lib/geo';
 import { SEVERITY_COLORS } from '@/types';
 import type { DataPoint, SeverityLevel } from '@/types';
-import { advanceFlight, autoRotateActive, startFlight } from '@/lib/motion';
+import { advanceFlight, autoRotateActive, frameLoopActive, startFlight } from '@/lib/motion';
 
 interface GlobeProps {
   activeLayer: string | null;
@@ -67,6 +67,7 @@ function Atmosphere({ radius = 5 }: { radius?: number }) {
 
 function EarthSphere() {
   const meshRef = useRef<THREE.Mesh>(null);
+  const invalidate = useThree((s) => s.invalidate);
 
   // T4.1: tier manifest (2K default, 4K on capable desktops) served from
   // the Next.js public dir (absolute paths). Stable per mount — both sets
@@ -88,6 +89,13 @@ function EarthSphere() {
     /* eslint-disable-next-line react-hooks/immutability */
     if (nightMap) nightMap.colorSpace = THREE.SRGBColorSpace;
   }, [dayMap, nightMap]);
+
+  // Demand-mode first paint: surface textures resolve asynchronously
+  // (Suspense); invalidate deterministically instead of relying on
+  // internal updates.
+  useEffect(() => {
+    invalidate();
+  }, [dayMap, nightMap, invalidate]);
 
   const earthMaterial = useMemo(() => {
     return new THREE.MeshPhongMaterial({
@@ -127,19 +135,33 @@ function EarthSphere() {
   );
 }
 
-function CloudLayer({ radius = 5, speed = 0.0008, reducedMotion = false }: { radius?: number; speed?: number; reducedMotion?: boolean }) {
+function CloudLayer({ radius = 5, speed = 0.0008, reducedMotion = false, isRotating = true }: { radius?: number; speed?: number; reducedMotion?: boolean; isRotating?: boolean }) {
   const cloudRef = useRef<THREE.Mesh>(null);
+  const invalidate = useThree((s) => s.invalidate);
 
   const tier = useTextureTier();
   const [cloudMap] = useTexture([TEXTURE_URLS[tier].clouds]);
 
+  // T4.2 idle policy: ambient drift runs only while the globe is otherwise
+  // animating (auto-rotate on, motion allowed) — a rotation-paused globe is
+  // fully still, so drift can never force a permanent loop. Each drift step
+  // invalidates its own next frame; when the gate closes, frames stop.
   // Frame-rate independent drift; no per-frame allocation. Suppressed under
   // reduced motion (T3.11) — non-essential ambient movement.
-  useFrame((_, delta) => {
-    if (!reducedMotion && cloudRef.current) {
-      cloudRef.current.rotation.y += speed * delta * 60;
-    }
+  useFrame((_, rawDelta) => {
+    if (reducedMotion || !isRotating || !cloudRef.current) return;
+    // Clamped like the main loop: no jump from a background-pause delta.
+    const delta = Math.min(rawDelta, 0.1);
+    cloudRef.current.rotation.y += speed * delta * 60;
+    invalidate();
   });
+
+  // Demand-mode first paint: the cloud texture resolves asynchronously
+  // (Suspense); invalidate deterministically instead of relying on
+  // internal updates.
+  useEffect(() => {
+    invalidate();
+  }, [cloudMap, invalidate]);
 
   return (
     <mesh ref={cloudRef}>
@@ -330,6 +352,7 @@ export default function Globe({
   sunDirection,
 }: GlobeProps) {
   const groupRef = useRef<THREE.Group>(null);
+  const invalidate = useThree((s) => s.invalidate);
   const flightRef = useRef<{
     t: number;
     duration: number;
@@ -337,6 +360,31 @@ export default function Globe({
     to: THREE.Quaternion;
   } | null>(null);
   const { gl } = useThree();
+
+  // T4.2 demand-mode scheduling sources. `frameloop="demand"` (GlobeScene)
+  // renders only on invalidate: interaction flows through drei (change →
+  // invalidate, damping included), while prop/state changes, resize and
+  // visibility are stated explicitly here — React commits alone are not
+  // relied upon to paint. Sun-direction ticks (60 s) legitimately earn one
+  // frame each: the directional light moves.
+  useEffect(() => {
+    invalidate();
+  }, [invalidate, dataPoints, flyTo, isRotating, reducedMotion, sunDirection]);
+
+  useEffect(() => {
+    const onResize = () => invalidate();
+    const onVisibility = () => {
+      // Hidden tabs schedule nothing (rAF is platform-gated); on return,
+      // paint exactly one current frame — the gate, not a loop restart.
+      if (typeof document === 'undefined' || !document.hidden) invalidate();
+    };
+    window.addEventListener('resize', onResize);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [invalidate]);
 
   // Start a fly-to flight when a new target arrives (Phase 4). Under
   // reduced motion the globe jumps to the destination instead (T3.11).
@@ -373,6 +421,11 @@ export default function Globe({
   // `reducedMotion` from the closure is correct without a ref. A flight
   // still in progress when the preference flips to reduce lands instantly
   // (advanceFlight) instead of continuing its travel animation.
+  // T4.2 on-demand: a rendered frame earns its successor only while motion
+  // continues (shared gate); when the gate closes, the loop settles until
+  // the next invalidate (interaction via drei, prop change, resize,
+  // visibility). Dragging flows through OrbitControls change events, which
+  // drei invalidates for.
   useFrame((_, rawDelta) => {
     const group = groupRef.current;
     if (!group) return;
@@ -382,6 +435,16 @@ export default function Globe({
       flightRef.current = advanceFlight(group.quaternion, flight, delta, reducedMotion);
     } else if (autoRotateActive(isRotating, reducedMotion)) {
       group.rotation.y += rotationSpeed * delta * 60;
+    }
+    if (
+      frameLoopActive({
+        flightActive: flightRef.current !== null,
+        dragging: false,
+        isRotating,
+        reducedMotion,
+      })
+    ) {
+      invalidate();
     }
   });
 
@@ -399,7 +462,7 @@ export default function Globe({
       <EarthSphere />
 
       {/* Clouds */}
-      <CloudLayer radius={5} speed={0.0008} reducedMotion={reducedMotion} />
+      <CloudLayer radius={5} speed={0.0008} reducedMotion={reducedMotion} isRotating={isRotating} />
 
       {/* Atmosphere */}
       <Atmosphere radius={5} />
