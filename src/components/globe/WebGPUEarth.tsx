@@ -48,6 +48,12 @@ import { DEFAULT_CAMERA_DISTANCE, DEFAULT_SUN_DIRECTION, EARTH_RADIUS } from './
 import type { EarthStatus } from './earthConfig';
 import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion';
 import { advanceFlight, autoRotateActive, startFlight } from '@/lib/motion';
+import {
+  loadTieredTexture,
+  probeTextureCapabilities,
+  resolveTextureTier,
+} from './textureTiers';
+import type { TextureSlot } from './textureTiers';
 
 /** Marker lift above the surface — small vs. radius, avoids z-fighting. */
 const MARKER_ALTITUDE = EARTH_RADIUS * 1.012;
@@ -292,8 +298,6 @@ export default function WebGPUEarth({
       });
       installDebugHandle(() => canvasStats());
 
-      // Textures are served from the Next.js public dir (absolute paths).
-      const tex = (file: string) => `/textures/${file}`;
       const loader = new THREE.TextureLoader();
 
       renderer = new THREE.WebGPURenderer({ canvas, antialias: true });
@@ -334,18 +338,29 @@ export default function WebGPUEarth({
       canvas.addEventListener('pointerdown', cancelFlight);
       canvas.addEventListener('wheel', cancelFlight, { passive: true });
 
-      // ---- Textures (existing local assets) ----
-      // Each fetch is bounded: a stalled texture must reject (→ WebGL
-      // fallback) rather than leave the canvas black indefinitely.
-      const loadTex = (file: string) =>
-        withTimeout(loader.loadAsync(tex(file)), 25_000, `texture ${file}`);
-      const [dayMap, nightMap, cloudMap, topologyMap, waterMap] = await Promise.all([
-        loadTex('earth-day.jpg').then((t) => { bumpTextures(); return t; }),
-        loadTex('earth-night.jpg').then((t) => { bumpTextures(); return t; }),
-        loadTex('earth-clouds.png').then((t) => { bumpTextures(); return t; }),
-        loadTex('earth-topology.png').then((t) => { bumpTextures(); return t; }),
-        loadTex('earth-water.png').then((t) => { bumpTextures(); return t; }),
-      ]);
+      // ---- Textures (T4.1 tier manifest + per-texture fallback) ----
+      // One set per lifetime: the tier resolves once here from capability
+      // signals (2K default, 4K on capable desktops). Each fetch is bounded
+      // (existing 25 s budget per attempt): a stalled texture must reject
+      // (→ standard-URL retry, then WebGL fallback) rather than leave the
+      // canvas black indefinitely.
+      const tier = resolveTextureTier(probeTextureCapabilities());
+      const loadTex = (slot: TextureSlot) =>
+        loadTieredTexture(
+          {
+            loadAsync: (url: string) => withTimeout(loader.loadAsync(url), 25_000, `texture ${url}`),
+          },
+          slot,
+          tier,
+        );
+      const [{ texture: dayMap }, { texture: nightMap }, { texture: cloudMap }, { texture: topologyMap }, { texture: waterMap }] =
+        await Promise.all([
+          loadTex('day').then((t) => { bumpTextures(); return t; }),
+          loadTex('night').then((t) => { bumpTextures(); return t; }),
+          loadTex('clouds').then((t) => { bumpTextures(); return t; }),
+          loadTex('topology').then((t) => { bumpTextures(); return t; }),
+          loadTex('water').then((t) => { bumpTextures(); return t; }),
+        ]);
       if (cancelled) return;
       dayMap.colorSpace = THREE.SRGBColorSpace;
       nightMap.colorSpace = THREE.SRGBColorSpace;

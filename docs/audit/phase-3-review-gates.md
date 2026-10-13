@@ -315,3 +315,34 @@ No critical or high findings. Lows/advisories recorded, none fixed in this audit
   renderer/budget Phase-4 items), and the partial T3.2 numeric tail.
 - **Evidence:** `lint` + `typecheck` clean; full suite 660/660 across 71
   files (constrained workers, docs-only delta); `next build` green.
+
+---
+
+## 7. Addendum — T4.1 globe texture pipeline (Phase 4 link; Phase 3 disposition unchanged — NOT complete)
+
+- **What changed:** `public/textures/` gained measured 2K derivatives
+  (`earth-day-2k.jpg` 404 KB, `earth-night-2k.jpg` 195 KB; bicubic
+  downsamples of the 4K originals, JPEG q90) and `earth-clouds.png` was
+  renamed to `earth-clouds.jpg` (the bytes were always JPEG — now served
+  with the correct MIME type). New `src/components/globe/textureTiers.ts`
+  (tier manifest, capability-gated selection, per-texture standard
+  fallback, SSR-safe probe) consumed by both the drei/WebGL path
+  (`Globe.tsx`) and the imperative WebGPU path (`WebGPUEarth.tsx`);
+  `scripts/texture-report.mjs` (`npm run textures:report`) reproduces the
+  accounting. KTX2 rejected with a documented trade-off (no in-repo
+  transcoder toolchain, ~584 KB overhead, unverifiable WebGPU format
+  matrix); no new dependencies, no runtime CDN fetches.
+- **Measured result:** standard tier 2.13 MiB file / ~49 MiB estimated GPU
+  (was 3.64 / ~113 for the single 4K set) — PRD 6 MB budget MET on both
+  tiers; file bytes and GPU estimates reported separately, no frame-rate
+  claims. All 7 asset URLs verified `200` with correct MIME/sizes against
+  `next start` (old `.png` URL correctly 404s).
+- **Preserved:** dotted-Earth independence (no `/textures/` requests —
+  unit-pinned), `?renderer=` paths, init-first loading order, 25 s
+  per-attempt budgets, WebGPU→WebGL chain, disposal, reduced motion, URL
+  and provenance behaviour. Full suite 675/675 across 72 files; `lint`,
+  `typecheck`, `next build` green.
+- **Owner-manual:** texture appearance/seams, day/night/cloud look, both
+  GPU modes, failure-path behaviour, and 2K/4K visual quality (no
+  screenshots, GPU, or E2E automation in CI — same standing as all Phase 3
+  visual items).

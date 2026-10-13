@@ -2,6 +2,7 @@ import { useRef, useMemo, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useTexture, Stars } from '@react-three/drei';
 import * as THREE from 'three';
+import { TEXTURE_URLS, useTextureTier } from './textureTiers';
 import { atmosphereVertexShader, atmosphereFragmentShader } from '@/shaders/atmosphere';
 import {
   filterValidPoints,
@@ -67,12 +68,15 @@ function Atmosphere({ radius = 5 }: { radius?: number }) {
 function EarthSphere() {
   const meshRef = useRef<THREE.Mesh>(null);
 
-  // Load textures from the Next.js public dir (absolute paths).
+  // T4.1: tier manifest (2K default, 4K on capable desktops) served from
+  // the Next.js public dir (absolute paths). Stable per mount — both sets
+  // are never requested together.
+  const tier = useTextureTier();
   const [dayMap, nightMap, normalMap, specularMap] = useTexture([
-    '/textures/earth-day.jpg',
-    '/textures/earth-night.jpg',
-    '/textures/earth-topology.png',
-    '/textures/earth-water.png',
+    TEXTURE_URLS[tier].day,
+    TEXTURE_URLS[tier].night,
+    TEXTURE_URLS[tier].topology,
+    TEXTURE_URLS[tier].water,
   ]);
 
   // Set texture encoding. Mutating the loaded THREE.Texture objects is the
@@ -126,7 +130,8 @@ function EarthSphere() {
 function CloudLayer({ radius = 5, speed = 0.0008, reducedMotion = false }: { radius?: number; speed?: number; reducedMotion?: boolean }) {
   const cloudRef = useRef<THREE.Mesh>(null);
 
-  const [cloudMap] = useTexture(['/textures/earth-clouds.png']);
+  const tier = useTextureTier();
+  const [cloudMap] = useTexture([TEXTURE_URLS[tier].clouds]);
 
   // Frame-rate independent drift; no per-frame allocation. Suppressed under
   // reduced motion (T3.11) — non-essential ambient movement.
