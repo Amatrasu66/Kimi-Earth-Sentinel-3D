@@ -370,17 +370,20 @@ export default function Globe({
 
   // Start a fly-to flight when a new target arrives (Phase 4). Under
   // reduced motion the globe jumps to the destination instead (T3.11).
+  // `quaternionForLatLon` is plain data (T4.5: no three.js in the shared
+  // module) — converted once here at the lazy-renderer boundary.
   useEffect(() => {
     if (!flyTo || !groupRef.current) return;
     if (!isValidCoordinate(flyTo.lat, flyTo.lon)) return;
+    const dest = quaternionForLatLon(flyTo.lat, flyTo.lon);
     if (reducedMotion) {
-      groupRef.current.quaternion.copy(quaternionForLatLon(flyTo.lat, flyTo.lon));
+      groupRef.current.quaternion.set(dest.x, dest.y, dest.z, dest.w);
       flightRef.current = null;
       return;
     }
     flightRef.current = startFlight(
       groupRef.current.quaternion.clone(),
-      quaternionForLatLon(flyTo.lat, flyTo.lon),
+      new THREE.Quaternion(dest.x, dest.y, dest.z, dest.w),
     );
   }, [flyTo, reducedMotion]);
 

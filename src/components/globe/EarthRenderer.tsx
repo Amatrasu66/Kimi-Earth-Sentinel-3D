@@ -24,7 +24,6 @@
  */
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import GlobeScene from './GlobeScene';
 import WebGpuErrorBoundary from './WebGpuErrorBoundary';
 import type { EarthStatus } from './earthConfig';
 import { getForcedRenderer } from '@/lib/webgpu';
@@ -37,6 +36,12 @@ import type { GlobeMode } from './rendererMode';
 // The WebGL fallback never pays for it, and Suspense keeps the viewport
 // covered while it loads.
 const WebGPUEarth = dynamic(() => import('./WebGPUEarth'), { ssr: false });
+// T4.5: the WebGL/R3F globe (`three`, fiber, drei) is a lazy client-only
+// chunk for the same reason — the default dotted Earth is the initial
+// route and must not download three.js on first load. Both 3D renderers
+// are opt-in (`?renderer=` / WebGPU→WebGL fallback), so they load on
+// demand behind a veil; the dotted default is unaffected.
+const GlobeScene = dynamic(() => import('./GlobeScene'), { ssr: false });
 import type { DataPoint, LayerId } from '@/types';
 
 export interface RendererInfo {
@@ -217,15 +222,28 @@ export default function EarthRenderer({
           </WebGpuErrorBoundary>
         </Suspense>
       ) : activeMode === 'webgl' ? (
-        <GlobeScene
-          activeLayer={activeLayer}
-          dataPoints={dataPoints}
-          onMarkerClick={onMarkerClick}
-          onMarkerHover={onMarkerHover}
-          isRotating={isRotating}
-          flyTo={flyTo}
-          sunDirection={sunDirection}
-        />
+        <Suspense
+          fallback={
+            <div
+              role="status"
+              aria-label="Loading WebGL Earth renderer"
+              // CSP-1: static veil styling as classes (no style attribute).
+              className="absolute inset-0 flex items-center justify-center bg-[#020202] text-[13px] tracking-[0.02em] text-white/50"
+            >
+              Loading WebGL Earth…
+            </div>
+          }
+        >
+          <GlobeScene
+            activeLayer={activeLayer}
+            dataPoints={dataPoints}
+            onMarkerClick={onMarkerClick}
+            onMarkerHover={onMarkerHover}
+            isRotating={isRotating}
+            flyTo={flyTo}
+            sunDirection={sunDirection}
+          />
+        </Suspense>
       ) : (
           <div
             role="status"

@@ -227,15 +227,18 @@ export default function WebGPUEarth({
       try {
         // T3.11: under reduced motion the globe jumps to the destination —
         // no travel animation, and no obsolete flight left running.
+        // `quaternionForLatLon` is plain data (T4.5) — converted once here
+        // at the lazy-renderer boundary.
+        const dest = quaternionForLatLon(target.lat, target.lon);
         if (controlRef.current.reducedMotion) {
-          group.quaternion.copy(quaternionForLatLon(target.lat, target.lon));
+          group.quaternion.set(dest.x, dest.y, dest.z, dest.w);
           flight.current = null;
           wakeLoopRef.current();
           return;
         }
         flight.current = startFlight(
           group.quaternion.clone(),
-          quaternionForLatLon(target.lat, target.lon),
+          new THREE.Quaternion(dest.x, dest.y, dest.z, dest.w),
         );
         wakeLoopRef.current();
       } catch {

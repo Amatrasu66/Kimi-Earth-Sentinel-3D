@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { latLonToVector3 } from './geo';
+import { latLonToVec3 } from './geo';
 import {
   getSubsolarPoint,
   getSunDirection,
@@ -159,7 +159,7 @@ describe('subsolarPointToSunDirection (renderer 3D convention)', () => {
     ];
     for (const point of cases) {
       const [x, y, z] = subsolarPointToSunDirection(point, 1);
-      const v = latLonToVector3(point.latitude, point.longitude, 1);
+      const v = latLonToVec3(point.latitude, point.longitude, 1);
       expect(x).toBeCloseTo(v.x, 10);
       expect(y).toBeCloseTo(v.y, 10);
       expect(z).toBeCloseTo(v.z, 10);
@@ -200,8 +200,9 @@ describe('getSunDirection (single authoritative calculation)', () => {
     for (const date of [EQUINOX_MAR, SOLSTICE_JUN, SOLSTICE_DEC]) {
       const dir = getSunDirection(date);
       const point = getSubsolarPoint(date);
-      const geo = latLonToVector3(point.latitude, point.longitude, 1).normalize();
-      const dot = dir[0] * geo.x + dir[1] * geo.y + dir[2] * geo.z;
+      const geo = latLonToVec3(point.latitude, point.longitude, 1);
+      const len = Math.hypot(geo.x, geo.y, geo.z);
+      const dot = dir[0] * (geo.x / len) + dir[1] * (geo.y / len) + dir[2] * (geo.z / len);
       expect(dot).toBeGreaterThan(0.999);
     }
   });

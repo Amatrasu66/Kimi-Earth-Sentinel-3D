@@ -43,7 +43,7 @@
  *
  * Coordinate convention: the returned `sunDirection` is a world-space vector
  * pointing FROM Earth's centre TOWARD the subsolar point, using the exact
- * projection in `@/lib/geo` `latLonToVector3`:
+ * projection in `@/lib/geo` `latLonToVec3`:
  * `φ = (90 − lat)°, θ = (lon + 180)°`,
  * `x = −r·sinφ·cosθ, y = r·cosφ, z = r·sinφ·sinθ`.
  * (Equator/prime-meridian → +X, north pole → +Y.) Both renderers consume this
@@ -117,7 +117,7 @@ export function getSubsolarPoint(date: Date): SubsolarPoint {
 /**
  * Convert a subsolar point to the renderers' world-space `sunDirection`.
  *
- * Bit-for-bit the same projection as `latLonToVector3` in `@/lib/geo`
+ * Bit-for-bit the same projection as `latLonToVec3` in `@/lib/geo`
  * (kept dependency-free here so this module stays importable anywhere,
  * including non-three contexts). `radius` scales the magnitude only —
  * both renderers normalize, so the default 1 is what the app passes.

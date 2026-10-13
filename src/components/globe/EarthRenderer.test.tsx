@@ -4,21 +4,22 @@ import { cleanup, render, screen } from '@testing-library/react';
 // Both renderer branches are stubbed at the module boundary so this test
 // proves prop plumbing — one authoritative `sunDirection` tuple reaching
 // each path — without booting WebGPU/R3F (no GPU in jsdom/CI).
+// T4.5: both 3D branches are `next/dynamic` (WebGL included), so the stub
+// resolves per import path — the loader source names its target module.
 vi.mock('next/dynamic', () => ({
-  default: () => {
+  default: (loader: () => Promise<unknown>) => {
+    if (String(loader).includes('GlobeScene')) {
+      return function MockGlobeScene(props: { sunDirection?: unknown }) {
+        return (
+          <div data-testid="globe-scene" data-sun={JSON.stringify(props.sunDirection)} />
+        );
+      };
+    }
     return function MockWebGPUEarth(props: { sunDirection?: unknown }) {
       return (
         <div data-testid="webgpu-earth" data-sun={JSON.stringify(props.sunDirection)} />
       );
     };
-  },
-}));
-
-vi.mock('./GlobeScene', () => ({
-  default: function MockGlobeScene(props: { sunDirection?: unknown }) {
-    return (
-      <div data-testid="globe-scene" data-sun={JSON.stringify(props.sunDirection)} />
-    );
   },
 }));
 

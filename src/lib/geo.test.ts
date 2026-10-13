@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { filterValidPoints, isValidCoordinate, latLonToVector3 } from './geo';
+import {
+  filterValidPoints,
+  isValidCoordinate,
+  latLonToVec3,
+  latLonToVec3Into,
+  quaternionForLatLon,
+  setFromUnitVectors,
+} from './geo';
 import type { DataPoint } from '@/types';
 
 const point = (id: string, lat: unknown, lon: unknown): DataPoint =>
@@ -39,19 +46,73 @@ describe('filterValidPoints (canonical marker mapping)', () => {
   });
 });
 
-describe('latLonToVector3', () => {
+describe('latLonToVec3', () => {
   it('maps equator/prime-meridian to +X with the given radius', () => {
-    const v = latLonToVector3(0, 0, 5);
-    expect(v.x).toBeCloseTo(5);
-    expect(v.y).toBeCloseTo(0);
+    const v = latLonToVec3(0, 0, 5);
+    expect(v.x).toBeCloseTo(5, 10);
+    expect(v.y).toBeCloseTo(0, 10);
     expect(v.z).toBeCloseTo(0, 10);
   });
 
   it('produces unit-sphere * radius vectors', () => {
     for (const [lat, lon] of [[45, 90], [-33.8, 151.2], [0, -122]] as const) {
-      const v = latLonToVector3(lat, lon, 5);
-      expect(v.length()).toBeCloseTo(5);
-      expect(v).toBeInstanceOf(THREE.Vector3);
+      const v = latLonToVec3(lat, lon, 5);
+      expect(Math.hypot(v.x, v.y, v.z)).toBeCloseTo(5, 10);
     }
+  });
+
+  it('writes into a caller-owned object with Into (no allocation)', () => {
+    const out = { x: 0, y: 0, z: 0 };
+    const returned = latLonToVec3Into(out, 10, 20, 5);
+    expect(returned).toBe(out);
+    const fresh = latLonToVec3(10, 20, 5);
+    expect(out).toEqual(fresh);
+  });
+});
+
+describe('quaternionForLatLon (T4.5 three-free port)', () => {
+  // THREE is imported here for PARITY ONLY — this test file never ships,
+  // so three.js stays out of the production initial bundle while the
+  // port is still verified against the real implementation.
+  it('matches THREE.Quaternion.setFromUnitVectors across a coordinate grid', () => {
+    const lats = [-90, -45, -23.4, 0, 12, 45, 66.5, 90];
+    const lons = [-180, -122, -45, 0, 20, 139.6, 180];
+    for (const lat of lats) {
+      for (const lon of lons) {
+        const q = quaternionForLatLon(lat, lon);
+        const v = new THREE.Vector3();
+        // Mirror of the old implementation: unit vector then setFromUnitVectors.
+        const phi = ((90 - lat) * Math.PI) / 180;
+        const theta = ((lon + 180) * Math.PI) / 180;
+        v.set(
+          -Math.sin(phi) * Math.cos(theta),
+          Math.cos(phi),
+          Math.sin(phi) * Math.sin(theta),
+        ).normalize();
+        const expected = new THREE.Quaternion().setFromUnitVectors(
+          v,
+          new THREE.Vector3(0, 0, 1),
+        );
+        expect(q.x).toBeCloseTo(expected.x, 10);
+        expect(q.y).toBeCloseTo(expected.y, 10);
+        expect(q.z).toBeCloseTo(expected.z, 10);
+        expect(q.w).toBeCloseTo(expected.w, 10);
+        // Unit quaternion invariant.
+        expect(Math.hypot(q.x, q.y, q.z, q.w)).toBeCloseTo(1, 10);
+      }
+    }
+  });
+
+  it('handles the antiparallel guard exactly like three.js', () => {
+    const out = { x: 0, y: 0, z: 0, w: 0 };
+    setFromUnitVectors(out, { x: 0, y: 0, z: -1 }, { x: 0, y: 0, z: 1 });
+    const expected = new THREE.Quaternion().setFromUnitVectors(
+      new THREE.Vector3(0, 0, -1),
+      new THREE.Vector3(0, 0, 1),
+    );
+    expect(out.x).toBeCloseTo(expected.x, 10);
+    expect(out.y).toBeCloseTo(expected.y, 10);
+    expect(out.z).toBeCloseTo(expected.z, 10);
+    expect(out.w).toBeCloseTo(expected.w, 10);
   });
 });

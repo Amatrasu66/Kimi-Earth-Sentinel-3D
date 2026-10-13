@@ -23,7 +23,7 @@
  * silent drops.
  */
 import * as THREE from 'three';
-import { latLonToVector3Into } from '@/lib/geo';
+import { latLonToVec3Into } from '@/lib/geo';
 import { MAX_LIMIT } from '@/server/validation';
 import { SEVERITY_COLORS } from '@/types';
 import type { DataPoint, SeverityLevel } from '@/types';
@@ -67,7 +67,7 @@ export function writeMarkersToInstancedMesh(
   const { dummy, color, vec } = scratch;
   for (let i = 0; i < drawn; i += 1) {
     const point = points[i];
-    latLonToVector3Into(vec, point.lat, point.lon, radius);
+    latLonToVec3Into(vec, point.lat, point.lon, radius);
     dummy.position.copy(vec);
     dummy.lookAt(0, 0, 0);
     dummy.scale.setScalar(1);

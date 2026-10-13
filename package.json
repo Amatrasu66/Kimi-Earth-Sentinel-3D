@@ -13,7 +13,8 @@
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "textures:report": "node scripts/texture-report.mjs"
+    "textures:report": "node scripts/texture-report.mjs",
+    "bundle:check": "node scripts/bundle-budget.mjs"
   },
   "dependencies": {
     "@photostructure/tz-lookup": "11.7.0",

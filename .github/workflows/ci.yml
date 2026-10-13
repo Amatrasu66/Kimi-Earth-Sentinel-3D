@@ -1,4 +1,4 @@
-# CI: single Next.js app (lint, typecheck, test, build).
+# CI: single Next.js app (lint, typecheck, test, build, bundle budget).
 # Runs on pushes to main and on all pull requests.
 name: CI
 
@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   app:
-    name: App (Next.js: lint, typecheck, test, build)
+    name: App (Next.js: lint, typecheck, test, build, bundle budget)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -30,3 +30,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      # T4.5: initial-route JS ≤200 KiB gzip (lazy globe chunks excluded).
+      # Runs against this job's own build output; fails the job on breach
+      # or on any asset-accounting failure. No browser tooling involved.
+      - run: npm run bundle:check

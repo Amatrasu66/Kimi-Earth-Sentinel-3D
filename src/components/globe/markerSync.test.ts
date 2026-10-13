@@ -18,7 +18,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { filterValidPoints } from '@/lib/geo';
-import { latLonToVector3 } from '@/lib/geo';
+import { latLonToVec3 } from '@/lib/geo';
 import { MAX_LIMIT } from '@/server/validation';
 import { SEVERITY_COLORS } from '@/types';
 import type { DataPoint, SeverityLevel } from '@/types';
@@ -134,7 +134,7 @@ describe('writeMarkersToInstancedMesh at the 2,000-point limit', () => {
     // Spot-check first / middle / last: position matches the shared
     // projection and severity color matches the scale.
     for (const i of [0, 999, 1999]) {
-      const expected = latLonToVector3(valid[i].lat, valid[i].lon, 5.05);
+      const expected = latLonToVec3(valid[i].lat, valid[i].lon, 5.05);
       const actual = matrixPosition(mesh, i);
       expect(actual.x).toBeCloseTo(expected.x, 5);
       expect(actual.y).toBeCloseTo(expected.y, 5);
@@ -194,7 +194,7 @@ describe('capacity and empty handling', () => {
     expect(drawn).toBe(4);
     expect(mesh.count).toBe(4);
     // First four in input order — never a silent reshuffle.
-    const first = latLonToVector3(points[0].lat, points[0].lon, 5.05);
+    const first = latLonToVec3(points[0].lat, points[0].lon, 5.05);
     const actual = matrixPosition(mesh, 0);
     expect(actual.x).toBeCloseTo(first.x, 5);
     expect(actual.y).toBeCloseTo(first.y, 5);
