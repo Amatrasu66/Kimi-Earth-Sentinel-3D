@@ -108,3 +108,14 @@ github-actions `/`, weekly, compatible minor+patch grouped (limit 5
 open PRs each), majors arrive as separate reviewable PRs, no automerge.
 No Renovate config exists — Dependabot is the single system. Every
 update still passes full CI (including the audit gate) before merge.
+
+## 7. Follow-up (T5.3A, 2026-10-14 — baseline above preserved)
+
+Remediation evidence and migration options live in
+`docs/audit/security-remediation-plan.md` (planning only — no
+dependency, gate, or code change). Headline corrections to §1: vendor
+ranges show vitest@4.1.11 (not 5.x) as the minimal fix for the vitest
+chain; the production install contains postcss-HIGH + next-moderate via
+next's nested postcss@8.4.31; and even all three majors leave two HIGH
+nodes sharing the braces root cause through the eslint plugin's nested
+fast-glob. Owner decision required (see the plan §5).
