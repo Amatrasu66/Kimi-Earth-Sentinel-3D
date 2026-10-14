@@ -1,4 +1,4 @@
-# CI: single Next.js app (lint, typecheck, test, build, bundle budget).
+# CI: single Next.js app (audit, lint, typecheck, test, build, bundle budget).
 # Runs on pushes to main and on all pull requests.
 name: CI
 
@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   app:
-    name: App (Next.js: lint, typecheck, test, build, bundle budget)
+    name: App (Next.js: audit, lint, typecheck, test, build, bundle budget)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -26,6 +26,11 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - run: npm ci
+      # T5.3: dependency security gate — high and critical advisories fail
+      # the job (blocking, no continue-on-error, no threshold games).
+      # Moderate/low findings are documented, not hidden
+      # (docs/audit/supply-chain.md). Runs on the committed lockfile.
+      - run: npm audit --audit-level=high
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test

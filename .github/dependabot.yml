@@ -1,0 +1,40 @@
+# Dependabot (T5.3): weekly grouped maintenance, review-only.
+#
+# - npm (root lockfile) and GitHub Actions updates, every Monday by default.
+# - Compatible minor + patch updates are grouped into few PRs to keep
+#   review noise manageable; major-version updates arrive as SEPARATE,
+#   individually reviewable PRs (never bundled into a group).
+# - No automatic merging: every update lands through normal PR review and
+#   the full CI suite (audit, lint, typecheck, test, build, bundle budget).
+# - No Renovate configuration exists in this repo; Dependabot is the single
+#   update system (do not add a second one without an owner decision).
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
