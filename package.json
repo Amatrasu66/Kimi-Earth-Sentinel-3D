@@ -40,13 +40,13 @@
     "d3-array": "^3.2.4",
     "d3-geo": "^3.1.1",
     "lucide-react": "^0.562.0",
-    "motion": "^14.0.0",
+    "motion": "^14.1.0",
     "next": "^15.3.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "swr": "2.5.1",
     "tailwind-merge": "^3.4.0",
-    "three": "^0.185.1"
+    "three": "^0.186.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
@@ -57,7 +57,7 @@
     "@types/node": "^24.19.1",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
-    "@types/three": "^0.185.0",
+    "@types/three": "^0.186.0",
     "autoprefixer": "^10.4.23",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
