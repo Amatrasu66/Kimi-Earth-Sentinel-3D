@@ -34,6 +34,8 @@ interface GlobeStageProps {
   flyTo?: { lat: number; lon: number; key: number } | null;
   /** Renderer diagnostics for the status dock / settings panel. */
   onActiveRenderer?: (info: RendererInfo) => void;
+  /** T4.6 low-power mode: dotted DPR ceiling 1, applied without remount. */
+  lowPowerActive?: boolean;
 }
 
 function GlobeStage({
@@ -43,6 +45,7 @@ function GlobeStage({
   isRotating,
   flyTo,
   onActiveRenderer,
+  lowPowerActive = false,
 }: GlobeStageProps) {
   // Deterministic through useSyncExternalStore: SSR/hydration report
   // 'pending' (frame only), the client resolves to 'dotted' unless a
@@ -59,6 +62,7 @@ function GlobeStage({
           isRotating={isRotating}
           flyTo={flyTo}
           onActiveRenderer={onActiveRenderer}
+          lowPower={lowPowerActive}
         />
       )}
       <div className="globe-stage-frame" aria-hidden>

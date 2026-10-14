@@ -46,6 +46,7 @@ import { DEFAULT_CAMERA_DISTANCE, DEFAULT_SUN_DIRECTION, EARTH_RADIUS } from './
 import type { EarthStatus } from './earthConfig';
 import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion';
 import { advanceFlight, autoRotateActive, startFlight } from '@/lib/motion';
+import { cloudLayerEnabled, maxDprForMode } from '@/lib/low-power';
 import {
   loadTieredTexture,
   probeTextureCapabilities,
@@ -66,6 +67,13 @@ interface WebGPUEarthProps {
   flyTo?: { lat: number; lon: number; key: number } | null;
   /** Configurable sun direction (world space). Defaults to DEFAULT_SUN_DIRECTION. */
   sunDirection?: [number, number, number];
+  /**
+   * T4.6 low-power mode: forces the standard texture tier, caps DPR at 1
+   * and skips the decorative cloud shell. Reduced motion stays independent
+   * (separate prop plumbing in `GlobeScene`; here it flows through
+   * `controlRef` like rotation does).
+   */
+  lowPowerActive?: boolean;
   onStatus?: (status: EarthStatus) => void;
 }
 
@@ -119,6 +127,7 @@ export default function WebGPUEarth({
   isRotating = true,
   flyTo = null,
   sunDirection = DEFAULT_SUN_DIRECTION,
+  lowPowerActive = false,
   onStatus,
 }: WebGPUEarthProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -130,17 +139,20 @@ export default function WebGPUEarth({
     callbacksRef.current = { onMarkerClick, onMarkerHover, onStatus };
   });
 
-  const controlRef = useRef({ isRotating, rotationSpeed, reducedMotion: false });
+  const controlRef = useRef({ isRotating, rotationSpeed, reducedMotion: false, lowPowerActive });
   // T3.11: the OS motion preference joins the engine's control state so a
   // mid-session change takes effect with no remount — the frame loop and
   // flight requests read it from this ref every time.
+  // T4.6: low-power joins the same ref. Tier/cloud/DPR resolve once at
+  // init (the renderer remounts when the mode flips), so init always
+  // observes the active value through this ref.
   const reducedMotion = usePrefersReducedMotion();
   useEffect(() => {
-    controlRef.current = { isRotating, rotationSpeed, reducedMotion };
+    controlRef.current = { isRotating, rotationSpeed, reducedMotion, lowPowerActive };
     // Rotation re-enabled or motion restored needs frames again; the gate
     // stops the loop itself when still idle.
     wakeLoopRef.current();
-  }, [isRotating, rotationSpeed, reducedMotion]);
+  }, [isRotating, rotationSpeed, reducedMotion, lowPowerActive]);
 
   const pointsRef = useRef<DataPoint[]>([]);
   const sunRef = useRef(sunDirection);
@@ -198,7 +210,13 @@ export default function WebGPUEarth({
       if (!cancelled) callbacksRef.current.onStatus?.(status);
     };
 
-    const totalTextures = 5;
+    // T4.6: low-power mode never fetches the unused cloud texture (its
+    // shell is skipped below), so progress counts only fetched textures —
+    // the status reads 4/4, never a dangling 4/5.
+    const textureSlots: TextureSlot[] = controlRef.current.lowPowerActive
+      ? ['day', 'night', 'topology', 'water']
+      : ['day', 'night', 'clouds', 'topology', 'water'];
+    const totalTextures = textureSlots.length;
     let loadedTextures = 0;
     const bumpTextures = () => {
       loadedTextures += 1;
@@ -330,7 +348,17 @@ export default function WebGPUEarth({
 
       const coarse =
         window.matchMedia?.('(pointer: coarse)').matches || window.innerWidth < 768;
-      activeRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2));
+      // T4.6: same centralized DPR ceiling as the WebGL and dotted paths —
+      // low-power caps the drawing buffer at 1.
+      activeRenderer.setPixelRatio(
+        Math.min(
+          window.devicePixelRatio || 1,
+          maxDprForMode({
+            coarsePointer: coarse,
+            lowPowerActive: controlRef.current.lowPowerActive,
+          }),
+        ),
+      );
       activeRenderer.setClearColor(new THREE.Color('#020202'));
 
       const scene = new THREE.Scene();
@@ -366,11 +394,17 @@ export default function WebGPUEarth({
 
       // ---- Textures (T4.1 tier manifest + per-texture fallback) ----
       // One set per lifetime: the tier resolves once here from capability
-      // signals (2K default, 4K on capable desktops). Each fetch is bounded
-      // (existing 25 s budget per attempt): a stalled texture must reject
-      // (→ standard-URL retry, then WebGL fallback) rather than leave the
-      // canvas black indefinitely.
-      const tier = resolveTextureTier(probeTextureCapabilities());
+      // signals (2K default, 4K on capable desktops). T4.6: active
+      // low-power mode forces the standard tier — the high set is never
+      // requested, so both sets are never allocated together. The renderer
+      // remounts when the mode flips, so init always observes the active
+      // value (existing teardown releases the old set first). Each fetch
+      // is bounded (existing 25 s budget per attempt): a stalled texture
+      // must reject (→ standard-URL retry, then WebGL fallback) rather
+      // than leave the canvas black indefinitely.
+      const tier = controlRef.current.lowPowerActive
+        ? 'standard'
+        : resolveTextureTier(probeTextureCapabilities());
       const loadTex = (slot: TextureSlot) =>
         loadTieredTexture(
           {
@@ -379,22 +413,36 @@ export default function WebGPUEarth({
           slot,
           tier,
         );
-      const [{ texture: dayMap }, { texture: nightMap }, { texture: cloudMap }, { texture: topologyMap }, { texture: waterMap }] =
-        await Promise.all([
-          loadTex('day').then((t) => { bumpTextures(); return t; }),
-          loadTex('night').then((t) => { bumpTextures(); return t; }),
-          loadTex('clouds').then((t) => { bumpTextures(); return t; }),
-          loadTex('topology').then((t) => { bumpTextures(); return t; }),
-          loadTex('water').then((t) => { bumpTextures(); return t; }),
-        ]);
+      const loadedEntries = await Promise.all(
+        textureSlots.map((slot) =>
+          loadTex(slot).then((entry) => {
+            bumpTextures();
+            return entry;
+          }),
+        ),
+      );
+      if (cancelled) return;
+      const textureBySlot = new Map(
+        textureSlots.map((slot, i) => [slot, loadedEntries[i]] as const),
+      );
+      const requiredTexture = (slot: TextureSlot) => {
+        const entry = textureBySlot.get(slot);
+        if (!entry) throw new Error(`texture slot ${slot} failed to load`);
+        return entry.texture;
+      };
+      const dayMap = requiredTexture('day');
+      const nightMap = requiredTexture('night');
+      const topologyMap = requiredTexture('topology');
+      const waterMap = requiredTexture('water');
+      const cloudMap = textureBySlot.get('clouds')?.texture ?? null;
       if (cancelled) return;
       dayMap.colorSpace = THREE.SRGBColorSpace;
       nightMap.colorSpace = THREE.SRGBColorSpace;
-      cloudMap.colorSpace = THREE.SRGBColorSpace;
+      if (cloudMap) cloudMap.colorSpace = THREE.SRGBColorSpace;
       disposables.push(
         { dispose: () => dayMap.dispose() },
         { dispose: () => nightMap.dispose() },
-        { dispose: () => cloudMap.dispose() },
+        ...(cloudMap ? [{ dispose: () => cloudMap.dispose() }] : []),
         { dispose: () => topologyMap.dispose() },
         { dispose: () => waterMap.dispose() },
       );
@@ -437,20 +485,25 @@ export default function WebGPUEarth({
       const earth = new THREE.Mesh(earthGeometry, earthMaterial);
       group.add(earth);
 
-      // ---- Clouds: independent slow drift shell ----
-      const cloudMaterial = track(
-        new THREE.MeshBasicMaterial({
-          map: cloudMap,
-          transparent: true,
-          opacity: 0.45,
-          blending: THREE.AdditiveBlending,
-          depthWrite: false,
-          side: THREE.DoubleSide,
-        }),
-      );
-      const cloudGeometry = track(new THREE.SphereGeometry(EARTH_RADIUS * 1.008, 64, 64));
-      const clouds = new THREE.Mesh(cloudGeometry, cloudMaterial);
-      group.add(clouds);
+      // ---- Clouds: independent slow drift shell (T4.6: skipped in
+      // low-power mode — the one decorative shell both 3D paths can drop
+      // without touching geography, markers, lighting or provenance) ----
+      let clouds: THREE.Mesh | null = null;
+      if (cloudLayerEnabled(controlRef.current.lowPowerActive) && cloudMap) {
+        const cloudMaterial = track(
+          new THREE.MeshBasicMaterial({
+            map: cloudMap,
+            transparent: true,
+            opacity: 0.45,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+          }),
+        );
+        const cloudGeometry = track(new THREE.SphereGeometry(EARTH_RADIUS * 1.008, 64, 64));
+        clouds = new THREE.Mesh(cloudGeometry, cloudMaterial);
+        group.add(clouds);
+      }
 
       // ---- Atmosphere: TSL Fresnel rim shell (BackSide, additive) ----
       // Physical planetary edge, not a glow: tight falloff (pow 4.5),
@@ -724,8 +777,9 @@ export default function WebGPUEarth({
         }
         // Ambient drift follows activity (T4.2 idle policy): a still globe
         // stays still — drift must never force a permanent loop. Reduced
-        // motion still suppresses it outright.
-        if (!controlRef.current.reducedMotion && active) {
+        // motion still suppresses it outright. Absent in low-power mode
+        // (T4.6: the shell is not created, so there is nothing to drift).
+        if (clouds && !controlRef.current.reducedMotion && active) {
           clouds.rotation.y += 0.0008 * delta * 60;
         }
         controls.update();

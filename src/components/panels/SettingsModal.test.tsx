@@ -41,6 +41,9 @@ function renderSettings() {
       cacheHit={false}
       singleKeyShortcuts={true}
       onSingleKeyShortcutsChange={vi.fn()}
+      lowPowerPreference="auto"
+      onLowPowerPreferenceChange={vi.fn()}
+      lowPowerActive={false}
     />,
   );
 }
@@ -152,6 +155,86 @@ describe('SettingsModal responsive layout (T3.9)', () => {
     const switchControl = screen.getByRole('switch', { name: 'Toggle single-key shortcuts' });
     expect(switchControl).toBeInTheDocument();
     expect(switchControl).toBeChecked();
+  });
+});
+
+describe('SettingsModal low-power mode (T4.6)', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  function renderWithLowPower(preference: 'auto' | 'on' | 'off', active: boolean) {
+    const onChange = vi.fn();
+    render(
+      <SettingsModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isRotating={true}
+        onToggleRotation={vi.fn()}
+        rendererInfo={mockRendererInfo}
+        activeLayer="earthquakes"
+        dataStatus={mockDataStatus}
+        cacheHit={false}
+        lowPowerPreference={preference}
+        onLowPowerPreferenceChange={onChange}
+        lowPowerActive={active}
+      />,
+    );
+    return { onChange };
+  }
+
+  it('offers Auto / On / Off as a radio group with the stored mode checked', () => {
+    renderWithLowPower('auto', false);
+    const group = screen.getByRole('radiogroup', { name: 'Low-power mode' });
+    expect(group).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Low-power mode auto' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    expect(screen.getByRole('radio', { name: 'Low-power mode on' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+    expect(screen.getByRole('radio', { name: 'Low-power mode off' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+  });
+
+  it('forwards mode changes to the caller (persistence lives there)', () => {
+    const { onChange } = renderWithLowPower('auto', false);
+    fireEvent.click(screen.getByRole('radio', { name: 'Low-power mode on' }));
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith('on');
+  });
+
+  it('shows the preference next to what is actually rendering', () => {
+    renderWithLowPower('off', false);
+    expect(screen.getByText('Off — full quality')).toBeInTheDocument();
+  });
+
+  it('reports the resolved low-power state in Diagnostics', () => {
+    const mm = mockReducedMotion(false);
+    try {
+      renderWithLowPower('on', true);
+      selectTab(/Diagnostics/);
+      expect(screen.getByText('Low-power mode')).toBeInTheDocument();
+      expect(screen.getByText('On — low-power rendering active')).toBeInTheDocument();
+    } finally {
+      mm.restore();
+    }
+  });
+
+  it('keeps reduced motion independent: forcing low-power on never claims reduced motion', () => {
+    const mm = mockReducedMotion(false);
+    try {
+      renderWithLowPower('on', true);
+      selectTab(/Diagnostics/);
+      expect(screen.getByText('Full')).toBeInTheDocument();
+      expect(screen.queryByText(/Reduced \(system\)/)).not.toBeInTheDocument();
+    } finally {
+      mm.restore();
+    }
   });
 });
 
@@ -317,5 +400,23 @@ describe('diagnostic row builder (T3.13)', () => {
     expect(text).toContain('Motion preference: Reduced (system)');
     expect(text).toContain('Server cache: hit');
     expect(text.split('\n')).toHaveLength(rows.length + 1);
+  });
+
+  it('reports the low-power preference next to the resolved state', () => {
+    const on = Object.fromEntries(
+      buildDiagnosticRows({ ...base, reducedMotion: false, cacheHit: false, lowPowerPreference: 'on', lowPowerActive: true }),
+    );
+    expect(on['Low-power mode']).toBe('On — low-power rendering active');
+    const off = Object.fromEntries(
+      buildDiagnosticRows({ ...base, reducedMotion: false, cacheHit: false, lowPowerPreference: 'off', lowPowerActive: false }),
+    );
+    expect(off['Low-power mode']).toBe('Off — full quality');
+  });
+
+  it('reads an em-dash when the caller omits the low-power fields', () => {
+    const rows = Object.fromEntries(
+      buildDiagnosticRows({ ...base, reducedMotion: false, cacheHit: false }),
+    );
+    expect(rows['Low-power mode']).toBe('—');
   });
 });

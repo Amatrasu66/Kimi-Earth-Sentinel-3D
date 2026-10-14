@@ -28,6 +28,7 @@ import { useEventSelection } from '@/components/app/useEventSelection';
 import { useFocusRestore } from '@/components/app/useFocusRestore';
 import { useFirstRunHint } from '@/components/app/useFirstRunHint';
 import { useSingleKeyShortcuts } from '@/components/app/useSingleKeyShortcuts';
+import { useLowPowerMode } from '@/components/app/useLowPowerMode';
 import { useFlyTo } from '@/components/app/useFlyTo';
 import { usePendingEventResolution } from '@/components/app/usePendingEventResolution';
 import type { DataPoint, LayerId } from '@/types';
@@ -39,6 +40,14 @@ const StableEarthRenderer = memo(EarthRenderer);
 function SentinelApp() {
   const { requestFocus, focusInDataSurface, focusWithin } = useFocusRestore();
   const { singleKeyShortcuts, setSingleKeyShortcuts } = useSingleKeyShortcuts();
+  // T4.6: persisted Auto/On/Off preference; the resolved boolean fans out
+  // to the dotted stage, the 3D selector (which remounts its branch on
+  // flips), and the Settings Globe tab + diagnostics.
+  const {
+    preference: lowPowerPreference,
+    setPreference: setLowPowerPreference,
+    lowPowerActive,
+  } = useLowPowerMode();
   const { hintDismissed, dismissHint } = useFirstRunHint(requestFocus);
   const { flyTo, flyToLocation } = useFlyTo();
 
@@ -214,6 +223,7 @@ function SentinelApp() {
           isRotating={isRotating}
           flyTo={flyTo}
           sunDirection={sunDirection}
+          lowPowerActive={lowPowerActive}
           onActiveRenderer={setRendererInfo}
         />
       )}
@@ -252,6 +262,7 @@ function SentinelApp() {
               isRotating={isRotating}
               flyTo={flyTo}
               onActiveRenderer={setRendererInfo}
+              lowPowerActive={lowPowerActive}
             />
           )
         }
@@ -295,6 +306,9 @@ function SentinelApp() {
         cacheHit={layerCacheHit}
         singleKeyShortcuts={singleKeyShortcuts}
         onSingleKeyShortcutsChange={setSingleKeyShortcuts}
+        lowPowerPreference={lowPowerPreference}
+        onLowPowerPreferenceChange={setLowPowerPreference}
+        lowPowerActive={lowPowerActive}
       />
 
       <MarkerHoverCard point={hoveredPoint} activeLayer={activeLayer} />

@@ -1,9 +1,14 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { RotateCw, Activity, Keyboard, Info } from 'lucide-react';
+import { RotateCw, Activity, Keyboard, Info, Leaf } from 'lucide-react';
 import { api, getApiConfig } from '@/services/api';
 import { hasNavigatorGpu, probeWebGpuSupport } from '@/lib/webgpu';
+import {
+  describeLowPowerState,
+  probeLowPowerSignals,
+} from '@/lib/low-power';
+import type { LowPowerPreference } from '@/lib/low-power';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion';
 import type { RendererInfo } from '@/components/globe/EarthRenderer';
@@ -34,6 +39,14 @@ interface SettingsModalProps {
    */
   singleKeyShortcuts?: boolean;
   onSingleKeyShortcutsChange?: (enabled: boolean) => void;
+  /**
+   * T4.6 low-power rendering preference (Auto / On / Off), persisted by
+   * the caller. `lowPowerActive` is the resolved live state — the UI
+   * always shows the preference next to what is actually active.
+   */
+  lowPowerPreference?: LowPowerPreference;
+  onLowPowerPreferenceChange?: (preference: LowPowerPreference) => void;
+  lowPowerActive?: boolean;
 }
 
 /**
@@ -52,6 +65,9 @@ export interface DiagnosticRowInput {
   cacheHit?: boolean | null;
   /** OS reduced-motion preference (T3.11 second rotation gate). */
   reducedMotion: boolean;
+  /** T4.6 low-power preference + resolved state (optional for old callers). */
+  lowPowerPreference?: LowPowerPreference;
+  lowPowerActive?: boolean;
   webgpuProbe: string;
   navigatorGpu: boolean;
   rendererInfo?: RendererInfo;
@@ -74,6 +90,8 @@ export function buildDiagnosticRows(input: DiagnosticRowInput): Array<[string, s
     dataStatus,
     cacheHit,
     reducedMotion,
+    lowPowerPreference,
+    lowPowerActive,
     webgpuProbe,
     navigatorGpu,
     rendererInfo,
@@ -90,6 +108,11 @@ export function buildDiagnosticRows(input: DiagnosticRowInput): Array<[string, s
     // (T3.6/T3.7) — SWR/client revalidation never implies it.
     ['Server cache', cacheHit === true ? 'hit (served from server cache)' : cacheHit === false ? 'miss (fresh provider response)' : '—'],
     ['Motion preference', reducedMotion ? 'Reduced (system) — auto-rotate and fly-to animations off' : 'Full'],
+    // T4.6: the selected preference next to what is actually rendering.
+    // Old callers omit both fields and read '—' (never a fabricated mode).
+    ['Low-power mode', lowPowerPreference === undefined
+      ? '—'
+      : describeLowPowerState(lowPowerPreference, lowPowerActive ?? false, probeLowPowerSignals())],
     ['WebGPU', `${navigatorGpu ? 'navigator.gpu present' : 'no navigator.gpu'} · probe ${webgpuProbe}`],
     ['Active renderer', rendererInfo ? `${rendererInfo.active} · ${rendererInfo.detail}` : 'unknown'],
     ['Renderer source', rendererInfo ? rendererInfo.source : '—'],
@@ -115,11 +138,15 @@ function DiagnosticsPanel({
   activeLayer,
   dataStatus,
   cacheHit = null,
+  lowPowerPreference,
+  lowPowerActive = false,
 }: {
   rendererInfo?: RendererInfo;
   activeLayer?: LayerId | null;
   dataStatus?: DataStatus | null;
   cacheHit?: boolean | null;
+  lowPowerPreference?: LowPowerPreference;
+  lowPowerActive?: boolean;
 }) {
   const [health, setHealth] = useState<string | null>(null);
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
@@ -167,6 +194,8 @@ function DiagnosticsPanel({
     dataStatus,
     cacheHit,
     reducedMotion,
+    lowPowerPreference,
+    lowPowerActive,
     webgpuProbe,
     navigatorGpu: hasNavigatorGpu(),
     rendererInfo,
@@ -238,7 +267,17 @@ function SettingsBody({
   cacheHit = null,
   singleKeyShortcuts = true,
   onSingleKeyShortcutsChange,
+  lowPowerPreference = 'auto',
+  onLowPowerPreferenceChange,
+  lowPowerActive = false,
 }: Omit<SettingsModalProps, 'isOpen' | 'onClose'>) {
+  // T4.6 status line: the selected preference next to what is actually
+  // rendering (probed synchronously; SSR-safe, same as `hasNavigatorGpu`).
+  const lowPowerStatus = describeLowPowerState(
+    lowPowerPreference,
+    lowPowerActive,
+    probeLowPowerSignals(),
+  );
   return (
     <Tabs defaultValue="globe" className="min-h-0 gap-0">
       <div className="border-b border-white/[0.07] px-4 pt-2.5">
@@ -272,6 +311,46 @@ function SettingsBody({
               </div>
             </div>
             <Switch id="sentinel-rotate" checked={isRotating} onCheckedChange={onToggleRotation} aria-label="Toggle globe auto-rotation" className="data-[state=checked]:bg-sentinel-accent" />
+          </div>
+          {/* T4.6: Auto / On / Off low-power rendering. Active mode caps
+              resolution, forces standard textures and hides the decorative
+              cloud shell; reduced motion stays a separate setting. */}
+          <div className="sentinel-inset rounded-lg p-3">
+            <div className="flex items-start gap-2.5">
+              <Leaf className="mt-0.5 h-4 w-4 shrink-0 text-sentinel-accent" aria-hidden />
+              <div className="min-w-0 flex-1">
+                <span id="sentinel-low-power-label" className="text-[13px] font-medium text-white">Low-power mode</span>
+                <p className="sentinel-micro mt-0.5">
+                  Caps rendering resolution, uses standard textures and hides clouds.
+                </p>
+              </div>
+            </div>
+            <div
+              role="radiogroup"
+              aria-labelledby="sentinel-low-power-label"
+              className="mt-2.5 grid grid-cols-3 gap-1 rounded-md border border-white/10 bg-white/[0.04] p-0.5"
+            >
+              {(['auto', 'on', 'off'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  role="radio"
+                  aria-checked={lowPowerPreference === mode}
+                  aria-label={`Low-power mode ${mode}`}
+                  onClick={() => onLowPowerPreferenceChange?.(mode)}
+                  className={`h-7 rounded-[6px] px-3 text-xs capitalize transition-colors ${
+                    lowPowerPreference === mode
+                      ? 'bg-sentinel-accent/15 text-sentinel-accent'
+                      : 'text-white/60 hover:bg-white/[0.06] hover:text-white'
+                  }`}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
+            <p className="sentinel-micro sentinel-mono mt-2 text-white/55" role="status">
+              {lowPowerStatus}
+            </p>
           </div>
           <div className="sentinel-inset rounded-lg p-3">
             <p className="sentinel-micro leading-relaxed">
@@ -336,7 +415,7 @@ function SettingsBody({
         </TabsContent>
 
         <TabsContent value="diagnostics" className="mt-0">
-          <DiagnosticsPanel rendererInfo={rendererInfo} activeLayer={activeLayer} dataStatus={dataStatus} cacheHit={cacheHit} />
+          <DiagnosticsPanel rendererInfo={rendererInfo} activeLayer={activeLayer} dataStatus={dataStatus} cacheHit={cacheHit} lowPowerPreference={lowPowerPreference} lowPowerActive={lowPowerActive} />
         </TabsContent>
 
         <TabsContent value="about" className="mt-0 space-y-3">
@@ -354,9 +433,9 @@ function SettingsBody({
 
 // Centered dialog on desktop, bottom sheet on narrow screens — same content,
 // same tab logic, no behavior fork.
-export default function SettingsModal({ isOpen, onClose, isRotating, onToggleRotation, rendererInfo, activeLayer, dataStatus, cacheHit = null, singleKeyShortcuts = true, onSingleKeyShortcutsChange }: SettingsModalProps) {
+export default function SettingsModal({ isOpen, onClose, isRotating, onToggleRotation, rendererInfo, activeLayer, dataStatus, cacheHit = null, singleKeyShortcuts = true, onSingleKeyShortcutsChange, lowPowerPreference = 'auto', onLowPowerPreferenceChange, lowPowerActive = false }: SettingsModalProps) {
   const isMobile = useIsMobile();
-  const bodyProps = { isRotating, onToggleRotation, rendererInfo, activeLayer, dataStatus, cacheHit, singleKeyShortcuts, onSingleKeyShortcutsChange };
+  const bodyProps = { isRotating, onToggleRotation, rendererInfo, activeLayer, dataStatus, cacheHit, singleKeyShortcuts, onSingleKeyShortcutsChange, lowPowerPreference, onLowPowerPreferenceChange, lowPowerActive };
 
   if (isMobile) {
     return (

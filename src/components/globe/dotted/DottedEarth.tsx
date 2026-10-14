@@ -37,6 +37,7 @@ import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion';
 import { SEVERITY_COLORS } from '@/types';
 import type { DataPoint, SeverityLevel } from '@/types';
 import type { RendererInfo } from '../EarthRenderer';
+import { maxDprForMode } from '@/lib/low-power';
 import { loadLandAsset } from './landGeo';
 import type { LandAsset } from './landGeo';
 import { buildLandDotField, dotFieldCount } from './dotField';
@@ -87,13 +88,24 @@ interface DottedEarthProps {
   /** Search fly-to target; `key` retriggers. Null = no flight. */
   flyTo?: { lat: number; lon: number; key: number } | null;
   onActiveRenderer?: (info: RendererInfo) => void;
+  /**
+   * T4.6 low-power mode: caps the canvas backing store at DPR 1 (applied
+   * without remount, so drag/zoom state survives the toggle). Land dots,
+   * markers, picking and reduced-motion behavior are untouched.
+   */
+  lowPower?: boolean;
 }
 
-function getPixelRatio(): number {
+function getPixelRatio(lowPowerActive: boolean): number {
   if (typeof window === 'undefined') return 1;
   const coarse =
     window.matchMedia?.('(pointer: coarse)').matches || window.innerWidth < 768;
-  return Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2);
+  // T4.6: same centralized DPR ceiling as the 3D paths — low-power caps
+  // the canvas backing store at 1.
+  return Math.min(
+    window.devicePixelRatio || 1,
+    maxDprForMode({ coarsePointer: coarse, lowPowerActive }),
+  );
 }
 
 function DottedEarth({
@@ -103,6 +115,7 @@ function DottedEarth({
   isRotating = true,
   flyTo = null,
   onActiveRenderer,
+  lowPower = false,
 }: DottedEarthProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -123,6 +136,9 @@ function DottedEarth({
   // props that legitimately need to poke the engine from React effects.
   const requestDrawRef = useRef<() => void>(() => {});
   const requestFlightRef = useRef<(target: { lat: number; lon: number }) => void>(() => {});
+  // T4.6: re-evaluates the backing store (DPR cap) without remounting, so
+  // toggling low-power mode never resets the drag/zoom view.
+  const requestResizeRef = useRef<() => void>(() => {});
 
   const pointsRef = useRef<DataPoint[]>([]);
   useEffect(() => {
@@ -148,6 +164,12 @@ function DottedEarth({
     reducedMotionRef.current = reducedMotion;
     requestDrawRef.current();
   }, [reducedMotion]);
+
+  const lowPowerRef = useRef(lowPower);
+  useEffect(() => {
+    lowPowerRef.current = lowPower;
+    requestResizeRef.current();
+  }, [lowPower]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -337,7 +359,7 @@ function DottedEarth({
     const applySize = (nextWidth: number, nextHeight: number) => {
       const w = Math.max(0, Math.floor(nextWidth));
       const h = Math.max(0, Math.floor(nextHeight));
-      const dpr = getPixelRatio();
+      const dpr = getPixelRatio(lowPowerRef.current);
       if (w === width && h === height && dpr === pixelRatio) return;
       width = w;
       height = h;
@@ -353,6 +375,12 @@ function DottedEarth({
 
     const rect = container.getBoundingClientRect();
     if (rect.width > 0 && rect.height > 0) applySize(rect.width, rect.height);
+    // T4.6 handle: re-runs sizing against the live container so a DPR-cap
+    // change rebuilds the backing store (early-return skips no-op calls).
+    requestResizeRef.current = () => {
+      const live = container.getBoundingClientRect();
+      if (live.width > 0 && live.height > 0) applySize(live.width, live.height);
+    };
     const resizeObserver =
       typeof ResizeObserver !== 'undefined'
         ? new ResizeObserver((entries) => {
@@ -519,6 +547,7 @@ function DottedEarth({
       callbacksRef.current.onMarkerHover(null);
       requestDrawRef.current = () => {};
       requestFlightRef.current = () => {};
+      requestResizeRef.current = () => {};
     };
     // Mount-once engine: prop changes flow through the refs/effects above.
   }, []);

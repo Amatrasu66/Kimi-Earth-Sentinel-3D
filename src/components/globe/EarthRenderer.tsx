@@ -76,6 +76,13 @@ interface EarthRendererProps {
    * renderer paths: WebGPU day/night blend + light, WebGL directional light).
    */
   sunDirection?: [number, number, number];
+  /**
+   * T4.6 low-power mode (Settings → Globe). Texture tier, DPR ceiling and
+   * the cloud shell follow it; the 3D branch remounts when it flips so the
+   * old texture set releases through the existing teardown before the new
+   * set allocates (never a mid-life texture swap).
+   */
+  lowPowerActive?: boolean;
   onActiveRenderer?: (info: RendererInfo) => void;
 }
 
@@ -87,6 +94,7 @@ export default function EarthRenderer({
   isRotating = true,
   flyTo = null,
   sunDirection,
+  lowPowerActive = false,
   onActiveRenderer,
 }: EarthRendererProps) {
   // Session 5 A/B test: `?renderer=webgl` / `?renderer=webgpu` resolves
@@ -192,6 +200,11 @@ export default function EarthRenderer({
   // behind a blank renderer.
   if (activeMode === 'dotted') return null;
 
+  // T4.6: the 3D branch remounts when low-power mode flips — tier, DPR and
+  // clouds all resolve once at init, and the existing teardown (textures,
+  // materials, listeners, GPU resources) runs before the fresh mount.
+  const qualityKey = lowPowerActive ? 'low-power' : 'full';
+
   return (
     // CSP-1: static fullscreen geometry as classes (see WebGPUEarth note).
     <div className="fixed left-0 top-0 z-[1] h-full w-full">
@@ -210,6 +223,7 @@ export default function EarthRenderer({
         >
           <WebGpuErrorBoundary onError={handleWebgpuCrash}>
             <WebGPUEarth
+              key={qualityKey}
               dataPoints={dataPoints}
               onMarkerClick={onMarkerClick}
               onMarkerHover={onMarkerHover}
@@ -217,6 +231,7 @@ export default function EarthRenderer({
               rotationSpeed={0.0003}
               flyTo={flyTo}
               sunDirection={sunDirection}
+              lowPowerActive={lowPowerActive}
               onStatus={handleWebgpuStatus}
             />
           </WebGpuErrorBoundary>
@@ -235,6 +250,7 @@ export default function EarthRenderer({
           }
         >
           <GlobeScene
+            key={qualityKey}
             activeLayer={activeLayer}
             dataPoints={dataPoints}
             onMarkerClick={onMarkerClick}
@@ -242,6 +258,7 @@ export default function EarthRenderer({
             isRotating={isRotating}
             flyTo={flyTo}
             sunDirection={sunDirection}
+            lowPowerActive={lowPowerActive}
           />
         </Suspense>
       ) : (

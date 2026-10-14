@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { renderToString } from 'react-dom/server';
-import { cleanup, render, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import {
   TEXTURE_URLS,
   TIER_FALLBACK,
@@ -160,6 +160,63 @@ describe('probing without a GPU (T4.1 §7)', () => {
     }
     const html = renderToString(<TierLabel />);
     expect(html).toContain('standard');
+  });
+});
+
+describe('low-power tier override (T4.6)', () => {
+  function TierLabel({ lowPowerActive }: { lowPowerActive: boolean }) {
+    return <span>{useTextureTier(lowPowerActive)}</span>;
+  }
+
+  function mockCapableDesktop() {
+    const prevMatchMedia = window.matchMedia;
+    const prevDpr = window.devicePixelRatio;
+    const prevScreen = window.screen;
+    const prevMemory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      writable: true,
+      value: () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }),
+    });
+    Object.defineProperty(window, 'devicePixelRatio', { configurable: true, writable: true, value: 2 });
+    Object.defineProperty(window, 'screen', {
+      configurable: true,
+      writable: true,
+      value: { width: 2560, height: 1440 },
+    });
+    Object.defineProperty(navigator, 'deviceMemory', { configurable: true, writable: true, value: 8 });
+    return () => {
+      Object.defineProperty(window, 'matchMedia', { configurable: true, writable: true, value: prevMatchMedia });
+      Object.defineProperty(window, 'devicePixelRatio', { configurable: true, writable: true, value: prevDpr });
+      Object.defineProperty(window, 'screen', { configurable: true, writable: true, value: prevScreen });
+      if (prevMemory === undefined) {
+        delete (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+      } else {
+        Object.defineProperty(navigator, 'deviceMemory', { configurable: true, writable: true, value: prevMemory });
+      }
+    };
+  }
+
+  it('forces the standard tier when low-power is active, even where high would win', () => {
+    const restore = mockCapableDesktop();
+    try {
+      // Sanity: without the override this desktop resolves high.
+      expect(resolveTextureTier(probeTextureCapabilities())).toBe('high');
+      const { unmount } = render(<TierLabel lowPowerActive={false} />);
+      expect(screen.getByText('high')).toBeInTheDocument();
+      unmount();
+      cleanup();
+      render(<TierLabel lowPowerActive />);
+      expect(screen.getByText('standard')).toBeInTheDocument();
+    } finally {
+      restore();
+    }
+  });
+
+  it('reports the tier through a deterministic SSR snapshot', () => {
+    // SSR snapshot is standard either way (deterministic markup).
+    expect(renderToString(<TierLabel lowPowerActive />)).toContain('standard');
+    expect(renderToString(<TierLabel lowPowerActive={false} />)).toContain('standard');
   });
 });
 

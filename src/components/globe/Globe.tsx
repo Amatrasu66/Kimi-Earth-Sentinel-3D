@@ -11,6 +11,7 @@ import {
 } from '@/lib/geo';
 import type { DataPoint } from '@/types';
 import { advanceFlight, autoRotateActive, frameLoopActive, startFlight } from '@/lib/motion';
+import { cloudLayerEnabled } from '@/lib/low-power';
 import { writeMarkersToInstancedMesh } from './markerSync';
 
 interface GlobeProps {
@@ -29,6 +30,12 @@ interface GlobeProps {
    * available; control damping is interaction feedback, not ambient motion.
    */
   reducedMotion?: boolean;
+  /**
+   * T4.6 low-power mode (from Settings). Forces the standard texture tier
+   * and hides the decorative cloud shell; reduced motion stays independent
+   * and composes (a low-power + reduced-motion globe is still AND dimmer).
+   */
+  lowPowerActive?: boolean;
   /**
    * World-space sun direction (T2.4, real-time UTC position from
    * `useSunDirection`). Drives the directional light so the lit side tracks
@@ -64,14 +71,16 @@ function Atmosphere({ radius = 5 }: { radius?: number }) {
   );
 }
 
-function EarthSphere() {
+function EarthSphere({ lowPowerActive = false }: { lowPowerActive?: boolean }) {
   const meshRef = useRef<THREE.Mesh>(null);
   const invalidate = useThree((s) => s.invalidate);
 
   // T4.1: tier manifest (2K default, 4K on capable desktops) served from
   // the Next.js public dir (absolute paths). Stable per mount — both sets
-  // are never requested together.
-  const tier = useTextureTier();
+  // are never requested together. T4.6: active low-power mode forces the
+  // standard tier (the renderer remounts on mode flips, so no mid-life
+  // texture swap can strand materials or double-allocate).
+  const tier = useTextureTier(lowPowerActive);
   const [dayMap, nightMap, normalMap, specularMap] = useTexture([
     TEXTURE_URLS[tier].day,
     TEXTURE_URLS[tier].night,
@@ -331,6 +340,7 @@ export default function Globe({
   isRotating = true,
   flyTo = null,
   reducedMotion = false,
+  lowPowerActive = false,
   sunDirection,
 }: GlobeProps) {
   const groupRef = useRef<THREE.Group>(null);
@@ -351,7 +361,7 @@ export default function Globe({
   // frame each: the directional light moves.
   useEffect(() => {
     invalidate();
-  }, [invalidate, dataPoints, flyTo, isRotating, reducedMotion, sunDirection]);
+  }, [invalidate, dataPoints, flyTo, isRotating, reducedMotion, lowPowerActive, sunDirection]);
 
   useEffect(() => {
     const onResize = () => invalidate();
@@ -444,10 +454,14 @@ export default function Globe({
       <hemisphereLight args={['#87CEEB', '#000000', 0.3]} />
 
       {/* Earth */}
-      <EarthSphere />
+      <EarthSphere lowPowerActive={lowPowerActive} />
 
-      {/* Clouds */}
-      <CloudLayer radius={5} speed={0.0008} reducedMotion={reducedMotion} isRotating={isRotating} />
+      {/* Clouds — decorative shell, off in low-power mode (T4.6). Not
+          mounting also skips its texture download; geography, markers,
+          lighting and atmosphere are untouched. */}
+      {cloudLayerEnabled(lowPowerActive) && (
+        <CloudLayer radius={5} speed={0.0008} reducedMotion={reducedMotion} isRotating={isRotating} />
+      )}
 
       {/* Atmosphere */}
       <Atmosphere radius={5} />

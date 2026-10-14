@@ -132,11 +132,15 @@ export function probeTextureCapabilities(
  * SSR reports the neutral standard tier so markup stays deterministic;
  * the client resolves synchronously — no effect, no second download, and
  * the value is stable for the component's lifetime.
+ *
+ * T4.6: an active low-power mode forces the standard tier (never starts
+ * the high-tier download). The 3D renderers remount when the mode flips,
+ * so this snapshot always observes the tier it mounts with.
  */
-export function useTextureTier(): TextureTier {
+export function useTextureTier(lowPowerActive = false): TextureTier {
   return useSyncExternalStore(
     emptySubscribe,
-    () => resolveTextureTier(probeTextureCapabilities()),
+    () => (lowPowerActive ? 'standard' : resolveTextureTier(probeTextureCapabilities())),
     () => 'standard' as const,
   );
 }

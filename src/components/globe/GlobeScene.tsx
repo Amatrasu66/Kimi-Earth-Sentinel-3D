@@ -3,6 +3,7 @@ import { Canvas } from '@react-three/fiber';
 import Globe from './Globe';
 import { DEFAULT_CAMERA_DISTANCE } from './earthConfig';
 import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion';
+import { maxDprForMode } from '@/lib/low-power';
 import type { DataPoint, LayerId } from '@/types';
 
 interface GlobeSceneProps {
@@ -15,6 +16,8 @@ interface GlobeSceneProps {
   flyTo?: { lat: number; lon: number; key: number } | null;
   /** World-space sun direction (T2.4); forwarded to the WebGL globe light. */
   sunDirection?: [number, number, number];
+  /** T4.6 low-power mode: DPR ceiling 1, standard tier, no cloud shell. */
+  lowPowerActive?: boolean;
 }
 
 function LoadingFallback() {
@@ -28,12 +31,13 @@ function LoadingFallback() {
 
 // Lower-end / mobile fallback: cap pixel ratio and rely on the reduced
 // geometry budgets in Globe (48-seg spheres, 32-seg atmosphere).
-function getAdaptiveDpr(): [number, number] {
+// T4.6: low-power caps at DPR 1 via the shared policy (same rule as the
+// WebGPU path and the dotted renderer).
+function getAdaptiveDpr(lowPowerActive: boolean): [number, number] {
   if (typeof window === 'undefined') return [1, 2];
   const coarse =
     window.matchMedia?.('(pointer: coarse)').matches || window.innerWidth < 768;
-  const max = Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2);
-  return [1, Math.max(1, max)];
+  return [1, Math.max(1, maxDprForMode({ coarsePointer: coarse, lowPowerActive }))];
 }
 
 export default function GlobeScene({
@@ -44,8 +48,9 @@ export default function GlobeScene({
   isRotating = true,
   flyTo = null,
   sunDirection,
+  lowPowerActive = false,
 }: GlobeSceneProps) {
-  const dpr = getAdaptiveDpr();
+  const dpr = getAdaptiveDpr(lowPowerActive);
   // T3.11: shared reduced-motion subscription, forwarded into the Canvas.
   // A preference flip re-renders (no remount, no renderer reset); the globe
   // reads it in its frame loop and flight effect.
@@ -80,6 +85,7 @@ export default function GlobeScene({
             rotationSpeed={0.0003}
             flyTo={flyTo}
             reducedMotion={reducedMotion}
+            lowPowerActive={lowPowerActive}
             sunDirection={sunDirection}
           />
         </Suspense>
