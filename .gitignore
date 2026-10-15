@@ -45,3 +45,12 @@ dump.rdb
 *.njsproj
 *.sln
 *.sw?
+
+# Agent skills — install targets regenerable from skills-lock.json
+# (npx skills experimental_install). Project source lives in .agents/skills/.
+.claude/
+agent/
+
+# Scratch / diagnostics
+*.err
+scan.err
