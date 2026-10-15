@@ -119,3 +119,18 @@ chain; the production install contains postcss-HIGH + next-moderate via
 next's nested postcss@8.4.31; and even all three majors leave two HIGH
 nodes sharing the braces root cause through the eslint plugin's nested
 fast-glob. Owner decision required (see the plan §5).
+
+## 8. Implementation result — Option A / T5.3B (2026-10-14, baseline above preserved)
+
+`vitest ^2.1.0 → ^4.1.11` + explicit `vite ^7.3.7` (deliberate peer
+choice: smallest major line clean for all three vite GHSAs whose esbuild
+also clears GHSA-67mh — not the auto-installed newest 8.x). Lockfile:
+tinypool and vite-node entries removed; additions limited to the
+vitest/vite/esbuild/chai-types families. **Fresh audit: 10 advisories
+(3M/7H/0C) — both criticals gone**, plus vite-highs and three
+vitest-chain moderates. Remaining: tailwind chain, next chain,
+eslint-plugin fast-glob (gate still RED, reported honestly). Full suite
+741/741 green under vitest 4 with zero source/test/config edits; bundle
+byte-identical (199,259 B, PASS); textures MET. Workflow note: v4 removed
+the `--minWorkers` CLI flag (use `--maxWorkers=N`); CI's plain `npm test`
+unaffected. Detail: `docs/audit/security-remediation-plan.md` §8.

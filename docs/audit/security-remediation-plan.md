@@ -227,3 +227,53 @@ adds exceptions, or touches unrelated code. T4.5 bundle headroom
 - OSV API ranges for GHSA-4w7w/v6wh/fx2h/67mh/vfj7/rj75/85c8/
   qx2v/6g55/r28c; tinypool GHSA-5gmw; postcss GHSA-fxqj
 - Baselines: `docs/audit/supply-chain.md`, `docs/audit/bundle-budget.md`
+
+## 8. Implementation result — Option A (T5.3B, 2026-10-14)
+
+**Commit:** `T5.3B: migrate Vitest to 4.1.11` (recorded on commit).
+`package.json`: `vitest ^2.1.0 → ^4.1.11`, plus explicit `vite ^7.3.7`
+(new direct devDependency — required deliberately: vitest 4 declares
+vite a peer (`^6||^7||^8`), and npm would otherwise auto-install the
+newest line (8.3.4, Rolldown-based). **7.3.7 is the smallest major line
+clean for all three vite GHSAs** (fixed 6.4.2/6.4.3 + 7.3.2/7.3.5) whose
+esbuild (`^0.25.0`, resolved 0.28.2) also clears GHSA-67mh; 6.4.x would
+have left esbuild-moderate (0.24.2) in place. Installed tree confirms:
+vitest@4.1.11 + @vitest/mocker@4.1.11 + vite@7.3.7 + esbuild@0.28.2;
+**tinypool and vite-node entries removed from the lockfile**; `npm ls`
+peer-clean, no invalid markers. No `--force`, no overrides, no other
+dependency touched (lockfile additions limited to the vitest/vite/
+esbuild/chai-types families).
+
+**Resolved (6 entries: 2C/1H/3M):** vitest-critical GHSA-5xrq,
+tinypool-criticals GHSA-5gmw + GHSA-85c8, vite-highs GHSA-4w7w/v6wh/fx2h,
+mocker-moderate GHSA-82fw, esbuild-moderate GHSA-67mh, vite-node-moderate.
+**Fresh audit: 10 advisories (3M/7H/0C) — zero criticals.**
+Remaining: tailwind chain (braces/chokidar/fast-glob/micromatch/
+selector-parser/tailwindcss), next chain (postcss-H + next-M),
+eslint-plugin fast-glob-H. Production install (`--omit=dev`) unchanged:
+next-M + postcss-H (next chain untouched, as scoped).
+
+**Compatibility: zero source/test/config edits required.** `defineConfig`
+from `vitest/config`, jsdom env, setup file, and include patterns are
+stable in v4; repo grep re-confirmed no bench/sequential/snapshots/
+chai-direct/`toThrow('')`/`resolveConfig`/unawaited-assertion usages,
+and all `vi.mock` calls are top-level. The only workflow change:
+**vitest 4 removed the `--minWorkers` CLI flag** (pool options were
+consolidated) — constrained runs now use `npm test -- --maxWorkers=N`;
+CI runs plain `npm test` and is unaffected. Default pool is now `forks`
+(previously threads/tinypool).
+
+**Gates (final tree):** `npm ci` 0 · `audit --audit-level=high` exits 1
+(RED — 7 highs remain, all tailwind/next/plugin per above) · `lint` 0 ·
+`typecheck` 0 · `npm test -- --maxWorkers=1`: **77/77 files, 741/741
+tests green** · `build` 0 · `bundle:check` **PASS 199,259 B (byte-
+identical — the runner is not in the client bundle)** · `textures:report`
+both tiers MET. One full-suite run showed a single 5 s-timeout in
+`SentinelApp.view.test.tsx` under `--maxWorkers=2` load; the file passes
+18/18 in isolation and the serial re-run is fully green — environmental
+contention on this machine, not a migration regression (no test was
+weakened; pre-existing radix/jsdom teardown warnings unchanged).
+
+**Gate status:** still RED by evidence (tailwind/next/plugin highs) —
+T5.3 as a whole is NOT complete. Next in sequence: Option D (tailwind
+4.3.3), then E (next 16.4.1), then the scoped residual exception (§4).
