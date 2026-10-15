@@ -24,6 +24,8 @@
   * policy, so shipping it here only produces a permanent console warning
   * with zero protection. It is reserved for the future enforced policy.
   */
+import { fileURLToPath } from "node:url";
+
 const cspDirectives = [
   "default-src 'self'",
   // Next.js App Router requires inline scripts (no nonce plumbing yet).
@@ -63,6 +65,24 @@ const nextConfig = {
     // Headers only — response bodies (incl. the { success, data, meta }
     // envelope) are untouched.
     return [{ source: "/:path*", headers: securityHeaders }];
+  },
+  webpack(config) {
+    // Phase 2 defect repair (2026-10-15): `@cesium/engine` statically
+    // imports `@spz-loader/core`, whose dist breaks the production
+    // minified chunk with a parse-time SyntaxError in real browsers (see
+    // `src/components/globe/cesiumSpzLoaderStub.ts`). Exact-match alias so
+    // nothing else is redirected; the PoC loads zero SPZ models, so the
+    // stub is linked but never called. Revisit if splat rendering lands.
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      "@spz-loader/core$": fileURLToPath(
+        new URL(
+          "./src/components/globe/cesiumSpzLoaderStub.ts",
+          import.meta.url,
+        ),
+      ),
+    };
+    return config;
   },
 };
 

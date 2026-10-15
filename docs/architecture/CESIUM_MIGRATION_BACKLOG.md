@@ -27,6 +27,13 @@ contract change unless stated and approved.
 > - App-cluster test timing flake persists (5 s timeouts under load, zero
 >   assertion failures) — Phase 8 must address it before it masks
 >   regressions.
+> - Defect repair 2026-10-15 (see `PHASE_2_IMPLEMENTATION_REPORT.md` §18):
+>   Edge + production build proved `?renderer=cesium` never booted — the
+>   lazy chunk failed to parse (`@spz-loader/core@0.3.1`, pulled in via
+>   `@cesium/engine`'s `GltfSpzLoader`, emits octal escapes in a template
+>   literal). Fixed with an exact webpack alias to a stub (zero SPZ models
+>   in this PoC); all emitted chunks now parse, budget still passes.
+>   Browser re-verification of the gate is still open.
 
 - Objective: prove Cesium boots in this Next.js 15 app on Vercel with assets,
   picking, and budget intact — then throw away or keep deliberately.

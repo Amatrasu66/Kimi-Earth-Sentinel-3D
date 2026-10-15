@@ -227,3 +227,36 @@ paths (single `/cesium` constant used everywhere). Vercel deploy not run
 - Report-only CSP → enforcing policy with GIBS host (Phase 8).
 - Whether `pickedCoord` should also clear on view change (trivial, Phase 4).
 - App-cluster timing flake on slow machines (pre-existing; Phase 8).
+
+## 18. Addendum — Phase 2 defect repair: Cesium chunk `SyntaxError` (2026-10-15)
+
+Manual browser verification in Edge (production `build + start`) FAILED the
+gate with new evidence: `/?renderer=cesium` rendered the error veil
+`Loading chunk 782 failed`, caused by
+`Uncaught SyntaxError: Octal escape sequences are not allowed in template
+strings` at parse time of the lazy chunk. Default (`/`) still rendered.
+
+Root cause (verified against installed packages and the emitted build):
+`import('cesium')` resolves to the ESM `Source/` tree, which re-exports
+`@cesium/engine`, which statically imports `{ loadSpz }` from
+`@spz-loader/core@0.3.1` (`Source/Scene/GltfSpzLoader.js`, via the engine
+barrel). That dist ships Node-isms plus a binary blob the minifier
+re-encodes with octal escapes in a template literal — unparseable in any
+browser. Unit mocks never execute the chunk, so CI stayed green.
+
+Minimal repair (no Phase 3 work, no threshold/CSP/budget changes):
+- `src/components/globe/cesiumSpzLoaderStub.ts` (new): honest stub —
+  `loadSpz()` rejects loudly. Safe: only called when decoding `.spz`
+  model content; this PoC loads zero models.
+- `src/components/globe/cesiumSpzLoaderStub.test.ts` (new): 2 tests.
+- `next.config.mjs`: exact-match webpack alias `@spz-loader/core$` →
+  stub (first and only `webpack()` hook; headers/CSP byte-identical).
+
+Artifact verification (same production build): `@spz-loader/core` dist
+absent from all emitted chunks (only the stub's own error string
+remains); all 25 emitted JS chunks pass `node --check` as ES modules;
+`typecheck`/`lint` clean; globe suite 99/99; `bundle:check` PASS at
+200,375 B (195.7 KiB, threshold unchanged); textures both tiers MET.
+Checklist items C (real-browser render) and G (manual verification)
+remain **Blocked** pending a user browser re-run of the smoke test —
+artifact checks are supporting evidence, not rendering proof.
