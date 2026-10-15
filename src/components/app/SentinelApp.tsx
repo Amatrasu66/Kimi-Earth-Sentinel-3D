@@ -29,6 +29,7 @@ import { useFocusRestore } from '@/components/app/useFocusRestore';
 import { useFirstRunHint } from '@/components/app/useFirstRunHint';
 import { useSingleKeyShortcuts } from '@/components/app/useSingleKeyShortcuts';
 import { useLowPowerMode } from '@/components/app/useLowPowerMode';
+import { useGlobeGrid } from '@/components/app/useGlobeGrid';
 import { useFlyTo } from '@/components/app/useFlyTo';
 import { usePendingEventResolution } from '@/components/app/usePendingEventResolution';
 import type { DataPoint, LayerId } from '@/types';
@@ -48,6 +49,9 @@ function SentinelApp() {
     setPreference: setLowPowerPreference,
     lowPowerActive,
   } = useLowPowerMode();
+  // Phase 3 §10: persisted geographic-grid preference; only the Cesium
+  // branch consumes it (the legacy renderers ignore the prop).
+  const { globeGridVisible, setGlobeGridVisible } = useGlobeGrid();
   const { hintDismissed, dismissHint } = useFirstRunHint(requestFocus);
   const { flyTo, flyToLocation } = useFlyTo();
 
@@ -232,6 +236,7 @@ function SentinelApp() {
           flyTo={flyTo}
           sunDirection={sunDirection}
           lowPowerActive={lowPowerActive}
+          globeGridVisible={globeGridVisible}
           onActiveRenderer={setRendererInfo}
           onCoordinatePick={handleCoordinatePick}
         />
@@ -320,6 +325,8 @@ function SentinelApp() {
         lowPowerPreference={lowPowerPreference}
         onLowPowerPreferenceChange={setLowPowerPreference}
         lowPowerActive={lowPowerActive}
+        globeGrid={globeGridVisible}
+        onGlobeGridChange={setGlobeGridVisible}
       />
 
       <MarkerHoverCard point={hoveredPoint} activeLayer={activeLayer} />

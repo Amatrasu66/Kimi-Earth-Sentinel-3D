@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { RotateCw, Activity, Keyboard, Info, Leaf } from 'lucide-react';
+import { RotateCw, Activity, Keyboard, Info, Leaf, Grid3x3 } from 'lucide-react';
 import { api, getApiConfig } from '@/services/api';
 import { hasNavigatorGpu, probeWebGpuSupport } from '@/lib/webgpu';
 import {
@@ -47,6 +47,13 @@ interface SettingsModalProps {
   lowPowerPreference?: LowPowerPreference;
   onLowPowerPreferenceChange?: (preference: LowPowerPreference) => void;
   lowPowerActive?: boolean;
+  /**
+   * Phase 3 §10.3: optional geographic reference grid on the Cesium globe
+   * (`?renderer=cesium` only), persisted by the caller. Off by default;
+   * the legacy renderers ignore it.
+   */
+  globeGrid?: boolean;
+  onGlobeGridChange?: (visible: boolean) => void;
 }
 
 /**
@@ -270,6 +277,8 @@ function SettingsBody({
   lowPowerPreference = 'auto',
   onLowPowerPreferenceChange,
   lowPowerActive = false,
+  globeGrid = false,
+  onGlobeGridChange,
 }: Omit<SettingsModalProps, 'isOpen' | 'onClose'>) {
   // T4.6 status line: the selected preference next to what is actually
   // rendering (probed synchronously; SSR-safe, same as `hasNavigatorGpu`).
@@ -352,6 +361,28 @@ function SettingsBody({
               {lowPowerStatus}
             </p>
           </div>
+          {/* Phase 3 §10.3: latitude/longitude reference lines for the
+              Cesium globe — opt-in, persisted, and only meaningful on
+              `?renderer=cesium` (the other renderers ignore it). */}
+          <div className="sentinel-inset flex items-center justify-between gap-3 rounded-lg p-3">
+            <div className="flex items-start gap-2.5">
+              <Grid3x3 className="mt-0.5 h-4 w-4 shrink-0 text-sentinel-accent" aria-hidden />
+              <div>
+                <Label htmlFor="sentinel-globe-grid" className="text-[13px] font-medium text-white">Geographic grid</Label>
+                <p className="sentinel-micro mt-0.5">
+                  Latitude/longitude reference lines on the Cesium globe
+                  {' '}(<span className="sentinel-mono">?renderer=cesium</span>).
+                </p>
+              </div>
+            </div>
+            <Switch
+              id="sentinel-globe-grid"
+              checked={globeGrid}
+              onCheckedChange={(v) => onGlobeGridChange?.(v)}
+              aria-label="Toggle geographic grid"
+              className="data-[state=checked]:bg-sentinel-accent"
+            />
+          </div>
           <div className="sentinel-inset rounded-lg p-3">
             <p className="sentinel-micro leading-relaxed">
               Display theme is fixed to the dark command theme so the Earth stays the visual centerpiece.
@@ -433,9 +464,9 @@ function SettingsBody({
 
 // Centered dialog on desktop, bottom sheet on narrow screens — same content,
 // same tab logic, no behavior fork.
-export default function SettingsModal({ isOpen, onClose, isRotating, onToggleRotation, rendererInfo, activeLayer, dataStatus, cacheHit = null, singleKeyShortcuts = true, onSingleKeyShortcutsChange, lowPowerPreference = 'auto', onLowPowerPreferenceChange, lowPowerActive = false }: SettingsModalProps) {
+export default function SettingsModal({ isOpen, onClose, isRotating, onToggleRotation, rendererInfo, activeLayer, dataStatus, cacheHit = null, singleKeyShortcuts = true, onSingleKeyShortcutsChange, lowPowerPreference = 'auto', onLowPowerPreferenceChange, lowPowerActive = false, globeGrid = false, onGlobeGridChange }: SettingsModalProps) {
   const isMobile = useIsMobile();
-  const bodyProps = { isRotating, onToggleRotation, rendererInfo, activeLayer, dataStatus, cacheHit, singleKeyShortcuts, onSingleKeyShortcutsChange, lowPowerPreference, onLowPowerPreferenceChange, lowPowerActive };
+  const bodyProps = { isRotating, onToggleRotation, rendererInfo, activeLayer, dataStatus, cacheHit, singleKeyShortcuts, onSingleKeyShortcutsChange, lowPowerPreference, onLowPowerPreferenceChange, lowPowerActive, globeGrid, onGlobeGridChange };
 
   if (isMobile) {
     return (

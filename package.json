@@ -15,6 +15,7 @@
     "test": "vitest run",
     "textures:report": "node scripts/texture-report.mjs",
     "bundle:check": "node scripts/bundle-budget.mjs",
+    "smoke:browser": "node scripts/browser-smoke.mjs",
     "cesium:assets": "node scripts/copy-cesium-assets.mjs",
     "postinstall": "node scripts/copy-cesium-assets.mjs"
   },

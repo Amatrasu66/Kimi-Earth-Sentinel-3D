@@ -22,11 +22,16 @@ contract change unless stated and approved.
 >   ~1.35 MB gzip; initial route +1.1 KiB (195.7 KiB total, budget passes).
 > - `public/cesium` (342 files) is generated via `postinstall`, gitignored,
 >   and served correctly by `next start` (all MIME types verified).
-> - Real-browser verification is still open (no browser in the Phase 2
->   environment) — Phase 3 entry should include a browser/automation check.
+> - Real-browser verification is RESOLVED (2026-10-15): a zero-dependency
+>   CDP harness (`scripts/browser-smoke.mjs`, `npm run smoke:browser`) drives
+>   headless Edge against the production server. Phase 2 gate passed on it
+>   (see `PHASE_2_ACCEPTANCE_CHECKLIST.md` C/G), and Phase 3 re-used it with
+>   grid/narrow-viewport steps. Regenerating evidence needs no new tooling —
+>   only `next start` + the npm script.
 > - App-cluster test timing flake persists (5 s timeouts under load, zero
->   assertion failures) — Phase 8 must address it before it masks
->   regressions.
+>   assertion failures; 62/62 green with `--no-file-parallelism`, CPU
+>   contention characterized in `PHASE_3_IMPLEMENTATION_REPORT.md` §16) —
+>   Phase 8 must address it before it masks regressions.
 > - Defect repair 2026-10-15 (see `PHASE_2_IMPLEMENTATION_REPORT.md` §18):
 >   Edge + production build proved `?renderer=cesium` never booted — the
 >   lazy chunk failed to parse (`@spz-loader/core@0.3.1`, pulled in via
@@ -62,25 +67,50 @@ contract change unless stated and approved.
 - Out of scope: terrain, Sentinel data, default-renderer switch, three removal,
   timeline, proxy routes.
 
-## Phase 3 — Globe host hardening + imagery/terrain services
+## Phase 3 — Scientific Earth (per `PHASE_3_SCIENTIFIC_EARTH.md`)
 
-- Objective: production-grade viewer lifecycle and provider abstractions.
-- Scope: StrictMode-safe init/dispose; WebGL-failure → dotted fallback;
-  imagery registry (GIBS default, ion opt-in, static emergency);
-  visibility/opacity/ordering; attribution; provider status lines;
-  ellipsoid default + ion terrain opt-in.
-- Prerequisites: Phase 2 PoC accepted.
-- Tasks: lifecycle state machine; handler cleanup audit; imagery CRUD without
-  viewer rebuild; terrain switch with fallback; diagnostics extension
-  (Settings → Diagnostics: cesium version, asset base, provider states);
-  CSP additions (report-only first).
-- Files: `cesiumImagery.ts`, `cesiumTerrain.ts`, `SettingsModal.tsx`
-  (diagnostics only), `next.config.mjs` (headers only).
-- Risks: double-mount leaks; token handling mistakes (no token default).
-- Testing: unmount/dispose tests; provider-failure tests; imagery-switch tests.
-- Acceptance: 10× mount/unmount clean; provider failure never blanks globe;
-  diagnostics show real states.
-- Out of scope: Sentinel integration, default flip, legacy removal.
+> Phase 3 status (2026-10-15): IMPLEMENTED — see
+> `PHASE_3_IMPLEMENTATION_REPORT.md` (21 sections) and
+> `PHASE_3_ACCEPTANCE_CHECKLIST.md` (all §§20.A–G passed).
+> Verified findings for later phases:
+> - Scientific baseline: uniform lighting (`enableLighting=false`),
+>   `backgroundColor #020202`, `globe.baseColor #1a2a3c` (deep slate:
+>   discernible pre-imagery, never ocean-mimicking). MSAA 4 full / 1 low
+>   power. Imagery: GIBS `MODIS_Terra_CorrectedReflectance_TrueColor`
+>   (EPSG:3857 WMTS, `today` = mosaic availability, NOT live) —
+>   allow-listed, 217/217 × 200 in final smoke run.
+> - Optional graticule: built-in `GridImageryProvider`, transparent
+>   background/glow, 0.16-alpha lines, created once and `show`-toggled,
+>   off-by-default w/ `sentinel:globe-grid:v1` preference; Settings →
+>   Globe switch (a11y-wired). Lines confirmed semantically against
+>   installed source (color = lines, not fill).
+> - Terrain: ellipsoid retained (no token-free verified global provider;
+>   ion would require a token — forbidden by the mandatory-token-free
+>   rule). Upgrade path = ion opt-in behind explicit consent.
+> - Fly-to centralized in pure `resolveFlyToView()` (validated targets,
+>   home-height fallback, reduced-motion jumps). Picking contract
+>   unchanged. `requestRenderMode` evaluated and deferred to Phase 4
+>   (marker density decides); no new continuous-render loop.
+> - CSP: document remains report-only; but inline-style violations and
+>   WASM-instantiation notes mean Phase 8 enforcement must add style
+>   handling + `wasm-unsafe-eval` first (recorded in the Phase 3 report).
+> - Budgets: initial JS 200,385 B → 200,738 B gzip (196.0 KiB) PASS;
+>   Cesium lazy ≈ 1.36 MiB gzip total (shell 2.6 KiB); textures MET.
+> - Tests: 782/81 with 5–7 pre-existing flaky timeouts (contention,
+>   62/62 sequential). 16 new tests, all green.
+>
+> Items in the older Phase 3 plan below that were NOT part of the executed
+> scientific-Earth scope (imagery registry CRUD, ion terrain opt-in,
+> Settings Diagnostics, provider status lines, imagery switcher UI) are
+> re-targeted to Phase 4 per the delivered Phase 4 spec, which is the
+> authority from here on.
+>
+> Superseded pre-Phase-3 plan items (kept for history): production-grade
+> viewer lifecycle state machine; imagery CRUD/registry + provider status
+> lines; ion terrain opt-in; Settings → Diagnostics; CSP additions. The
+> imagery-registry and provider-management subset now belongs to Phase 4's
+> "Satellite Imagery and Scientific Layer Management" scope; re-check this
+> list against the Phase 4 spec at Phase 4 entry.
 
 ## Phase 4 — Observation sync + interaction parity
 

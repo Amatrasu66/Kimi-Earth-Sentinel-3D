@@ -88,6 +88,11 @@ interface EarthRendererProps {
    * set allocates (never a mid-life texture swap).
    */
   lowPowerActive?: boolean;
+  /**
+   * Phase 3 §10: optional geographic reference grid for the Cesium branch
+   * (persisted preference; the legacy branches ignore it).
+   */
+  globeGridVisible?: boolean;
   onActiveRenderer?: (info: RendererInfo) => void;
   /**
    * Phase 2 PoC extension: validated globe-surface picks from the Cesium
@@ -106,6 +111,7 @@ export default function EarthRenderer({
   flyTo = null,
   sunDirection,
   lowPowerActive = false,
+  globeGridVisible = false,
   onActiveRenderer,
   onCoordinatePick,
 }: EarthRendererProps) {
@@ -272,6 +278,7 @@ export default function EarthRenderer({
             flyTo={flyTo}
             sunDirection={sunDirection}
             lowPowerActive={lowPowerActive}
+            globeGridVisible={globeGridVisible}
             onActiveRenderer={onActiveRenderer}
             onCoordinatePick={onCoordinatePick}
           />

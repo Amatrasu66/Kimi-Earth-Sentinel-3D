@@ -21,7 +21,15 @@
  *   HTTP 200 `image/jpeg` with `Access-Control-Allow-Origin: *`, no key.
  * Layer discipline is preserved (allow-listed id only, no arbitrary URLs);
  * only the projection endpoint differs, which `buildTileUrl` does not cover.
+ *
+ * Phase 3 extends this module with the scientific-visual baseline (uniform
+ * lighting, theme background, base-color fix), the geographic reference
+ * grid constants, the low-power MSAA mapping, a documented imagery-provider
+ * descriptor, and a pure fly-to resolver. Values remain plain constants and
+ * pure functions — no `cesium` import — so the initial route never pays for
+ * the runtime through this file and unit tests need no WebGL context.
  */
+import { isValidCoordinate } from '@/lib/geo';
 
 /** Runtime base URL for Cesium workers/assets; must match the served path. */
 export const CESIUM_BASE_URL = '/cesium';
@@ -110,4 +118,134 @@ export function buildGibsTimeDimension(now: Date = new Date()): { Time: string }
   return /^\d{4}-\d{2}-\d{2}$/.test(day)
     ? { Time: day }
     : { Time: new Date().toISOString().slice(0, 10) };
+}
+
+/**
+ * Documented descriptor for the default imagery (Phase 3 §7.3). The Viewer
+ * consumes the individual constants above; this object is the single place
+ * the provider's operational envelope is written down.
+ * `cesiumConfig.test.ts` asserts every field against those constants and
+ * the server allow-list, so this documentation cannot drift from behavior.
+ */
+export interface GibsProviderDescriptor {
+  providerName: string;
+  productId: string;
+  endpoint: string;
+  projection: string;
+  tileMatrixSet: string;
+  style: string;
+  format: string;
+  timeDimension: { name: string; meaning: string };
+  attribution: string;
+  /** WMTS level range; ≈250 m/px native at the top level (global daily product). */
+  supportedZoomRange: string;
+  authentication: 'none';
+  fallback: string;
+}
+
+export const GIBS_PROVIDER_DESCRIPTOR: GibsProviderDescriptor = {
+  providerName: 'NASA EOSDIS GIBS (Global Imagery Browse Services)',
+  productId: GIBS_LAYER_ID,
+  endpoint: GIBS_WMTS_URL,
+  projection:
+    'EPSG:3857 (Web Mercator); GoogleMapsCompatible quadtree matching Cesium WebMercatorTilingScheme',
+  tileMatrixSet: GIBS_TILE_MATRIX_SET_ID,
+  style: GIBS_STYLE,
+  format: GIBS_FORMAT,
+  timeDimension: {
+    name: 'Time',
+    meaning:
+      'UTC calendar day of the MODIS Terra CorrectedReflectance TrueColor daily composite (250 m). ' +
+      'A daily composite — not real-time: same-day imagery appears only after processing and ' +
+      'publishing latency, and the globe never claims a live satellite observation.',
+  },
+  attribution: GIBS_CREDIT_TEXT,
+  supportedZoomRange: 'WMTS levels 0–9 (quadtree); visibly soft beyond regional zoom',
+  authentication: 'none',
+  fallback:
+    'Recoverable: tile errors surface as imagery-degraded status text; the Viewer and the ' +
+    'allow-listed layer are never replaced by an unverified provider.',
+};
+
+/**
+ * Scene visual baseline (Phase 3 §9) — public Scene/Globe properties only:
+ * - `GLOBE_ENABLE_LIGHTING: false` keeps uniform (day-side) illumination:
+ *   no day/night terminator, so continents stay readable at every camera
+ *   orientation and the view never implies a real-time sun position.
+ * - `CESIUM_SCENE_BACKGROUND_COLOR` matches the app's deep-space veil
+ *   (#020202), so the globe sits in the same visual space as the shell.
+ * - `CESIUM_GLOBE_BASE_COLOR` replaces Cesium's default `Color(0, 0, 0.5)`
+ *   navy for not-yet-streamed imagery, which read as ocean-blue "land".
+ *   Deep slate, not near-black: the sphere silhouette must stay discernible
+ *   before tiles stream (an invisible globe is "excessive darkening" —
+ *   §9.1), yet it must not mimic ocean-blue imagery.
+ * Sky atmosphere and ground atmosphere stay at their Cesium defaults
+ * (enabled, restrained) — no custom shader injection.
+ */
+export const GLOBE_ENABLE_LIGHTING = false;
+export const CESIUM_SCENE_BACKGROUND_COLOR = '#020202';
+export const CESIUM_GLOBE_BASE_COLOR = '#1a2a3c';
+
+/**
+ * Geographic reference grid (Phase 3 §10): Cesium's built-in
+ * `GridImageryProvider` draws the graticule in the `GeographicTilingScheme`,
+ * so it is aligned to the ellipsoid by construction (cell and tile
+ * boundaries fall on the 180°/2^n lattice), respects the same depth/camera
+ * rules as imagery (no z-fighting, no entity clutter), and its density
+ * refines with zoom (cells halve per level). Lines are deliberately faint —
+ * a reference layer must never compete with the imagery — and the feature
+ * is off by default, so it costs nothing until enabled.
+ */
+export const CESIUM_GRID_CELLS = 8;
+export const CESIUM_GRID_LINE_COLOR = '#dbe9ff';
+export const CESIUM_GRID_LINE_ALPHA = 0.16;
+/** Glow pass is built in; a fully transparent color disables it visually. */
+export const CESIUM_GRID_GLOW_COLOR = '#00000000';
+
+/**
+ * MSAA mapping (Phase 3 §13.3): the Cesium scene default is 4 samples;
+ * 1 disables multisampling. `Scene.msaaSamples` is a documented public
+ * property consumed by the render loop when framebuffers are created
+ * (verified in the installed 1.146.0 source), so the low-power sync effect
+ * can flip it on a live Viewer.
+ */
+export const FULL_MSAA_SAMPLES = 4;
+export const LOW_POWER_MSAA_SAMPLES = 1;
+
+/** A validated fly-to plan for one search-selected destination. */
+export interface FlyToViewPlan {
+  longitudeDegrees: number;
+  latitudeDegrees: number;
+  heightMeters: number;
+  /** 0 when reduced motion jumps immediately instead of animating. */
+  durationSeconds: number;
+  animate: boolean;
+}
+
+/**
+ * Resolve one fly-to request (Phase 3 §11.4) into a deterministic camera
+ * plan. Pure math — no Cesium types — so reference destinations are
+ * unit-tested directly. Invalid or missing targets resolve to null (the
+ * camera never moves on bad input); a non-finite or non-positive altitude
+ * falls back to the pinned home-view height. Reduced motion turns the
+ * flight into an immediate view change at the same destination.
+ */
+export function resolveFlyToView(options: {
+  target: { lat: number; lon: number } | null | undefined;
+  currentHeightMeters: number;
+  reducedMotion: boolean;
+}): FlyToViewPlan | null {
+  const { target } = options;
+  if (!target || !isValidCoordinate(target.lat, target.lon)) return null;
+  const height =
+    Number.isFinite(options.currentHeightMeters) && options.currentHeightMeters > 0
+      ? options.currentHeightMeters
+      : CESIUM_HOME_VIEW.heightMeters;
+  return {
+    longitudeDegrees: target.lon,
+    latitudeDegrees: target.lat,
+    heightMeters: height,
+    durationSeconds: options.reducedMotion ? 0 : CESIUM_FLY_TO_DURATION_SECONDS,
+    animate: !options.reducedMotion,
+  };
 }

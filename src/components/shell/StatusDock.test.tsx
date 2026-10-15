@@ -52,11 +52,16 @@ describe('StatusDock UTC clock hydration', () => {
 
 describe('StatusDock renderer badge (GLOBE-1)', () => {
   const info = (
-    active: 'dotted' | 'webgl' | 'webgpu' | 'loading',
+    active: 'dotted' | 'webgl' | 'webgpu' | 'cesium' | 'loading',
     source: 'automatic' | 'forced' = 'automatic',
   ) => ({
     active,
-    detail: active === 'dotted' ? 'ready · 1076 land dots' : 'starting globe…',
+    detail:
+      active === 'dotted'
+        ? 'ready · 1076 land dots'
+        : active === 'cesium'
+          ? 'ready · GIBS true-color (no token)'
+          : 'starting globe…',
     textures: { loaded: 0, total: 0 },
     source,
   });
@@ -74,6 +79,24 @@ describe('StatusDock renderer badge (GLOBE-1)', () => {
       name: 'Renderer: Dotted Earth · automatic · ready · 1076 land dots',
     });
     expect(badge).toHaveTextContent('Dotted Earth · automatic');
+  });
+
+  it('names the Cesium Earth renderer instead of leaving the dock on Starting…', () => {
+    // Regression: RENDERER_NAMES lacked a `cesium` key, so the dock badge
+    // fell through to "Starting…" while the Cesium globe was running.
+    render(
+      <StatusDock
+        coordinates={null}
+        activeLayer={null}
+        dataCount={0}
+        rendererInfo={info('cesium', 'forced')}
+      />,
+    );
+    const badge = screen.getByRole('status', {
+      name: 'Renderer: Cesium Earth · forced · ready · GIBS true-color (no token)',
+    });
+    expect(badge).toHaveTextContent('Cesium Earth · forced');
+    expect(badge).not.toHaveTextContent('Starting…');
   });
 
   it('still distinguishes a forced 3D override', () => {

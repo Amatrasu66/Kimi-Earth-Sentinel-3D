@@ -17,6 +17,7 @@ vi.mock('@/hooks/usePrefersReducedMotion', () => ({
 }));
 
 import CesiumEarth from './CesiumEarth';
+import { CESIUM_GRID_CELLS, FULL_MSAA_SAMPLES, LOW_POWER_MSAA_SAMPLES } from './cesiumConfig';
 
 interface FakeCamera {
   setView: ReturnType<typeof vi.fn>;
@@ -27,6 +28,7 @@ interface FakeCamera {
 
 function makeViewer() {
   const errorListeners: Array<() => void> = [];
+  const gridLayers: Array<{ show: boolean }> = [];
   const camera: FakeCamera = {
     setView: vi.fn(),
     flyTo: vi.fn(),
@@ -37,12 +39,28 @@ function makeViewer() {
     camera,
     scene: {
       canvas: document.createElement('canvas'),
-      globe: { ellipsoid: { radii: 'wgs84' }, maximumScreenSpaceError: 2 },
+      globe: {
+        ellipsoid: { radii: 'wgs84' },
+        maximumScreenSpaceError: 2,
+        // Phase 3 visual-baseline targets (written by the component).
+        enableLighting: true as boolean,
+        baseColor: undefined as { css?: string } | undefined,
+      },
+      backgroundColor: undefined as { css?: string } | undefined,
+      msaaSamples: 4,
+    },
+    imageryLayers: {
+      addImageryProvider: vi.fn(() => {
+        const layer = { show: true };
+        gridLayers.push(layer);
+        return layer;
+      }),
     },
     resolutionScale: 1,
     destroy: vi.fn(),
     isDestroyed: vi.fn(() => false),
     __errorListeners: errorListeners,
+    __gridLayers: gridLayers,
   };
   return viewer;
 }
@@ -52,6 +70,7 @@ type FakeViewer = ReturnType<typeof makeViewer>;
 let viewers: FakeViewer[];
 let clickCallback: ((movement: { position?: { x: number; y: number } }) => void) | null;
 let ViewerCtor: ReturnType<typeof vi.fn>;
+let GridImageryProviderCtor: ReturnType<typeof vi.fn>;
 
 function fakeCesiumNamespace() {
   return {
@@ -69,6 +88,14 @@ function fakeCesiumNamespace() {
     EllipsoidTerrainProvider: vi.fn(function (this: unknown) {
       return {};
     }),
+    Color: {
+      fromCssColorString: vi.fn((css: string) => ({
+        css,
+        withAlpha: (alpha: number) => ({ css, alpha }),
+      })),
+      TRANSPARENT: { css: 'transparent' },
+    },
+    GridImageryProvider: GridImageryProviderCtor,
     Viewer: ViewerCtor,
     ScreenSpaceEventHandler: vi.fn(function (this: unknown) {
       return {
@@ -113,6 +140,9 @@ beforeEach(() => {
     const viewer = makeViewer();
     viewers.push(viewer);
     return viewer;
+  });
+  GridImageryProviderCtor = vi.fn(function (this: unknown) {
+    return {};
   });
   loadCesiumRuntime.mockResolvedValue(fakeCesiumNamespace());
   delete (window as unknown as { CESIUM_BASE_URL?: string }).CESIUM_BASE_URL;
@@ -219,7 +249,46 @@ describe('CesiumEarth lifecycle (Phase 2)', () => {
     rerender(<CesiumEarth {...baseProps} lowPowerActive />);
     await waitFor(() => expect(viewers[0].resolutionScale).toBe(0.5));
     expect(viewers[0].scene.globe.maximumScreenSpaceError).toBe(4);
+    // Phase 3 §13.3: MSAA off in low power (documented Scene property).
+    expect(viewers[0].scene.msaaSamples).toBe(LOW_POWER_MSAA_SAMPLES);
     expect(ViewerCtor).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('CesiumEarth scientific scene (Phase 3)', () => {
+  it('applies the uniform-lighting baseline and theme-matched colors', async () => {
+    render(<CesiumEarth {...baseProps} />);
+    await waitFor(() => expect(ViewerCtor).toHaveBeenCalledTimes(1));
+
+    // No day/night terminator: continents stay legible at any orientation.
+    expect(viewers[0].scene.globe.enableLighting).toBe(false);
+    expect(viewers[0].scene.backgroundColor).toMatchObject({ css: '#020202' });
+    // Replaces Cesium's default navy for not-yet-streamed imagery.
+    expect(viewers[0].scene.globe.baseColor).toMatchObject({ css: '#1a2a3c' });
+    expect(viewers[0].scene.msaaSamples).toBe(FULL_MSAA_SAMPLES);
+  });
+
+  it('builds one restrained graticule layer and toggles it without rebuilding', async () => {
+    const { rerender } = render(<CesiumEarth {...baseProps} />);
+    await waitFor(() => expect(ViewerCtor).toHaveBeenCalledTimes(1));
+
+    expect(GridImageryProviderCtor).toHaveBeenCalledTimes(1);
+    const options = GridImageryProviderCtor.mock.calls[0]?.[0] as {
+      cells: number;
+      backgroundColor: { css: string };
+    };
+    expect(options.cells).toBe(CESIUM_GRID_CELLS);
+    // Transparent background: the graticule never tints the imagery.
+    expect(options.backgroundColor).toEqual({ css: 'transparent' });
+    expect(viewers[0].__gridLayers).toHaveLength(1);
+    expect(viewers[0].__gridLayers[0].show).toBe(false);
+
+    rerender(<CesiumEarth {...baseProps} globeGridVisible />);
+    await waitFor(() => expect(viewers[0].__gridLayers[0].show).toBe(true));
+
+    // A toggle is a flag flip — never a second provider construction.
+    expect(viewers[0].imageryLayers.addImageryProvider).toHaveBeenCalledTimes(1);
+    expect(GridImageryProviderCtor).toHaveBeenCalledTimes(1);
   });
 });
 

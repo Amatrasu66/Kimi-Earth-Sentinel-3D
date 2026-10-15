@@ -29,8 +29,8 @@ Evidence paths are repo-relative unless noted. No blocked item is marked passed.
 - [x] Passed — Static assets served from `/cesium` (copy script; 4/4 production probes 200 with correct MIME).
 - [x] Passed — Worker loading path configured (same-origin `/cesium/Workers` under existing `worker-src 'self'`; sample worker 200 `application/javascript`).
 - [x] Passed — Widget CSS loads (copied + verified 200 `text/css`; imported inside the client-only chunk).
-- [ ] Blocked — Globe renders and camera interaction verified in a real browser (no browser in this environment; substitute: SSR HTML, chunk isolation, mocked lifecycle/pick/fly-to tests, HTTP tile probes).
-- [x] Passed — Resize strategy defined (built-in behavior; no custom observer to leak).
+- [x] Passed — Globe renders and camera interaction verified in a real browser (gate run `sentinel-smoke/`: Viewer init, 130/130 wmts × 200, drag frame-diff, wheel zoom; screenshots reviewed during Phase 3).
+- [x] Passed — Resize strategy verified (built-in behavior; 1200-width + 1600 + 430 narrow checks all show canvas == viewport; no custom observer to leak).
 - [x] Passed — Cleanup works (unmount destroys once; StrictMode leaves exactly one live Viewer; tested).
 - [x] Passed — StrictMode leaves no duplicates (tested).
 - [x] Passed — Init failures handled visibly (module + construction failures → alert veil; tested).
@@ -72,7 +72,7 @@ Evidence paths are repo-relative unless noted. No blocked item is marked passed.
 - [x] Passed — Production build evaluated (clean; routes + chunks verified).
 - [x] Passed — Texture reporting evaluated (both tiers MET).
 - [x] Passed — Bundle-budget validation evaluated (before/after recorded).
-- [ ] Blocked — Manual browser verification (no browser/automation in environment; substitute evidence listed in C above; production HTTP probes completed).
+- [x] Passed — Manual browser verification (CDP smoke harness `scripts/browser-smoke.mjs` created; full gate run on production build passed with `hardChecksPassed: true`; evidence in `sentinel-smoke/` + report §2).
 - [x] Passed — Implementation report exists (companion file).
 - [x] Passed — Acceptance checklist exists (this file).
 - [x] Passed — Deviations and unresolved issues documented (report §§15–17).

@@ -24,6 +24,7 @@ const RENDERER_NAMES: Record<string, string> = {
   webgpu: 'WebGPU',
   webgl: 'WebGL',
   dotted: 'Dotted Earth',
+  cesium: 'Cesium Earth',
 };
 
 /**

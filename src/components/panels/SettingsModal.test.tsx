@@ -238,6 +238,48 @@ describe('SettingsModal low-power mode (T4.6)', () => {
   });
 });
 
+describe('SettingsModal geographic grid (Phase 3)', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  function renderWithGrid(visible: boolean) {
+    const onChange = vi.fn();
+    render(
+      <SettingsModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isRotating={true}
+        onToggleRotation={vi.fn()}
+        rendererInfo={mockRendererInfo}
+        activeLayer="earthquakes"
+        dataStatus={mockDataStatus}
+        cacheHit={false}
+        globeGrid={visible}
+        onGlobeGridChange={onChange}
+      />,
+    );
+    return { onChange };
+  }
+
+  it('exposes the grid switch with an accessible name and current state', () => {
+    renderWithGrid(true);
+    const gridSwitch = screen.getByRole('switch', { name: 'Toggle geographic grid' });
+    expect(gridSwitch).toBeInTheDocument();
+    expect(gridSwitch).toBeChecked();
+  });
+
+  it('is off by default and forwards changes to the caller (persistence lives there)', () => {
+    const { onChange } = renderWithGrid(false);
+    const gridSwitch = screen.getByRole('switch', { name: 'Toggle geographic grid' });
+    expect(gridSwitch).not.toBeChecked();
+
+    fireEvent.click(gridSwitch);
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
+});
+
 // Controllable reduced-motion double for the Diagnostics tab.
 function mockReducedMotion(initialMatches: boolean) {
   const matches = initialMatches;
