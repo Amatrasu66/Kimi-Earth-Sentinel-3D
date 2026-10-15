@@ -6,7 +6,7 @@
  * failure simply resolves to `supported: false` so the caller can fall
  * back to the WebGL globe.
  */
-export type RendererKind = 'webgpu' | 'webgl';
+export type RendererKind = 'webgpu' | 'webgl' | 'cesium';
 
 export interface WebGpuSupport {
   supported: boolean;
@@ -61,8 +61,9 @@ export function hasNavigatorGpu(): boolean {
  * `?renderer=webgl` forces the WebGL fallback even on WebGPU-capable
  * browsers; `?renderer=webgpu` forces the WebGPU path even where the probe
  * would decline it (a real init/render failure still falls back to WebGL
- * via the normal status-error path). Absent or any other value → no
- * override (`null`).
+ * via the normal status-error path). `?renderer=cesium` selects the CesiumJS
+ * proof-of-concept branch (Phase 2; resolved by `rendererMode`, not here).
+ * Absent or any other value → no override (`null`).
  *
  * Pure function of the query string — unit-testable without a browser.
  * Reads `window.location.search` in production; accepts an explicit
@@ -78,7 +79,7 @@ export function getForcedRenderer(search?: string): RendererKind | null {
           : '';
     const params = new URLSearchParams(raw.startsWith('?') ? raw.slice(1) : raw);
     const value = params.get('renderer')?.toLowerCase();
-    if (value === 'webgl' || value === 'webgpu') return value;
+    if (value === 'webgl' || value === 'webgpu' || value === 'cesium') return value;
     return null;
   } catch {
     return null;
@@ -89,13 +90,15 @@ export function getForcedRenderer(search?: string): RendererKind | null {
  * Single decision point for renderer selection (Session 5 regression seam).
  *
  * Priority: explicit `?renderer=` override wins (A/B diagnosis must work on
- * any browser); otherwise the capability probe decides. A failed/negative
- * probe always resolves to WebGL so the user never sees a black viewport.
+ * any browser); otherwise the capability probe decides between the two
+ * legacy 3D paths. A failed/negative probe always resolves to WebGL so the
+ * user never sees a black viewport. Non-3D overrides (today: `cesium`) pass
+ * through untouched — the globe selector owns them, not this helper.
  */
 export function decideRendererMode(
   forced: RendererKind | null,
   support: WebGpuSupport,
 ): RendererKind {
-  if (forced === 'webgl' || forced === 'webgpu') return forced;
+  if (forced) return forced;
   return support.supported ? 'webgpu' : 'webgl';
 }

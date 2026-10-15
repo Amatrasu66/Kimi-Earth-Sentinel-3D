@@ -84,6 +84,11 @@ describe('forced renderer override (?renderer=… A/B flag)', () => {
   it('returns null for unknown values', () => {
     expect(getForcedRenderer('?renderer=canvas')).toBeNull();
   });
+
+  it('forces Cesium when ?renderer=cesium (Phase 2 PoC)', () => {
+    expect(getForcedRenderer('?renderer=cesium')).toBe('cesium');
+    expect(getForcedRenderer('?renderer=Cesium')).toBe('cesium');
+  });
 });
 
 describe('renderer mode decision (Session 5 regression)', () => {
@@ -104,5 +109,12 @@ describe('renderer mode decision (Session 5 regression)', () => {
     { supported: false, reason: 'probe-failed' },
   ] as const)('a failed probe ($reason) falls back to WebGL', (support) => {
     expect(decideRendererMode(null, support)).toBe('webgl');
+  });
+
+  it('passes a non-3D override through untouched (owned by the globe selector)', () => {
+    expect(decideRendererMode('cesium', { supported: true, reason: 'ok' })).toBe('cesium');
+    expect(decideRendererMode('cesium', { supported: false, reason: 'no-adapter' })).toBe(
+      'cesium',
+    );
   });
 });

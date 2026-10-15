@@ -8,6 +8,26 @@ contract change unless stated and approved.
 
 ## Phase 2 — Cesium proof of concept (gated spike)
 
+> Phase 2 status (2026-10-15): IMPLEMENTED — see
+> `PHASE_2_IMPLEMENTATION_REPORT.md` and `PHASE_2_ACCEPTANCE_CHECKLIST.md`.
+> Verified findings for later phases:
+> - Pinned `cesium@1.146.0` (exact); APIs used verified against installed
+>   source (compiler corrected 4 misassumptions — always re-verify option
+>   names like `ImageryLayer` construction and `camera.pickEllipsoid`).
+> - GIBS geographic (`epsg4326`, `250m` set) TileMatrixSets are NOT
+>   quadtree-compatible (L1 col-3 → HTTP 400, proven); the PoC serves the
+>   same allow-listed layer via `epsg3857`/`GoogleMapsCompatible_Level9`.
+>   Any future geographic-endpoint use needs a custom tiling approach.
+> - Lazy isolation holds: shell chunk ~5 KB, engine chunk ~4.8 MB raw /
+>   ~1.35 MB gzip; initial route +1.1 KiB (195.7 KiB total, budget passes).
+> - `public/cesium` (342 files) is generated via `postinstall`, gitignored,
+>   and served correctly by `next start` (all MIME types verified).
+> - Real-browser verification is still open (no browser in the Phase 2
+>   environment) — Phase 3 entry should include a browser/automation check.
+> - App-cluster test timing flake persists (5 s timeouts under load, zero
+>   assertion failures) — Phase 8 must address it before it masks
+>   regressions.
+
 - Objective: prove Cesium boots in this Next.js 15 app on Vercel with assets,
   picking, and budget intact — then throw away or keep deliberately.
 - Scope: pinned `cesium` install; `public/cesium` asset copy; `?renderer=cesium`

@@ -78,6 +78,12 @@ function SentinelApp() {
   });
 
   const [hoveredPoint, setHoveredPoint] = useState<DataPoint | null>(null);
+  // Phase 2: last validated Cesium globe-surface pick (`?renderer=cesium`
+  // only). Readout-only — it never selects an event; hover wins while set.
+  const [pickedCoord, setPickedCoord] = useState<{ lat: number; lon: number } | null>(null);
+  const handleCoordinatePick = useCallback((lat: number, lon: number) => {
+    setPickedCoord({ lat, lon });
+  }, []);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isRotating, setIsRotating] = useState(true);
   const [allDataPoints, setAllDataPoints] = useState<DataPoint[]>([]);
@@ -136,6 +142,7 @@ function SentinelApp() {
       const next = activeLayer === layerId ? null : layerId;
       setActiveLayer(next);
       clearSelection();
+      setPickedCoord(null);
       if (next === null) {
         setAllDataPoints([]);
       }
@@ -147,6 +154,7 @@ function SentinelApp() {
     const restoreFocus = focusInDataSurface();
     setActiveLayer(null);
     clearSelection();
+    setPickedCoord(null);
     setAllDataPoints([]);
     if (restoreFocus) requestFocus('workspace');
   }, [focusInDataSurface, setActiveLayer, clearSelection, requestFocus]);
@@ -225,6 +233,7 @@ function SentinelApp() {
           sunDirection={sunDirection}
           lowPowerActive={lowPowerActive}
           onActiveRenderer={setRendererInfo}
+          onCoordinatePick={handleCoordinatePick}
         />
       )}
 
@@ -277,7 +286,9 @@ function SentinelApp() {
         }
         status={
           <StatusDock
-            coordinates={hoveredPoint ? { lat: hoveredPoint.lat, lon: hoveredPoint.lon } : null}
+            coordinates={
+              hoveredPoint ? { lat: hoveredPoint.lat, lon: hoveredPoint.lon } : pickedCoord
+            }
             activeLayer={activeLayer}
             dataCount={allDataPoints.length}
             dataStatus={dataStatus}

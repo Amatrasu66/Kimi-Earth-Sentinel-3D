@@ -14,7 +14,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "textures:report": "node scripts/texture-report.mjs",
-    "bundle:check": "node scripts/bundle-budget.mjs"
+    "bundle:check": "node scripts/bundle-budget.mjs",
+    "cesium:assets": "node scripts/copy-cesium-assets.mjs",
+    "postinstall": "node scripts/copy-cesium-assets.mjs"
   },
   "dependencies": {
     "@photostructure/tz-lookup": "11.7.0",
@@ -35,6 +37,7 @@
     "@visx/responsive": "4.0.1-alpha.0",
     "@visx/scale": "4.0.1-alpha.0",
     "@visx/shape": "4.0.1-alpha.0",
+    "cesium": "1.146.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "d3-array": "^3.2.4",

@@ -3,6 +3,7 @@
  *
  *   `?renderer=webgpu` → WebGPU/TSL Earth (opt-in, existing)
  *   `?renderer=webgl`  → R3F/WebGL Earth (opt-in, existing)
+ *   `?renderer=cesium`  → CesiumJS Earth (opt-in proof of concept, Phase 2)
  *   (absent)           → dotted canvas Earth mounted in the stage
  *
  * The default is the lightweight canvas renderer because it is the only
@@ -13,7 +14,8 @@
  *
  * The two 3D renderers are *not* removed — they keep their `?renderer=`
  * override, their parity contract and the existing WebGPU→WebGL fallback
- * (owner decision: no renderer removal without measured evidence).
+ * (owner decision: no renderer removal without measured evidence). The
+ * Phase 2 Cesium branch follows the same opt-in convention.
  *
  * Pure function of the query string, so it is unit-testable without a
  * browser and safe to call during render.
@@ -21,7 +23,7 @@
 import { useSyncExternalStore } from 'react';
 import { getForcedRenderer } from '@/lib/webgpu';
 
-export type GlobeMode = 'dotted' | 'webgpu' | 'webgl';
+export type GlobeMode = 'dotted' | 'webgpu' | 'webgl' | 'cesium';
 
 /** Renderer used when the URL does not opt into a 3D path. */
 export const DEFAULT_GLOBE_MODE: GlobeMode = 'dotted';

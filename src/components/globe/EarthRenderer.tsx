@@ -4,6 +4,7 @@
  *   default                 → <DottedEarth/> mounted in the GlobeStage cell
  *   ?renderer=webgpu        → <WebGPUEarth/> (WebGPU + TSL day/night Earth)
  *   ?renderer=webgl         → <GlobeScene/>  (existing WebGL/R3F globe)
+ *   ?renderer=cesium        → <CesiumEarth/> (CesiumJS proof of concept, Phase 2)
  *
  * The dotted canvas Earth is the default because it is the only path that
  * can guarantee a visible geographic base layer: no GPU probe, no 2.1 MB
@@ -42,6 +43,10 @@ const WebGPUEarth = dynamic(() => import('./WebGPUEarth'), { ssr: false });
 // are opt-in (`?renderer=` / WebGPU→WebGL fallback), so they load on
 // demand behind a veil; the dotted default is unaffected.
 const GlobeScene = dynamic(() => import('./GlobeScene'), { ssr: false });
+// Phase 2: the CesiumJS proof of concept is a fourth lazy client-only
+// chunk on the same pattern — it loads only for `?renderer=cesium` and the
+// Cesium runtime never enters the server graph or the initial route.
+const CesiumEarth = dynamic(() => import('./CesiumEarth'), { ssr: false });
 import type { DataPoint, LayerId } from '@/types';
 
 export interface RendererInfo {
@@ -84,6 +89,12 @@ interface EarthRendererProps {
    */
   lowPowerActive?: boolean;
   onActiveRenderer?: (info: RendererInfo) => void;
+  /**
+   * Phase 2 PoC extension: validated globe-surface picks from the Cesium
+   * branch. Optional so the legacy branches and existing callers are
+   * untouched; wired to the dock coordinate readout in `SentinelApp`.
+   */
+  onCoordinatePick?: (lat: number, lon: number) => void;
 }
 
 export default function EarthRenderer({
@@ -96,6 +107,7 @@ export default function EarthRenderer({
   sunDirection,
   lowPowerActive = false,
   onActiveRenderer,
+  onCoordinatePick,
 }: EarthRendererProps) {
   // Session 5 A/B test: `?renderer=webgl` / `?renderer=webgpu` resolves
   // synchronously at mount (no probe, no cascading render).
@@ -161,7 +173,8 @@ export default function EarthRenderer({
   useEffect(() => {
     // The default dotted branch reports its own geography status from
     // GlobeStage/DottedEarth — never overwrite it with a generic message.
-    if (activeMode === 'dotted') return;
+    // The Cesium branch likewise reports its own init/ready/error status.
+    if (activeMode === 'dotted' || activeMode === 'cesium') return;
     const forced = getForcedRenderer();
     const source: RendererInfo['source'] = forced ? 'forced' : 'automatic';
     const forcedSuffix = forced ? ` (forced ?renderer=${forced})` : '';
@@ -235,6 +248,33 @@ export default function EarthRenderer({
               onStatus={handleWebgpuStatus}
             />
           </WebGpuErrorBoundary>
+        </Suspense>
+      ) : activeMode === 'cesium' ? (
+        <Suspense
+          fallback={
+            <div
+              role="status"
+              aria-label="Loading Cesium Earth renderer"
+              // CSP-1: static veil styling as classes (no style attribute).
+              className="absolute inset-0 flex items-center justify-center bg-[#020202] text-[13px] tracking-[0.02em] text-white/50"
+            >
+              Loading Cesium Earth…
+            </div>
+          }
+        >
+          <CesiumEarth
+            key={qualityKey}
+            activeLayer={activeLayer}
+            dataPoints={dataPoints}
+            onMarkerClick={onMarkerClick}
+            onMarkerHover={onMarkerHover}
+            isRotating={isRotating}
+            flyTo={flyTo}
+            sunDirection={sunDirection}
+            lowPowerActive={lowPowerActive}
+            onActiveRenderer={onActiveRenderer}
+            onCoordinatePick={onCoordinatePick}
+          />
         </Suspense>
       ) : activeMode === 'webgl' ? (
         <Suspense

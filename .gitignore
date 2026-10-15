@@ -11,6 +11,10 @@ coverage/
 next-env.d.ts
 *.tsbuildinfo
 
+# CesiumJS static assets (generated from node_modules/cesium via
+# `npm run cesium:assets` / postinstall — never commit the copy)
+public/cesium/
+
 # Environment / secrets — never commit real values
 .env
 .env.*
