@@ -103,10 +103,10 @@ describe('serializeAppState determinism', () => {
   it('uses fixed order, omits defaults, and encodes correctly', () => {
     expect(serializeAppState(DEFAULT_URL_STATE)).toBe('');
     expect(
-      serializeAppState({ layer: 'earthquakes', event: null, q: '', sev: 'all', view: 'globe' }),
+      serializeAppState({ layer: 'earthquakes', event: null, q: '', sev: 'all', view: 'globe', imagery: null }),
     ).toBe('?layer=earthquakes');
     expect(
-      serializeAppState({ layer: 'earthquakes', event: 'eonet-1', q: 'fire & ice', sev: 'high', view: 'list' }),
+      serializeAppState({ layer: 'earthquakes', event: 'eonet-1', q: 'fire & ice', sev: 'high', view: 'list', imagery: null }),
     ).toBe('?layer=earthquakes&event=eonet-1&q=fire+%26+ice&sev=high&view=list');
     // Known keys win over passthrough collisions.
     expect(
@@ -127,6 +127,8 @@ describe('serializeAppState determinism', () => {
       '?layer=nope&event=..&q=a&sev=extreme&view=map',
       '',
       '?utm=x',
+      '?layer=earthquakes&imagery=gibs-modis-truecolor',
+      '?imagery=nope',
     ]) {
       const once = serializeAppState(parseAppUrl(search).state, parseAppUrl(search).passthrough);
       const twice = serializeAppState(parseAppUrl(once).state, parseAppUrl(once).passthrough);
@@ -136,6 +138,55 @@ describe('serializeAppState determinism', () => {
 
   it('drops invalid values on the floor (canonical form carries no junk)', () => {
     expect(serializeAppState(parseAppUrl('?layer=nope&event=..&q=a&sev=extreme&view=map').state, [])).toBe('');
+  });
+});
+
+describe('parseAppUrl imagery (Phase 4)', () => {
+  it('accepts a supported base imagery id', () => {
+    expect(parseAppUrl('?imagery=gibs-modis-truecolor').state.imagery).toBe(
+      'gibs-modis-truecolor',
+    );
+  });
+
+  it('drops unknown, empty, or forged imagery values (never triggers provider calls)', () => {
+    for (const search of [
+      '?imagery=sentinel-2',
+      '?imagery=NDVI',
+      '?imagery=',
+      '?imagery=https%3A%2F%2Fevil.example%2Ftiles',
+    ]) {
+      expect(parseAppUrl(search).state.imagery).toBeNull();
+    }
+    // Absent means the established default.
+    expect(parseAppUrl('').state.imagery).toBeNull();
+    expect(parseAppUrl('?layer=earthquakes').state.imagery).toBeNull();
+  });
+
+  it('round-trips a supported selection and preserves unrelated state', () => {
+    const parsed = parseAppUrl(
+      '?layer=earthquakes&renderer=cesium&imagery=gibs-modis-truecolor',
+    );
+    expect(parsed.state.imagery).toBe('gibs-modis-truecolor');
+    expect(parsed.passthrough).toEqual([['renderer', 'cesium']]);
+    // Canonical order: known params first, passthrough re-appended after.
+    expect(serializeAppState(parsed.state, parsed.passthrough)).toBe(
+      '?layer=earthquakes&imagery=gibs-modis-truecolor&renderer=cesium',
+    );
+  });
+
+  it('canonicalizes unknown imagery ids away without touching other params', () => {
+    expect(
+      serializeAppState(parseAppUrl('?layer=earthquakes&imagery=nope').state, []),
+    ).toBe('?layer=earthquakes');
+  });
+
+  it('keeps legacy URLs byte-identical (no imagery param, no behavior change)', () => {
+    expect(
+      serializeAppState(
+        parseAppUrl('?layer=earthquakes&event=eonet-1').state,
+        parseAppUrl('?layer=earthquakes&event=eonet-1').passthrough,
+      ),
+    ).toBe('?layer=earthquakes&event=eonet-1');
   });
 });
 

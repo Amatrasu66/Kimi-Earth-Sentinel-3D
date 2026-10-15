@@ -36,30 +36,26 @@ import { getForcedRenderer } from '@/lib/webgpu';
 import {
   CESIUM_BASE_URL,
   CESIUM_GLOBE_BASE_COLOR,
-  CESIUM_GRID_CELLS,
-  CESIUM_GRID_GLOW_COLOR,
-  CESIUM_GRID_LINE_ALPHA,
-  CESIUM_GRID_LINE_COLOR,
   CESIUM_HOME_VIEW,
   CESIUM_SCENE_BACKGROUND_COLOR,
   DEFAULT_MAXIMUM_SCREEN_SPACE_ERROR,
   FULL_MSAA_SAMPLES,
   FULL_RESOLUTION_SCALE,
-  GIBS_CREDIT_TEXT,
-  GIBS_FORMAT,
-  GIBS_LAYER_ID,
-  GIBS_MAXIMUM_LEVEL,
-  GIBS_STYLE,
-  GIBS_TILE_MATRIX_SET_ID,
-  GIBS_WMTS_URL,
   GLOBE_ENABLE_LIGHTING,
   LOW_POWER_MAXIMUM_SCREEN_SPACE_ERROR,
   LOW_POWER_MSAA_SAMPLES,
   LOW_POWER_RESOLUTION_SCALE,
-  buildGibsTimeDimension,
   loadCesiumRuntime,
   resolveFlyToView,
 } from './cesiumConfig';
+import {
+  createBaseImageryProvider,
+  createGraticuleProvider,
+} from './cesiumImageryProviders';
+import {
+  clampLayerOpacity,
+  resolveBaseLayerId,
+} from './imageryLayers';
 import type { GlobeMode } from './rendererMode';
 import type { DataPoint, LayerId } from '@/types';
 import type {
@@ -90,6 +86,22 @@ export interface CesiumEarthProps {
    * (persisted preference; ignored by the legacy branches).
    */
   globeGridVisible?: boolean;
+  /**
+   * Phase 4: validated base-imagery selection (`null` = established
+   * default). Unknown ids resolve to the default; only supported,
+   * verified layers are ever constructed.
+   */
+  baseLayerId?: string | null;
+  /**
+   * Phase 4: effective base-imagery opacity (0–1). Applied to the live
+   * layer's `alpha` without recreating the provider.
+   */
+  baseOpacity?: number;
+  /**
+   * Phase 4: effective graticule opacity (0–1). Applied to the live
+   * layer's `alpha` without recreating the provider.
+   */
+  gridOpacity?: number;
   onActiveRenderer?: (info: {
     active: GlobeMode | 'loading';
     detail: string;
@@ -103,6 +115,19 @@ export interface CesiumEarthProps {
    * never invoke it.
    */
   onCoordinatePick?: (lat: number, lon: number) => void;
+  /**
+   * Phase 4: base-layer failure reports (`null` on recovery). The Viewer
+   * keeps the previous working layer; this message feeds the Settings
+   * layer-manager status so the failure is visible and recoverable.
+   */
+  onLayerError?: (message: string | null) => void;
+  /**
+   * Phase 4: parent-owned layer error (mirrors the latest `onLayerError`
+   * report). Owned by the caller — not component state — so the Settings
+   * status and the diagnostics detail text can never disagree, and the
+   * switch effect below never calls setState synchronously.
+   */
+  layerError?: string | null;
 }
 
 type CesiumPhase = 'loading' | 'ready' | 'error';
@@ -125,8 +150,13 @@ export default function CesiumEarth({
   sunDirection: _sunDirection,
   lowPowerActive = false,
   globeGridVisible = false,
+  baseLayerId = null,
+  baseOpacity = 1,
+  gridOpacity = 1,
   onActiveRenderer,
   onCoordinatePick,
+  onLayerError,
+  layerError = null,
 }: CesiumEarthProps) {
   void _activeLayer;
   void _dataPoints;
@@ -142,6 +172,11 @@ export default function CesiumEarth({
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<CesiumViewer | null>(null);
   const gridLayerRef = useRef<CesiumImageryLayer | null>(null);
+  // Phase 4: live base layer + the id it was built for. Replacements are
+  // add-then-remove (never a blank globe) keyed off these refs.
+  const baseLayerRef = useRef<CesiumImageryLayer | null>(null);
+  const activeBaseIdRef = useRef<string | null>(null);
+  const detachBaseErrorRef = useRef<(() => void) | null>(null);
   const cesiumRef = useRef<typeof import('cesium') | null>(null);
   const reducedMotion = usePrefersReducedMotion();
 
@@ -149,15 +184,23 @@ export default function CesiumEarth({
   const callbackRef = useRef({
     onActiveRenderer,
     onCoordinatePick,
+    onLayerError,
     lowPowerActive,
     globeGridVisible,
+    baseLayerId,
+    baseOpacity,
+    gridOpacity,
   });
   useEffect(() => {
     callbackRef.current = {
       onActiveRenderer,
       onCoordinatePick,
+      onLayerError,
       lowPowerActive,
       globeGridVisible,
+      baseLayerId,
+      baseOpacity,
+      gridOpacity,
     };
   });
 
@@ -167,7 +210,7 @@ export default function CesiumEarth({
     let viewer: CesiumViewer | null = null;
     let clickHandler: CesiumScreenSpaceHandler | null = null;
     let gridLayer: CesiumImageryLayer | null = null;
-    let removeImageryListener: (() => void) | null = null;
+    let baseImageryLayer: CesiumImageryLayer | null = null;
 
     (async () => {
       try {
@@ -180,21 +223,18 @@ export default function CesiumEarth({
         const container = containerRef.current;
         if (!container) return;
 
-        const provider = new cesium.WebMapTileServiceImageryProvider({
-          url: GIBS_WMTS_URL,
-          layer: GIBS_LAYER_ID,
-          style: GIBS_STYLE,
-          format: GIBS_FORMAT,
-          tileMatrixSetID: GIBS_TILE_MATRIX_SET_ID,
-          maximumLevel: GIBS_MAXIMUM_LEVEL,
-          dimensions: buildGibsTimeDimension(),
-          credit: new cesium.Credit(GIBS_CREDIT_TEXT),
-        });
+        // Phase 4: the initial base goes through the same validated
+        // factory as later replacements (unknown ids resolve to the
+        // verified default — never a veil, never an arbitrary URL).
+        const initialBaseId = resolveBaseLayerId(callbackRef.current.baseLayerId);
+        const baseProvider = createBaseImageryProvider(cesium, initialBaseId);
+        baseImageryLayer = new cesium.ImageryLayer(baseProvider);
+        baseImageryLayer.alpha = clampLayerOpacity(callbackRef.current.baseOpacity);
 
         viewer = new cesium.Viewer(container, {
           // Token-free base: explicit GIBS layer instead of the default
           // ion world imagery (which would require an access token).
-          baseLayer: new cesium.ImageryLayer(provider),
+          baseLayer: baseImageryLayer,
           // Ellipsoid terrain: no external token, never fatal when optional
           // terrain data is unavailable.
           terrainProvider: new cesium.EllipsoidTerrainProvider(),
@@ -272,27 +312,29 @@ export default function CesiumEarth({
         // Phase 3 §10: graticule as a native imagery layer — created once
         // per Viewer (never per render); `show` is the visibility toggle,
         // and `viewer.destroy()` disposes the layer with the Viewer.
-        const gridProvider = new cesium.GridImageryProvider({
-          cells: CESIUM_GRID_CELLS,
-          color: cesium.Color.fromCssColorString(CESIUM_GRID_LINE_COLOR).withAlpha(
-            CESIUM_GRID_LINE_ALPHA,
-          ),
-          glowColor: cesium.Color.fromCssColorString(CESIUM_GRID_GLOW_COLOR),
-          backgroundColor: cesium.Color.TRANSPARENT,
-        });
+        // (Phase 4: construction lives in the provider factory.)
+        const gridProvider = createGraticuleProvider(cesium);
         gridLayer = viewer.imageryLayers.addImageryProvider(gridProvider);
         gridLayer.show = callbackRef.current.globeGridVisible;
+        gridLayer.alpha = clampLayerOpacity(callbackRef.current.gridOpacity);
 
         // Recoverable: tile failures degrade the status line, never destroy
-        // a working Viewer or blank the globe.
-        removeImageryListener = provider.errorEvent.addEventListener(() => {
+        // a working Viewer or blank the globe. Tracked in a ref so base
+        // replacements re-attach it to the current provider.
+        detachBaseErrorRef.current?.();
+        detachBaseErrorRef.current = baseProvider.errorEvent.addEventListener(() => {
           if (!cancelled) setImageryDegraded(true);
         });
 
         viewerRef.current = viewer;
         gridLayerRef.current = gridLayer;
+        baseLayerRef.current = baseImageryLayer;
+        activeBaseIdRef.current = initialBaseId;
         if (!cancelled) {
           setPhase('ready');
+          // A fresh Viewer is healthy until proven otherwise: clear any
+          // stale failure carried over from a previous mount.
+          callbackRef.current.onLayerError?.(null);
         } else {
           viewer.destroy();
           viewerRef.current = null;
@@ -314,14 +356,17 @@ export default function CesiumEarth({
         // Teardown must never throw; a half-initialized handler is dropped.
       }
       try {
-        removeImageryListener?.();
+        detachBaseErrorRef.current?.();
       } catch {
         // Listener removal is best-effort during unmount.
       }
+      detachBaseErrorRef.current = null;
       const owned = viewer;
       viewer = null;
       viewerRef.current = null;
       gridLayerRef.current = null;
+      baseLayerRef.current = null;
+      activeBaseIdRef.current = null;
       if (owned && !owned.isDestroyed()) {
         owned.destroy();
       }
@@ -392,14 +437,108 @@ export default function CesiumEarth({
     if (layer) layer.show = globeGridVisible;
   }, [globeGridVisible]);
 
+  // Phase 4: base-imagery replacement. Add-then-remove keeps the globe
+  // covered during ordinary transitions (no blank frame); the old layer is
+  // removed once the replacement is attached. Any construction or
+  // attachment failure preserves the previous working layer and reports —
+  // it never destroys the Viewer, never retries in a loop, and never
+  // misrepresents stale imagery as fresh.
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    const cesium = cesiumRef.current;
+    if (!viewer || viewer.isDestroyed() || !cesium) return;
+    const wantedId = resolveBaseLayerId(baseLayerId);
+    if (wantedId === activeBaseIdRef.current) {
+      // Re-selecting the working layer acknowledges recovery: a stale
+      // failure clears once the known-good selection is chosen again.
+      // (Provider construction below is synchronous, so no generation
+      // guard is needed — each selection completes before the next effect
+      // can run. If initialization ever becomes asynchronous, a
+      // generation guard must be added here first.)
+      // Reporting (not setState): the error is parent-owned, so the
+      // Settings status and this detail text stay consistent.
+      callbackRef.current.onLayerError?.(null);
+      return;
+    }
+    const report = callbackRef.current.onLayerError;
+
+    let nextProvider: ReturnType<typeof createBaseImageryProvider>;
+    try {
+      nextProvider = createBaseImageryProvider(cesium, wantedId);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Base imagery unavailable';
+      report?.(message);
+      return;
+    }
+
+    try {
+      const next = viewer.imageryLayers.addImageryProvider(nextProvider);
+      if (viewer.isDestroyed()) {
+        // Torn down mid-replacement: drop the orphan so the switch
+        // cannot leak a layer past the Viewer.
+        try {
+          if (viewer.imageryLayers.contains(next)) {
+            viewer.imageryLayers.remove(next, true);
+          }
+        } catch {
+          // Best-effort orphan cleanup during teardown.
+        }
+        return;
+      }
+      // The base stays at the bottom by construction; overlays render above.
+      viewer.imageryLayers.lowerToBottom(next);
+      next.alpha = clampLayerOpacity(callbackRef.current.baseOpacity);
+      const previous = baseLayerRef.current;
+      try {
+        detachBaseErrorRef.current?.();
+      } catch {
+        // Best-effort during replacement.
+      }
+      detachBaseErrorRef.current = nextProvider.errorEvent.addEventListener(() => {
+        setImageryDegraded(true);
+      });
+      if (previous && previous !== next) {
+        try {
+          if (viewer.imageryLayers.contains(previous)) {
+            viewer.imageryLayers.remove(previous, true);
+          }
+        } catch {
+          // Removal is best-effort; the Viewer owns disposal on destroy.
+        }
+      }
+      baseLayerRef.current = next;
+      activeBaseIdRef.current = wantedId;
+      report?.(null);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Base imagery unavailable';
+      report?.(message);
+    }
+  }, [baseLayerId]);
+
+  // Phase 4: opacity follows the live layer's `alpha` — no provider
+  // recreation for slider movement, no Viewer reinitialization.
+  useEffect(() => {
+    const layer = baseLayerRef.current;
+    if (layer) layer.alpha = clampLayerOpacity(baseOpacity);
+  }, [baseOpacity]);
+
+  useEffect(() => {
+    const layer = gridLayerRef.current;
+    if (layer) layer.alpha = clampLayerOpacity(gridOpacity);
+  }, [gridOpacity]);
+
   // Diagnostics reporting (same callback contract as the legacy branches).
   const forced = getForcedRenderer();
   const source = forced === 'cesium' ? 'forced' : 'automatic';
   const detail =
     phase === 'ready'
-      ? imageryDegraded
-        ? 'ready · GIBS imagery degraded (tile errors)'
-        : 'ready · GIBS true-color (no token)'
+      ? layerError !== null
+        ? `ready · ${layerError}`
+        : imageryDegraded
+          ? 'ready · GIBS imagery degraded (tile errors)'
+          : 'ready · GIBS true-color (no token)'
       : phase === 'error'
         ? (errorMessage ?? 'initialization failed')
         : `initializing…${forced === 'cesium' ? ' (forced ?renderer=cesium)' : ''}`;

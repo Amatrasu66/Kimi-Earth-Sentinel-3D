@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { RotateCw, Activity, Keyboard, Info, Leaf, Grid3x3 } from 'lucide-react';
+import { RotateCw, Activity, Keyboard, Info, Leaf, Grid3x3, Layers } from 'lucide-react';
 import { api, getApiConfig } from '@/services/api';
 import { hasNavigatorGpu, probeWebGpuSupport } from '@/lib/webgpu';
 import {
@@ -9,6 +9,11 @@ import {
   probeLowPowerSignals,
 } from '@/lib/low-power';
 import type { LowPowerPreference } from '@/lib/low-power';
+import {
+  BASE_IMAGERY_LAYERS,
+  clampLayerOpacity,
+  resolveBaseLayerId,
+} from '@/components/globe/imageryLayers';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion';
 import type { RendererInfo } from '@/components/globe/EarthRenderer';
@@ -54,6 +59,19 @@ interface SettingsModalProps {
    */
   globeGrid?: boolean;
   onGlobeGridChange?: (visible: boolean) => void;
+  /**
+   * Phase 4: layer-manager state for the Cesium globe. `baseImagery`
+   * (`null` = established default) syncs to `?imagery=`; opacities are
+   * local-storage display preferences; `imageryError` is the latest
+   * base-layer failure (`null` when healthy).
+   */
+  baseImagery?: string | null;
+  onBaseImageryChange?: (layerId: string) => void;
+  baseOpacity?: number;
+  onBaseOpacityChange?: (value: number) => void;
+  gridOpacity?: number;
+  onGridOpacityChange?: (value: number) => void;
+  imageryError?: string | null;
 }
 
 /**
@@ -279,6 +297,13 @@ function SettingsBody({
   lowPowerActive = false,
   globeGrid = false,
   onGlobeGridChange,
+  baseImagery = null,
+  onBaseImageryChange,
+  baseOpacity = 1,
+  onBaseOpacityChange,
+  gridOpacity = 1,
+  onGridOpacityChange,
+  imageryError = null,
 }: Omit<SettingsModalProps, 'isOpen' | 'onClose'>) {
   // T4.6 status line: the selected preference next to what is actually
   // rendering (probed synchronously; SSR-safe, same as `hasNavigatorGpu`).
@@ -287,6 +312,13 @@ function SettingsBody({
     lowPowerActive,
     probeLowPowerSignals(),
   );
+  // Phase 4: slider positions always reflect clamped 0–100% values so the
+  // UI and the rendered layer alpha can never disagree.
+  const baseOpacityPercent = Math.round(clampLayerOpacity(baseOpacity) * 100);
+  const gridOpacityPercent = Math.round(clampLayerOpacity(gridOpacity) * 100);
+  // Unknown incoming selections resolve to the verified default, so the
+  // displayed choice always names the imagery that is actually active.
+  const selectedBaseId = resolveBaseLayerId(baseImagery);
   return (
     <Tabs defaultValue="globe" className="min-h-0 gap-0">
       <div className="border-b border-white/[0.07] px-4 pt-2.5">
@@ -361,27 +393,139 @@ function SettingsBody({
               {lowPowerStatus}
             </p>
           </div>
-          {/* Phase 3 §10.3: latitude/longitude reference lines for the
-              Cesium globe — opt-in, persisted, and only meaningful on
-              `?renderer=cesium` (the other renderers ignore it). */}
-          <div className="sentinel-inset flex items-center justify-between gap-3 rounded-lg p-3">
+          {/* Phase 4: base imagery selection. Only verified sources are
+              listed — today exactly one. The radiogroup stays so a second
+              verified source slots in without a redesign, and the choice
+              syncs to `?imagery=` (unknown ids fall back to the default). */}
+          <div className="sentinel-inset rounded-lg p-3">
             <div className="flex items-start gap-2.5">
-              <Grid3x3 className="mt-0.5 h-4 w-4 shrink-0 text-sentinel-accent" aria-hidden />
-              <div>
-                <Label htmlFor="sentinel-globe-grid" className="text-[13px] font-medium text-white">Geographic grid</Label>
+              <Layers className="mt-0.5 h-4 w-4 shrink-0 text-sentinel-accent" aria-hidden />
+              <div className="min-w-0 flex-1">
+                <span id="sentinel-base-imagery-label" className="text-[13px] font-medium text-white">Base imagery</span>
                 <p className="sentinel-micro mt-0.5">
-                  Latitude/longitude reference lines on the Cesium globe
+                  The verified globe surface for the Cesium globe
                   {' '}(<span className="sentinel-mono">?renderer=cesium</span>).
                 </p>
               </div>
             </div>
-            <Switch
-              id="sentinel-globe-grid"
-              checked={globeGrid}
-              onCheckedChange={(v) => onGlobeGridChange?.(v)}
-              aria-label="Toggle geographic grid"
-              className="data-[state=checked]:bg-sentinel-accent"
-            />
+            <div role="radiogroup" aria-labelledby="sentinel-base-imagery-label" className="mt-2.5 space-y-1.5">
+              {BASE_IMAGERY_LAYERS.map((layer) => (
+                <label
+                  key={layer.id}
+                  className="flex cursor-pointer items-start gap-2.5 rounded-md border border-white/10 bg-white/[0.04] p-2.5"
+                >
+                  <input
+                    type="radio"
+                    name="sentinel-base-imagery"
+                    value={layer.id}
+                    checked={selectedBaseId === layer.id}
+                    onChange={() => onBaseImageryChange?.(layer.id)}
+                    aria-describedby={`sentinel-base-imagery-desc-${layer.id}`}
+                    className="mt-0.5 shrink-0 accent-sentinel-accent"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-[13px] font-medium text-white">{layer.name}</span>
+                    <span id={`sentinel-base-imagery-desc-${layer.id}`} className="sentinel-micro mt-0.5 block">
+                      {layer.description}
+                    </span>
+                    {layer.attribution && (
+                      <span className="sentinel-micro sentinel-mono mt-1 block text-white/55">
+                        {layer.attribution}
+                      </span>
+                    )}
+                    {layer.temporalNote && (
+                      <span className="sentinel-micro mt-1 block text-white/55">
+                        {layer.temporalNote}
+                      </span>
+                    )}
+                  </span>
+                </label>
+              ))}
+            </div>
+            <div className="mt-2.5">
+              <div className="flex items-baseline justify-between gap-3">
+                <Label htmlFor="sentinel-base-opacity" className="text-[13px] font-medium text-white">
+                  Base opacity
+                </Label>
+                <span className="sentinel-micro sentinel-mono shrink-0 text-white/55" aria-hidden>
+                  {baseOpacityPercent}%
+                </span>
+              </div>
+              <input
+                id="sentinel-base-opacity"
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={baseOpacityPercent}
+                aria-valuetext={`${baseOpacityPercent} percent`}
+                aria-describedby="sentinel-base-opacity-note"
+                onChange={(event) => onBaseOpacityChange?.(Number(event.target.value) / 100)}
+                className="mt-1.5 w-full accent-sentinel-accent"
+              />
+              <p id="sentinel-base-opacity-note" className="sentinel-micro mt-1">
+                Fades the base imagery without reloading tiles.
+              </p>
+            </div>
+            {imageryError && (
+              <p role="status" className="mt-2 rounded-md border border-red-400/20 bg-red-500/10 p-2 text-xs leading-relaxed text-red-200">
+                {imageryError}
+              </p>
+            )}
+          </div>
+          {/* Phase 3 §10.3: latitude/longitude reference lines for the
+              Cesium globe — opt-in, persisted, and only meaningful on
+              `?renderer=cesium` (the other renderers ignore it).
+              Phase 4 adds the grid opacity slider: disabled while the grid
+              is off so it can never look functional while doing nothing. */}
+          <div className="sentinel-inset rounded-lg p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-start gap-2.5">
+                <Grid3x3 className="mt-0.5 h-4 w-4 shrink-0 text-sentinel-accent" aria-hidden />
+                <div>
+                  <Label htmlFor="sentinel-globe-grid" className="text-[13px] font-medium text-white">Geographic grid</Label>
+                  <p className="sentinel-micro mt-0.5">
+                    Latitude/longitude reference lines on the Cesium globe
+                    {' '}(<span className="sentinel-mono">?renderer=cesium</span>).
+                  </p>
+                </div>
+              </div>
+              <Switch
+                id="sentinel-globe-grid"
+                checked={globeGrid}
+                onCheckedChange={(v) => onGlobeGridChange?.(v)}
+                aria-label="Toggle geographic grid"
+                className="data-[state=checked]:bg-sentinel-accent"
+              />
+            </div>
+            <div className="mt-2.5 border-t border-white/[0.07] pt-2.5">
+              <div className="flex items-baseline justify-between gap-3">
+                <Label htmlFor="sentinel-grid-opacity" className="text-[13px] font-medium text-white">
+                  Grid opacity
+                </Label>
+                <span className="sentinel-micro sentinel-mono shrink-0 text-white/55" aria-hidden>
+                  {gridOpacityPercent}%
+                </span>
+              </div>
+              <input
+                id="sentinel-grid-opacity"
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={gridOpacityPercent}
+                aria-valuetext={`${gridOpacityPercent} percent`}
+                aria-describedby="sentinel-grid-opacity-note"
+                disabled={!globeGrid}
+                onChange={(event) => onGridOpacityChange?.(Number(event.target.value) / 100)}
+                className="mt-1.5 w-full accent-sentinel-accent disabled:opacity-40"
+              />
+              <p id="sentinel-grid-opacity-note" className="sentinel-micro mt-1">
+                {globeGrid
+                  ? 'Fades the reference lines without rebuilding the layer.'
+                  : 'Turn the grid on to adjust its opacity.'}
+              </p>
+            </div>
           </div>
           <div className="sentinel-inset rounded-lg p-3">
             <p className="sentinel-micro leading-relaxed">
@@ -464,9 +608,9 @@ function SettingsBody({
 
 // Centered dialog on desktop, bottom sheet on narrow screens — same content,
 // same tab logic, no behavior fork.
-export default function SettingsModal({ isOpen, onClose, isRotating, onToggleRotation, rendererInfo, activeLayer, dataStatus, cacheHit = null, singleKeyShortcuts = true, onSingleKeyShortcutsChange, lowPowerPreference = 'auto', onLowPowerPreferenceChange, lowPowerActive = false, globeGrid = false, onGlobeGridChange }: SettingsModalProps) {
+export default function SettingsModal({ isOpen, onClose, isRotating, onToggleRotation, rendererInfo, activeLayer, dataStatus, cacheHit = null, singleKeyShortcuts = true, onSingleKeyShortcutsChange, lowPowerPreference = 'auto', onLowPowerPreferenceChange, lowPowerActive = false, globeGrid = false, onGlobeGridChange, baseImagery = null, onBaseImageryChange, baseOpacity = 1, onBaseOpacityChange, gridOpacity = 1, onGridOpacityChange, imageryError = null }: SettingsModalProps) {
   const isMobile = useIsMobile();
-  const bodyProps = { isRotating, onToggleRotation, rendererInfo, activeLayer, dataStatus, cacheHit, singleKeyShortcuts, onSingleKeyShortcutsChange, lowPowerPreference, onLowPowerPreferenceChange, lowPowerActive, globeGrid, onGlobeGridChange };
+  const bodyProps = { isRotating, onToggleRotation, rendererInfo, activeLayer, dataStatus, cacheHit, singleKeyShortcuts, onSingleKeyShortcutsChange, lowPowerPreference, onLowPowerPreferenceChange, lowPowerActive, globeGrid, onGlobeGridChange, baseImagery, onBaseImageryChange, baseOpacity, onBaseOpacityChange, gridOpacity, onGridOpacityChange, imageryError };
 
   if (isMobile) {
     return (

@@ -1,7 +1,9 @@
 /**
  * URL-driven application state (T3.3) — pure parse/serialize/validate.
  *
- * Contract: `?layer=<id>&event=<id>&q=<text>&sev=<level>&view=globe|list`.
+ * Contract: `?layer=<id>&event=<id>&q=<text>&sev=<level>&view=globe|list`
+ * plus the optional `?imagery=<base-layer-id>` (Phase 4: validated against
+ * the imagery registry; absent or unknown means the established default).
  * Every parameter mirrors real, existing app capability; nothing here touches
  * React, window, history, or provider calls, so it is fully unit-testable.
  *
@@ -13,6 +15,9 @@
  *   so a malformed fire id can never trigger a detail lookup.
  * - q: the T1.5 search rules (trimmed, 2–200 chars, no control characters).
  * - view: `globe` (default) or `list`.
+ * - imagery: supported base-layer ids from `@/components/globe/imageryLayers`
+ *   (exact, case-sensitive; unknown ids are dropped, never defaulted into
+ *   something that would trigger provider calls).
  *
  * Parse/serialize round-trip is a fixed point — `serialize(parse(s))` is
  * stable — which is what keeps the history sync loop-free: after applying a
@@ -23,6 +28,10 @@
  */
 import { LAYER_IDS } from '@/types';
 import type { LayerId } from '@/types';
+import {
+  IMAGERY_URL_PARAM,
+  parseImageryUrlValue,
+} from '@/components/globe/imageryLayers';
 import { SEVERITY_FILTERS } from '@/components/intelligence/SeverityFilter';
 import type { SeverityFilterValue } from '@/components/intelligence/SeverityFilter';
 
@@ -37,6 +46,12 @@ export interface AppUrlState {
   q: string;
   sev: SeverityFilterValue;
   view: AppView;
+  /**
+   * Validated base-imagery id (Phase 4). `null` means the established
+   * default and serializes to "parameter omitted", so legacy URLs without
+   * `?imagery=` keep their exact behavior.
+   */
+  imagery: string | null;
 }
 
 export const DEFAULT_URL_STATE: AppUrlState = {
@@ -45,6 +60,7 @@ export const DEFAULT_URL_STATE: AppUrlState = {
   q: '',
   sev: 'all',
   view: 'globe',
+  imagery: null,
 };
 
 /**
@@ -126,7 +142,7 @@ export function parseAppUrl(search: string): ParsedAppUrl {
   for (const key of params.keys()) {
     if (seen.has(key)) continue;
     seen.add(key);
-    if (!['layer', 'event', 'q', 'sev', 'view'].includes(key)) {
+    if (!['layer', 'event', 'q', 'sev', 'view', IMAGERY_URL_PARAM].includes(key)) {
       passthrough.push([key, params.get(key) ?? '']);
     }
   }
@@ -136,6 +152,7 @@ export function parseAppUrl(search: string): ParsedAppUrl {
   const qRaw = get('q');
   const sevRaw = get('sev');
   const viewRaw = get('view');
+  const imageryRaw = get(IMAGERY_URL_PARAM);
 
   return {
     state: {
@@ -144,6 +161,7 @@ export function parseAppUrl(search: string): ParsedAppUrl {
       q: isValidSearchQuery(qRaw) ? (qRaw as string).trim() : '',
       sev: sevRaw !== null && isSupportedSeverity(sevRaw) ? sevRaw : 'all',
       view: isValidView(viewRaw) ? viewRaw : 'globe',
+      imagery: parseImageryUrlValue(imageryRaw),
     },
     passthrough,
   };
@@ -152,8 +170,9 @@ export function parseAppUrl(search: string): ParsedAppUrl {
 /**
  * Serialize validated state back to a query string (leading `?`, or `''`
  * when empty). Fixed param order, defaults omitted (`layer`/`event` null,
- * `q` empty, `sev=all`, `view=globe`), passthrough re-appended (known keys
- * win on collision). Deterministic: equal state always yields equal output.
+ * `q` empty, `sev=all`, `view=globe`, `imagery` null), passthrough
+ * re-appended (known keys win on collision). Deterministic: equal state
+ * always yields equal output.
  */
 export function serializeAppState(state: AppUrlState, passthrough: [string, string][] = []): string {
   const params = new URLSearchParams();
@@ -162,8 +181,9 @@ export function serializeAppState(state: AppUrlState, passthrough: [string, stri
   if (state.q !== '') params.set('q', state.q);
   if (state.sev !== 'all') params.set('sev', state.sev);
   if (state.view !== 'globe') params.set('view', state.view);
+  if (state.imagery !== null) params.set(IMAGERY_URL_PARAM, state.imagery);
   for (const [key, value] of passthrough) {
-    if (['layer', 'event', 'q', 'sev', 'view'].includes(key)) continue;
+    if (['layer', 'event', 'q', 'sev', 'view', IMAGERY_URL_PARAM].includes(key)) continue;
     if (params.has(key)) continue;
     params.append(key, value);
   }

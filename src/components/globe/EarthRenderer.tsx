@@ -93,6 +93,14 @@ interface EarthRendererProps {
    * (persisted preference; the legacy branches ignore it).
    */
   globeGridVisible?: boolean;
+  /**
+   * Phase 4: validated base-imagery selection + layer opacities for the
+   * Cesium branch (the legacy branches ignore them). Opacity lives outside
+   * the URL so slider input never writes history.
+   */
+  baseLayerId?: string | null;
+  baseOpacity?: number;
+  gridOpacity?: number;
   onActiveRenderer?: (info: RendererInfo) => void;
   /**
    * Phase 2 PoC extension: validated globe-surface picks from the Cesium
@@ -100,6 +108,15 @@ interface EarthRendererProps {
    * untouched; wired to the dock coordinate readout in `SentinelApp`.
    */
   onCoordinatePick?: (lat: number, lon: number) => void;
+  /**
+   * Phase 4: base-layer failure reports from the Cesium branch (`null` on
+   * recovery). The Viewer keeps the previous working layer.
+   */
+  onLayerError?: (message: string | null) => void;
+  /**
+   * Phase 4: parent-owned layer error mirrored back for diagnostics.
+   */
+  layerError?: string | null;
 }
 
 export default function EarthRenderer({
@@ -112,8 +129,13 @@ export default function EarthRenderer({
   sunDirection,
   lowPowerActive = false,
   globeGridVisible = false,
+  baseLayerId = null,
+  baseOpacity = 1,
+  gridOpacity = 1,
   onActiveRenderer,
   onCoordinatePick,
+  onLayerError,
+  layerError = null,
 }: EarthRendererProps) {
   // Session 5 A/B test: `?renderer=webgl` / `?renderer=webgpu` resolves
   // synchronously at mount (no probe, no cascading render).
@@ -279,8 +301,13 @@ export default function EarthRenderer({
             sunDirection={sunDirection}
             lowPowerActive={lowPowerActive}
             globeGridVisible={globeGridVisible}
+            baseLayerId={baseLayerId}
+            baseOpacity={baseOpacity}
+            gridOpacity={gridOpacity}
             onActiveRenderer={onActiveRenderer}
             onCoordinatePick={onCoordinatePick}
+            onLayerError={onLayerError}
+            layerError={layerError}
           />
         </Suspense>
       ) : activeMode === 'webgl' ? (

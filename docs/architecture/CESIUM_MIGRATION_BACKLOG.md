@@ -114,6 +114,55 @@ contract change unless stated and approved.
 
 ## Phase 4 — Observation sync + interaction parity
 
+> Phase 4 status (2026-10-16): IMPLEMENTED per the delivered Phase 4 spec
+> (`docs/prompts/architecture/PHASE_4_IMAGERY_LAYER_MANAGER.md`, which is
+> the authority from here on) — see `PHASE_4_IMPLEMENTATION_REPORT.md`
+> (20 sections), `PHASE_4_ACCEPTANCE_CHECKLIST.md` (all §§20.A–G passed),
+> and `IMAGERY_LAYER_PROVIDER_REFERENCE.md` (new).
+> Delivered: typed imagery registry (1 verified base
+> `gibs-modis-truecolor` + 1 overlay `cesium-graticule`, stable URL-safe
+> ids, no placeholder layers); validated provider factory (pinned GIBS
+> constants, forged ids throw before any construction, no user input
+> reaches URL building); safe base replacement (add-then-remove,
+> `lowerToBottom` pin, failure preserves the previous layer with visible
+> recoverable error); per-layer opacity (live `alpha`, no rebuilds; grid
+> slider disabled while hidden); `?imagery=` canonical URL param
+> (null = default = omitted; legacy URLs byte-identical; unknown ids
+> canonicalize away); validated localStorage opacity prefs (URL owns only
+> the discrete selection — no slider history spam); Settings layer manager
+> (radiogroup + sliders + attribution + daily-composite/not-live notes);
+> parent-owned error state (Settings status ≡ diagnostics detail).
+> Ordering UI deliberately omitted (`supportsReordering: false` — one base
+> pinned bottom, one overlay above: no meaningful choice).
+> Verified findings for later phases:
+> - `ImageryLayerCollection.{addImageryProvider, remove, contains,
+>   lowerToBottom}` + `ImageryLayer.alpha` confirmed in installed 1.146.0
+>   (public API only); provider construction is synchronous, so no
+>   generation guard was needed — one MUST be added if init ever goes
+>   async (recorded in code).
+> - Budget: initial JS 200,738 B → 202,809 B gzip (198.1 KiB) PASS
+>   (+2,071 B; headroom now 1,991 B — future initial-graph additions must
+>   stay lean); Cesium fully lazy (engine raw byte-identical, shell+factory
+>   lazy chunk 8,041 raw / 3,225 gzip).
+> - Production smoke extended (+5 scenarios, +2 harness hardening steps):
+>   22/22 PASS, GIBS 323/323 × 200, 0 exceptions, CSP report-only,
+>   widths 1600/1200/430, `/api/health` healthy.
+> - Full suite 825 tests: 813 green, 6 pre-existing contention timeouts
+>   (zero assertion failures; every affected file green in isolation).
+> - Two harness/ops notes: a stale pre-existing prod server squatted port
+>   3100 (killed; stale-server run discarded, build-hash verified before
+>   the valid run); one transient build-attempt crash (`0xC0000005`,
+>   identical-tree retry clean); one transient WebGL-branch smoke timeout
+>   under load (passed on re-run, branch untouched by this phase).
+>
+> Items in the older Phase 4 plan below (entity sync for `DataPoint[]`,
+> hover/click parity, fly-to parity, auto-rotate/low-power mappings,
+> home/reset control) were NOT part of the executed imagery-and-layer
+> scope — the delivered Phase 4 spec explicitly bounds this phase to
+> imagery/layer management and defers observation sync. They remain open
+> requirements; re-check them against the next phase's authorization
+> before scheduling (no reassignment is made here).
+
 - Objective: every current marker/interaction behavior works on Cesium.
 - Scope: `DataPoint[]` → entities (≤2000, severity colors, filter-aware);
   hover card anchor; click → `selectEvent`; empty-globe coordinate readout

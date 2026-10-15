@@ -280,6 +280,97 @@ describe('SettingsModal geographic grid (Phase 3)', () => {
   });
 });
 
+describe('SettingsModal imagery layer manager (Phase 4)', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  function renderWithLayers(extra: Record<string, unknown> = {}) {
+    const handlers = {
+      onBaseImageryChange: vi.fn(),
+      onBaseOpacityChange: vi.fn(),
+      onGridOpacityChange: vi.fn(),
+    };
+    render(
+      <SettingsModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isRotating={true}
+        onToggleRotation={vi.fn()}
+        rendererInfo={mockRendererInfo}
+        globeGrid={false}
+        onGlobeGridChange={vi.fn()}
+        baseImagery={null}
+        baseOpacity={1}
+        gridOpacity={1}
+        imageryError={null}
+        {...handlers}
+        {...extra}
+      />,
+    );
+    return handlers;
+  }
+
+  it('shows the verified base selected by default with honest temporal semantics', () => {
+    renderWithLayers();
+    const choice = screen.getByRole('radio', { name: /NASA GIBS True Color/i });
+    expect(choice).toBeChecked();
+    // Attribution and the daily-composite (not live) meaning are visible.
+    expect(screen.getByText(/Imagery © NASA EOSDIS GIBS/)).toBeInTheDocument();
+    expect(screen.getByText(/daily composite/i)).toBeInTheDocument();
+    expect(screen.getByText(/not live/i)).toBeInTheDocument();
+  });
+
+  it('keeps the verified choice selected even for unknown incoming values', () => {
+    // Upstream validation (URL parse + setter) guarantees valid ids; the
+    // display resolves defensively so it can never name inactive imagery.
+    renderWithLayers({ baseImagery: 'unknown-id' });
+    const choice = screen.getByRole('radio', { name: /NASA GIBS True Color/i });
+    expect(choice).toBeChecked();
+    expect(choice).toHaveAttribute('value', 'gibs-modis-truecolor');
+  });
+
+  it('exposes a labelled base-opacity slider that reports 0–1 values', () => {
+    const { onBaseOpacityChange } = renderWithLayers({ baseOpacity: 0.35 });
+    const slider = screen.getByLabelText('Base opacity') as HTMLInputElement;
+    expect(slider.value).toBe('35');
+    expect(slider).toHaveAttribute('aria-valuetext', '35 percent');
+
+    fireEvent.change(slider, { target: { value: '80' } });
+    expect(onBaseOpacityChange).toHaveBeenCalledTimes(1);
+    expect(onBaseOpacityChange).toHaveBeenCalledWith(0.8);
+  });
+
+  it('disables the grid-opacity slider while the grid is off', () => {
+    renderWithLayers({ globeGrid: false });
+    const slider = screen.getByLabelText('Grid opacity') as HTMLInputElement;
+    expect(slider).toBeDisabled();
+    expect(screen.getByText(/Turn the grid on to adjust its opacity/)).toBeInTheDocument();
+
+    cleanup();
+    const { onGridOpacityChange } = renderWithLayers({ globeGrid: true, gridOpacity: 0.5 });
+    const enabled = screen.getByLabelText('Grid opacity') as HTMLInputElement;
+    expect(enabled).toBeEnabled();
+    expect(enabled.value).toBe('50');
+
+    fireEvent.change(enabled, { target: { value: '25' } });
+    expect(onGridOpacityChange).toHaveBeenCalledTimes(1);
+    expect(onGridOpacityChange).toHaveBeenCalledWith(0.25);
+  });
+
+  it('announces base-layer failures and stays silent when healthy', () => {
+    renderWithLayers();
+    // The low-power status line also uses role=status, so the failure is
+    // identified by its text, not by the role alone.
+    expect(screen.queryByText(/Unsupported imagery layer/)).not.toBeInTheDocument();
+
+    cleanup();
+    renderWithLayers({ imageryError: 'Unsupported imagery layer: nope' });
+    const message = screen.getByText(/Unsupported imagery layer: nope/);
+    expect(message.closest('[role="status"]')).not.toBeNull();
+  });
+});
+
 // Controllable reduced-motion double for the Diagnostics tab.
 function mockReducedMotion(initialMatches: boolean) {
   const matches = initialMatches;

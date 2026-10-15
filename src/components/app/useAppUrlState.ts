@@ -5,6 +5,7 @@ import {
   DEFAULT_FIRST_RUN_LAYER,
 } from '@/lib/url-state';
 import type { AppView } from '@/lib/url-state';
+import { parseImageryUrlValue } from '@/components/globe/imageryLayers';
 import type { LayerId } from '@/types';
 import type { SeverityFilterValue } from '@/components/intelligence/SeverityFilter';
 
@@ -22,10 +23,17 @@ export interface AppUrlStateApi {
   view: AppView;
   /** Validated event id awaiting resolvable layer data (deep link). */
   pendingEventId: string | null;
+  /**
+   * Validated base-imagery id (Phase 4). `null` means the established
+   * default; unknown ids never reach state (they fall back on parse).
+   */
+  baseImagery: string | null;
   setActiveLayer: (layer: LayerId | null) => void;
   setSearchQuery: (q: string) => void;
   setSeverityFilter: (sev: SeverityFilterValue) => void;
   setView: (view: AppView) => void;
+  /** Select a supported base imagery (unknown ids resolve to default). */
+  setBaseImagery: (layerId: string | null) => void;
   /** Take-and-clear the pending id (deep-link resolution consumes it). */
   clearPendingEvent: () => void;
   /** Drop an unresolvable pending id from the URL (replace, never push). */
@@ -58,6 +66,11 @@ export function useAppUrlState(options: UseAppUrlStateOptions): AppUrlStateApi {
   const [searchQuery, setSearchQuery] = useState('');
   const [severityFilter, setSeverityFilter] = useState<SeverityFilterValue>('all');
   const [view, setView] = useState<AppView>('globe');
+  // Phase 4: discrete base-imagery selection. `null` is the established
+  // default (parameter omitted); opacity and overlay visibility stay in
+  // local-storage preferences so continuous slider input never touches
+  // history.
+  const [baseImagery, setBaseImageryState] = useState<string | null>(null);
   // Validated event id awaiting resolvable layer data. State (not a ref)
   // so data arrival reliably retriggers resolution.
   const [pendingEventId, setPendingEventId] = useState<string | null>(null);
@@ -89,6 +102,7 @@ export function useAppUrlState(options: UseAppUrlStateOptions): AppUrlStateApi {
       setSearchQuery(parsed.state.q);
       setSeverityFilter(parsed.state.sev);
       setView(parsed.state.view);
+      setBaseImageryState(parsed.state.imagery);
       clearEventSelection();
       setPendingEventId(parsed.state.event);
       // Canonicalize invalid leftovers without history spam (mount junk
@@ -122,25 +136,31 @@ export function useAppUrlState(options: UseAppUrlStateOptions): AppUrlStateApi {
   // the URL with a replace so history stays honest — never fabricate.
   const dropPendingEventFromUrl = useCallback(() => {
     const canonical = serializeAppState(
-      { layer: activeLayer, event: null, q: searchQuery, sev: severityFilter, view },
+      { layer: activeLayer, event: null, q: searchQuery, sev: severityFilter, view, imagery: baseImagery },
       passthroughRef.current,
     );
     window.history.replaceState(null, '', canonical || window.location.pathname);
-  }, [activeLayer, searchQuery, severityFilter, view]);
+  }, [activeLayer, searchQuery, severityFilter, view, baseImagery]);
+
+  // Phase 4: validated base-imagery selection. Unknown ids resolve to the
+  // default (`null`) rather than entering state or the URL.
+  const setBaseImagery = useCallback((layerId: string | null) => {
+    setBaseImageryState(parseImageryUrlValue(layerId));
+  }, []);
 
   // Synchronize state back to the URL (shareable, restorable). Writes only
   // when the canonical form differs — after popstate the state was just
   // derived from the URL, so this skips and cannot loop.
   useEffect(() => {
     const eventId = selectedEventId ?? pendingEventId;
-    const discrete = `${activeLayer ?? ''}|${eventId ?? ''}|${severityFilter}|${view}`;
+    const discrete = `${activeLayer ?? ''}|${eventId ?? ''}|${severityFilter}|${view}|${baseImagery ?? ''}`;
     if (!syncArmedRef.current) {
       syncArmedRef.current = true;
       lastDiscreteRef.current = discrete;
       return;
     }
     const canonical = serializeAppState(
-      { layer: activeLayer, event: eventId, q: searchQuery, sev: severityFilter, view },
+      { layer: activeLayer, event: eventId, q: searchQuery, sev: severityFilter, view, imagery: baseImagery },
       passthroughRef.current,
     );
     const current = window.location.search;
@@ -153,7 +173,7 @@ export function useAppUrlState(options: UseAppUrlStateOptions): AppUrlStateApi {
     const target = canonical || window.location.pathname;
     if (push) window.history.pushState(null, '', target);
     else window.history.replaceState(null, '', target);
-  }, [activeLayer, selectedEventId, pendingEventId, searchQuery, severityFilter, view]);
+  }, [activeLayer, selectedEventId, pendingEventId, searchQuery, severityFilter, view, baseImagery]);
 
   // Browser Back/Forward: re-apply the navigated-to URL. push/replace
   // above never fire popstate, so this runs only for genuine traversals.
@@ -171,10 +191,12 @@ export function useAppUrlState(options: UseAppUrlStateOptions): AppUrlStateApi {
     severityFilter,
     view,
     pendingEventId,
+    baseImagery,
     setActiveLayer,
     setSearchQuery,
     setSeverityFilter,
     setView,
+    setBaseImagery,
     clearPendingEvent,
     dropPendingEventFromUrl,
   };

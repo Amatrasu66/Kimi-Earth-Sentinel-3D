@@ -30,6 +30,7 @@ import { useFirstRunHint } from '@/components/app/useFirstRunHint';
 import { useSingleKeyShortcuts } from '@/components/app/useSingleKeyShortcuts';
 import { useLowPowerMode } from '@/components/app/useLowPowerMode';
 import { useGlobeGrid } from '@/components/app/useGlobeGrid';
+import { useImageryOpacity } from '@/components/app/useImageryOpacity';
 import { useFlyTo } from '@/components/app/useFlyTo';
 import { usePendingEventResolution } from '@/components/app/usePendingEventResolution';
 import type { DataPoint, LayerId } from '@/types';
@@ -52,6 +53,14 @@ function SentinelApp() {
   // Phase 3 §10: persisted geographic-grid preference; only the Cesium
   // branch consumes it (the legacy renderers ignore the prop).
   const { globeGridVisible, setGlobeGridVisible } = useGlobeGrid();
+  // Phase 4: persisted layer opacities (local-storage display preference;
+  // the URL owns only the discrete base-layer selection below).
+  const {
+    baseOpacity,
+    gridOpacity,
+    setBaseOpacity,
+    setGridOpacity,
+  } = useImageryOpacity();
   const { hintDismissed, dismissHint } = useFirstRunHint(requestFocus);
   const { flyTo, flyToLocation } = useFlyTo();
 
@@ -70,10 +79,12 @@ function SentinelApp() {
     severityFilter,
     view,
     pendingEventId,
+    baseImagery,
     setActiveLayer,
     setSearchQuery,
     setSeverityFilter,
     setView,
+    setBaseImagery,
     clearPendingEvent,
     dropPendingEventFromUrl,
   } = useAppUrlState({
@@ -87,6 +98,12 @@ function SentinelApp() {
   const [pickedCoord, setPickedCoord] = useState<{ lat: number; lon: number } | null>(null);
   const handleCoordinatePick = useCallback((lat: number, lon: number) => {
     setPickedCoord({ lat, lon });
+  }, []);
+  // Phase 4: latest base-layer failure from the Cesium branch (`null` on
+  // recovery). Display-only — the Viewer already kept the previous layer.
+  const [imageryError, setImageryError] = useState<string | null>(null);
+  const handleLayerError = useCallback((message: string | null) => {
+    setImageryError(message);
   }, []);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isRotating, setIsRotating] = useState(true);
@@ -237,8 +254,13 @@ function SentinelApp() {
           sunDirection={sunDirection}
           lowPowerActive={lowPowerActive}
           globeGridVisible={globeGridVisible}
+          baseLayerId={baseImagery}
+          baseOpacity={baseOpacity}
+          gridOpacity={gridOpacity}
           onActiveRenderer={setRendererInfo}
           onCoordinatePick={handleCoordinatePick}
+          onLayerError={handleLayerError}
+          layerError={imageryError}
         />
       )}
 
@@ -327,6 +349,13 @@ function SentinelApp() {
         lowPowerActive={lowPowerActive}
         globeGrid={globeGridVisible}
         onGlobeGridChange={setGlobeGridVisible}
+        baseImagery={baseImagery}
+        onBaseImageryChange={setBaseImagery}
+        baseOpacity={baseOpacity}
+        onBaseOpacityChange={setBaseOpacity}
+        gridOpacity={gridOpacity}
+        onGridOpacityChange={setGridOpacity}
+        imageryError={imageryError}
       />
 
       <MarkerHoverCard point={hoveredPoint} activeLayer={activeLayer} />

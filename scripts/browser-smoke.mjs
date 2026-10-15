@@ -20,10 +20,15 @@
 //      `.cesium-widget` (no duplicate Viewers).
 //   8. The default `/` route still renders its dotted canvas and no Cesium
 //      widget.
-//   9. Phase 3: the geographic-grid preference survives a reload (wiring
+//  9. Phase 3: the geographic-grid preference survives a reload (wiring
 //      only — the graticule itself is a human-reviewed screenshot claim),
 //      and the canvas still tracks a narrow viewport.
-//  10. CSP posture is judged from the served HTTP headers, never from
+//  10. Phase 4: `?imagery=` selects the verified base; an unknown imagery
+//      id recovers (viewer boots, junk canonicalized away, no veil); the
+//      Settings layer manager shows the selected base with working opacity
+//      controls; opacity preferences persist across reload; layer
+//      operations leave exactly one Viewer.
+//  11. CSP posture is judged from the served HTTP headers, never from
 //      violation-message text: the app must not ship an ENFORCING
 //      Content-Security-Policy header. Violation notes against the
 //      report-only policy are collected but cannot block anything.
@@ -485,9 +490,11 @@ async function main() {
     // 6. Phase 3: geographic grid preference survives a reload. Wiring only:
     // the screenshot above ('cesium-return', grid off) and 'cesium-grid'
     // (grid on) are the human-reviewed pair for the graticule itself.
-    await evalValue(`window.localStorage.setItem('sentinel:globe-grid:v1', '1')`);
-    await navigate(`${BASE_URL}/?renderer=cesium`);
+    // Storage access itself is guarded: a denied document must fail this
+    // step, never abort the suite without a report.
     try {
+      await evalValue(`window.localStorage.setItem('sentinel:globe-grid:v1', '1')`);
+      await navigate(`${BASE_URL}/?renderer=cesium`);
       await waitFor(CESIUM_READY, READY_TIMEOUT_MS, 'Cesium Viewer ready (grid)');
       const stored = await evalValue(`window.localStorage.getItem('sentinel:globe-grid:v1')`);
       record('grid preference persists across reload', stored === '1', `stored=${stored}`);
@@ -496,6 +503,96 @@ async function main() {
     }
     await sleep(6000);
     await screenshot('cesium-grid');
+
+    // Phase 4a: a valid `?imagery=` selects the verified base.
+    await navigate(`${BASE_URL}/?renderer=cesium&imagery=gibs-modis-truecolor`);
+    try {
+      await waitFor(CESIUM_READY, READY_TIMEOUT_MS, 'Cesium Viewer ready (imagery param)');
+      const href = await evalValue('document.location.href');
+      record(
+        'imagery URL selection keeps the verified base',
+        href.includes('imagery=gibs-modis-truecolor'),
+        href,
+      );
+    } catch (e) {
+      record('imagery URL selection keeps the verified base', false, e.message);
+    }
+
+    // Phase 4b: an unknown `?imagery=` recovers — the viewer still boots,
+    // the junk param is canonicalized away, and no error veil appears.
+    await navigate(`${BASE_URL}/?renderer=cesium&imagery=sentinel-2`);
+    try {
+      await waitFor(CESIUM_READY, READY_TIMEOUT_MS, 'Cesium Viewer ready (bad imagery)');
+      await sleep(2000);
+      const search = await evalValue('window.location.search');
+      const veil = await evalValue(
+        `!document.querySelector('[aria-label="Cesium Earth failed to initialize"]')`,
+      );
+      record(
+        'invalid imagery param recovers safely',
+        !search.includes('imagery=sentinel-2') && veil === true,
+        `search=${search}`,
+      );
+    } catch (e) {
+      record('invalid imagery param recovers safely', false, e.message);
+    }
+
+    // Phase 4c: the Settings layer manager shows the selected base with
+    // working opacity controls (grid pref '1' from the earlier step means
+    // the grid slider must be enabled here).
+    await evalValue(`document.getElementById('sentinel-settings-button')?.click()`);
+    await sleep(2000);
+    const manager = await evalValue(`(() => {
+      const radio = document.querySelector('input[name="sentinel-base-imagery"]:checked');
+      const base = document.getElementById('sentinel-base-opacity');
+      const grid = document.getElementById('sentinel-grid-opacity');
+      if (!radio || !base || !grid) return null;
+      return { base: radio.value, basePct: base.value, gridPct: grid.value, gridDisabled: grid.disabled };
+    })()`);
+    record(
+      'layer manager shows the verified base + opacity controls',
+      Boolean(manager) &&
+        manager.base === 'gibs-modis-truecolor' &&
+        manager.gridDisabled === false,
+      manager ? JSON.stringify(manager) : 'manager controls not found',
+    );
+    await screenshot('layer-manager');
+
+    // Phase 4d: opacity preferences persist across reload.
+    try {
+      await evalValue(
+        `window.localStorage.setItem('sentinel:imagery-base-opacity:v1', '0.25');` +
+          `window.localStorage.setItem('sentinel:imagery-grid-opacity:v1', '0.75');`,
+      );
+      await navigate(`${BASE_URL}/?renderer=cesium`);
+      await waitFor(CESIUM_READY, READY_TIMEOUT_MS, 'Cesium Viewer ready (opacity persist)');
+      await evalValue(`document.getElementById('sentinel-settings-button')?.click()`);
+      await sleep(2000);
+      const persisted = await evalValue(`(() => {
+        const base = document.getElementById('sentinel-base-opacity');
+        const grid = document.getElementById('sentinel-grid-opacity');
+        if (!base || !grid) return null;
+        return { basePct: base.value, gridPct: grid.value };
+      })()`);
+      record(
+        'opacity preferences persist across reload',
+        Boolean(persisted) && persisted.basePct === '25' && persisted.gridPct === '75',
+        persisted ? JSON.stringify(persisted) : 'sliders not found after reload',
+      );
+    } catch (e) {
+      record('opacity preferences persist across reload', false, e.message);
+    }
+    await screenshot('layer-manager-persisted');
+
+    // Phase 4e: every layer operation above leaves exactly one Viewer.
+    const widgetCount = await evalValue(
+      `document.querySelectorAll('.cesium-widget').length`,
+    );
+    record(
+      'layer operations leave one Viewer',
+      widgetCount === 1,
+      `cesium-widget=${widgetCount}`,
+    );
 
     // 7. Phase 3 §14.3: narrow viewport keeps the Cesium canvas sized.
     await S('Emulation.setDeviceMetricsOverride', {
