@@ -114,6 +114,33 @@ contract change unless stated and approved.
 
 ## Phase 4 — Observation sync + interaction parity
 
+> Phase 5 status (2026-10-16, Stage B approved scope O1–O4): IMPLEMENTED —
+> see `PHASE_5_SCOPE_PROPOSAL.md` (Stage A + binding Approval record:
+> Q1 approve O1–O4, Q2/Q3 defer O5/O6, Q4 billboards, Q5 defer STAC/flip,
+> Q6 ladder), `PHASE_5_IMPLEMENTATION_REPORT.md` (20 sections), and
+> `PHASE_5_ACCEPTANCE_CHECKLIST.md` (all §§20.A–G passed).
+> Delivered: `DataPoint[]` → id-keyed `BillboardGraphics` entities
+> (`cesiumObservations.ts`, lazy-chunk only) with shared
+> `SEVERITY_COLORS`, deterministic cap (`OBSERVATION_ENTITY_CAP = 2000`,
+> test-pinned `=== MARKER_CAPACITY`), invalid-point skipping; rAF-
+> throttled hover → existing `MarkerHoverCard`; `LEFT_DOWN/UP` 6 px drag
+> rule → entity hit calls existing `selectEvent` (abort/race-safe detail
+> unchanged), entity miss keeps the `pickEllipsoid` coordinate readout;
+> disposal on data/layer/unmount/StrictMode without Viewer rebuilds.
+> Parity inspected pre-implementation against dotted/WebGL (validity-only
+> marker sets, colors, drag rule, hover-clear, cursor) and divergences
+> documented (empty-click readout preserved by contract; world-attenuated
+> sizes like WebGL; auto-rotate/sun remain no-ops by deferral).
+> Verified: 24 new tests; full suite 845/850 (5 pre-existing contention
+> timeouts, zero assertions, 44/44 sequential green); typecheck caught one
+> real defect pre-commit (undefined threshold import); build clean;
+> bundle byte-identical 202,809 B (198.1 KiB) PASS; textures MET;
+> production smoke 25/25 with live data (real canvas click opened a live
+> event's detail; deep-linked `pr71536748` resolved; 324/324 GIBS × 200;
+> 0 exceptions; CSP report-only). Q6 step 1 sufficed — no cap/fallback.
+> O5 (auto-rotate), O6 (home/reset), O7 (STAC), O8 (rasters), and the
+> default-renderer flip remain explicitly deferred by binding decision.
+
 > Phase 4 status (2026-10-16): IMPLEMENTED per the delivered Phase 4 spec
 > (`docs/prompts/architecture/PHASE_4_IMAGERY_LAYER_MANAGER.md`, which is
 > the authority from here on) — see `PHASE_4_IMPLEMENTATION_REPORT.md`

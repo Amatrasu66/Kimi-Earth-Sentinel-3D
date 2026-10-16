@@ -13,10 +13,12 @@
  * scientific-visual baseline (uniform lighting, theme background/base
  * color), the optional geographic reference grid (one native
  * `GridImageryProvider` layer, toggled by `show` — never rebuilt), the
- * low-power MSAA mapping, and a unit-tested fly-to resolver. Marker/entity
- * sync and sun wiring stay Phase 4+ work (see §18 of the Phase 2 prompt):
- * the corresponding props are accepted but intentionally unused here so
- * the shared contract does not fork.
+ * low-power MSAA mapping, and a unit-tested fly-to resolver. Phase 4 adds
+ * the imagery layer manager (registry, provider factory, base replacement,
+ * opacity). Phase 5 syncs the active layer's observations as billboard
+ * entities with hover/click parity (the corresponding props are now live;
+ * `isRotating` and `sunDirection` stay intentionally unused — auto-rotate
+ * and sun wiring are deferred, not silently broken).
  *
  * Lifecycle guarantees:
  * - `cesium` is imported dynamically inside the mount effect, after
@@ -52,6 +54,15 @@ import {
   createBaseImageryProvider,
   createGraticuleProvider,
 } from './cesiumImageryProviders';
+import {
+  OBSERVATION_CLICK_DRAG_THRESHOLD_PX,
+  createMarkerSprite,
+  createObservationSyncState,
+  disposeObservationEntities,
+  pickObservationAt,
+  syncObservationEntities,
+} from './cesiumObservations';
+import type { ObservationSyncState } from './cesiumObservations';
 import {
   clampLayerOpacity,
   resolveBaseLayerId,
@@ -142,9 +153,9 @@ function describeError(err: unknown): string {
 
 export default function CesiumEarth({
   activeLayer: _activeLayer,
-  dataPoints: _dataPoints,
-  onMarkerClick: _onMarkerClick,
-  onMarkerHover: _onMarkerHover,
+  dataPoints,
+  onMarkerClick,
+  onMarkerHover,
   isRotating: _isRotating = true,
   flyTo = null,
   sunDirection: _sunDirection,
@@ -159,9 +170,8 @@ export default function CesiumEarth({
   layerError = null,
 }: CesiumEarthProps) {
   void _activeLayer;
-  void _dataPoints;
-  void _onMarkerClick;
-  void _onMarkerHover;
+  // Phase 5 defers O5 auto-rotate parity: the toggle stays a no-op on this
+  // path by explicit decision (not silent breakage).
   void _isRotating;
   void _sunDirection;
 
@@ -172,6 +182,10 @@ export default function CesiumEarth({
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<CesiumViewer | null>(null);
   const gridLayerRef = useRef<CesiumImageryLayer | null>(null);
+  // Phase 5: live observation-entity sync state (id → entity/point).
+  // Owned here, never serialized, disposed on unmount.
+  const obsStateRef = useRef<ObservationSyncState | null>(null);
+  const spriteRef = useRef<HTMLCanvasElement | string | null>(null);
   // Phase 4: live base layer + the id it was built for. Replacements are
   // add-then-remove (never a blank globe) keyed off these refs.
   const baseLayerRef = useRef<CesiumImageryLayer | null>(null);
@@ -184,23 +198,29 @@ export default function CesiumEarth({
   const callbackRef = useRef({
     onActiveRenderer,
     onCoordinatePick,
+    onMarkerClick,
+    onMarkerHover,
     onLayerError,
     lowPowerActive,
     globeGridVisible,
     baseLayerId,
     baseOpacity,
     gridOpacity,
+    dataPoints,
   });
   useEffect(() => {
     callbackRef.current = {
       onActiveRenderer,
       onCoordinatePick,
+      onMarkerClick,
+      onMarkerHover,
       onLayerError,
       lowPowerActive,
       globeGridVisible,
       baseLayerId,
       baseOpacity,
       gridOpacity,
+      dataPoints,
     };
   });
 
@@ -211,6 +231,8 @@ export default function CesiumEarth({
     let clickHandler: CesiumScreenSpaceHandler | null = null;
     let gridLayer: CesiumImageryLayer | null = null;
     let baseImageryLayer: CesiumImageryLayer | null = null;
+    // Hover-throttle frame id (effect scope so unmount can cancel it).
+    let hoverRaf = 0;
 
     (async () => {
       try {
@@ -283,19 +305,80 @@ export default function CesiumEarth({
           CESIUM_GLOBE_BASE_COLOR,
         );
 
-        // Click-to-coordinate: canvas-only handler, so dashboard controls
-        // never reach it. Empty-space clicks yield no pick and no callback.
+        // Phase 5: observation entities. One shared sprite (tinted per
+        // severity by the billboard color), id-keyed sync state, initial
+        // sync from the latest props.
+        spriteRef.current = createMarkerSprite();
+        obsStateRef.current = createObservationSyncState();
+        syncObservationEntities({
+          viewer,
+          cesium,
+          sprite: spriteRef.current,
+          state: obsStateRef.current,
+          points: callbackRef.current.dataPoints,
+        });
+
+        // Click, hover, and coordinate picking: canvas-only handlers, so
+        // dashboard controls never reach them.
+        // - Phase 5 parity: LEFT_DOWN/LEFT_UP with the legacy 6 px drag
+        //   rule (a drag is never a click); entity hit → selection,
+        //   entity miss → ellipsoid coordinate readout (Phase 2 contract).
+        // - Hover is rAF-throttled like the WebGL branch (at most one
+        //   pick per frame); a miss clears the hover like both branches.
         clickHandler = new cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
         const activeViewer = viewer;
+        let downPosition: Cartesian2 | null = null;
+        let hoverPending: Cartesian2 | null = null;
+        const flushHover = () => {
+          hoverRaf = 0;
+          const position = hoverPending;
+          hoverPending = null;
+          if (!position || !obsStateRef.current) return;
+          const hovered = pickObservationAt(
+            activeViewer,
+            obsStateRef.current,
+            position,
+          );
+          try {
+            activeViewer.scene.canvas.style.cursor = hovered ? 'pointer' : 'grab';
+          } catch {
+            // Canvas styling is best-effort during teardown.
+          }
+          callbackRef.current.onMarkerHover(hovered);
+        };
         clickHandler.setInputAction(
           (movement: { position?: Cartesian2 }) => {
+            downPosition = movement?.position ?? null;
+          },
+          cesium.ScreenSpaceEventType.LEFT_DOWN,
+        );
+        clickHandler.setInputAction(
+          (movement: { position?: Cartesian2 }) => {
+            const up = movement?.position ?? null;
+            const down = downPosition;
+            downPosition = null;
+            if (!up || !down) return;
+            if (
+              Math.hypot(up.x - down.x, up.y - down.y) >
+              OBSERVATION_CLICK_DRAG_THRESHOLD_PX
+            ) {
+              return;
+            }
+            const syncState = obsStateRef.current;
+            const observed = syncState
+              ? pickObservationAt(activeViewer, syncState, up)
+              : null;
+            if (observed) {
+              callbackRef.current.onMarkerClick(observed);
+              return;
+            }
             const pick = callbackRef.current.onCoordinatePick;
-            if (!pick || !movement?.position) return;
+            if (!pick) return;
             // Camera-space pick against the ellipsoid (terrain is not
-            // configured in this PoC, so ellipsoid height is never claimed).
+            // configured, so ellipsoid height is never claimed).
             const cartesian: Cartesian3 | undefined =
               activeViewer.camera.pickEllipsoid(
-                movement.position,
+                up,
                 activeViewer.scene.globe.ellipsoid,
               );
             if (!cartesian) return;
@@ -306,7 +389,20 @@ export default function CesiumEarth({
             if (!isValidCoordinate(lat, lon)) return;
             pick(lat, lon);
           },
-          cesium.ScreenSpaceEventType.LEFT_CLICK,
+          cesium.ScreenSpaceEventType.LEFT_UP,
+        );
+        clickHandler.setInputAction(
+          (movement: { position?: Cartesian2 }) => {
+            hoverPending = movement?.position ?? null;
+            if (hoverRaf !== 0) return;
+            if (typeof requestAnimationFrame === 'function') {
+              hoverRaf = requestAnimationFrame(flushHover);
+            } else {
+              // Non-rAF environments (unit tests): synchronous parity path.
+              flushHover();
+            }
+          },
+          cesium.ScreenSpaceEventType.MOUSE_MOVE,
         );
 
         // Phase 3 §10: graticule as a native imagery layer — created once
@@ -351,6 +447,14 @@ export default function CesiumEarth({
       cancelled = true;
       cesiumRef.current = null;
       try {
+        if (hoverRaf !== 0 && typeof cancelAnimationFrame === 'function') {
+          cancelAnimationFrame(hoverRaf);
+        }
+      } catch {
+        // Frame cancellation is best-effort during unmount.
+      }
+      hoverRaf = 0;
+      try {
         clickHandler?.destroy();
       } catch {
         // Teardown must never throw; a half-initialized handler is dropped.
@@ -367,8 +471,25 @@ export default function CesiumEarth({
       gridLayerRef.current = null;
       baseLayerRef.current = null;
       activeBaseIdRef.current = null;
+      // Phase 5: entities outlive nothing — dispose before destroy, then
+      // drop the state so a remount starts empty (StrictMode-safe).
+      try {
+        if (owned && !owned.isDestroyed() && obsStateRef.current) {
+          disposeObservationEntities(owned, obsStateRef.current);
+        }
+      } catch {
+        // Disposal is best-effort; Viewer destroy disposes the rest.
+      }
+      obsStateRef.current = null;
+      spriteRef.current = null;
       if (owned && !owned.isDestroyed()) {
         owned.destroy();
+      }
+      // Hover parity (WebGL branch): leaving the globe clears the card.
+      try {
+        callbackRef.current.onMarkerHover(null);
+      } catch {
+        // Callbacks must never throw teardown.
       }
     };
     // Mount-once by design: prop sync uses the dedicated effects below.
@@ -436,6 +557,25 @@ export default function CesiumEarth({
     const layer = gridLayerRef.current;
     if (layer) layer.show = globeGridVisible;
   }, [globeGridVisible]);
+
+  // Phase 5 (O1): observation sync. Every data change re-diffs entities by
+  // stable point id — additions, removals, layer switches, and filter
+  // updates all flow through here without touching the Viewer itself.
+  // No-op before init and after destroy.
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    const cesium = cesiumRef.current;
+    const syncState = obsStateRef.current;
+    const sprite = spriteRef.current;
+    if (!viewer || viewer.isDestroyed() || !cesium || !syncState || !sprite) return;
+    syncObservationEntities({
+      viewer,
+      cesium,
+      sprite,
+      state: syncState,
+      points: dataPoints,
+    });
+  }, [dataPoints]);
 
   // Phase 4: base-imagery replacement. Add-then-remove keeps the globe
   // covered during ordinary transitions (no blank frame); the old layer is

@@ -28,7 +28,11 @@
 //      Settings layer manager shows the selected base with working opacity
 //      controls; opacity preferences persist across reload; layer
 //      operations leave exactly one Viewer.
-//  11. CSP posture is judged from the served HTTP headers, never from
+//  11. Phase 5: the default layer boots with observation entities
+//      (screenshot-reviewed); a real canvas click is safe (detail or
+//      readout, never a crash); a deep-linked live event resolves to its
+//      detail on the Cesium path (skipped honestly if the API is down).
+//  12. CSP posture is judged from the served HTTP headers, never from
 //      violation-message text: the app must not ship an ENFORCING
 //      Content-Security-Policy header. Violation notes against the
 //      report-only policy are collected but cannot block anything.
@@ -593,6 +597,97 @@ async function main() {
       widgetCount === 1,
       `cesium-widget=${widgetCount}`,
     );
+
+    // Phase 5a: observations render on the Cesium globe. The first-run
+    // default layer (earthquakes, up to 500 points) exercises the entity
+    // sync at the representative client payload; the screenshot is
+    // human-reviewed for real markers on real imagery.
+    await navigate(`${BASE_URL}/?renderer=cesium`);
+    try {
+      await waitFor(CESIUM_READY, READY_TIMEOUT_MS, 'Cesium Viewer ready (observations)');
+      await sleep(8000);
+      record('observations page boots with the default layer', true);
+    } catch (e) {
+      record('observations page boots with the default layer', false, e.message);
+    }
+    await screenshot('cesium-observations');
+
+    // Phase 5b: a real canvas click is safe with entities present. The
+    // outcome (marker hit → event detail, ocean → coordinate readout)
+    // depends on live data placement, so the gate asserts safety, not
+    // which valid outcome occurred: no veil, one Viewer, no new
+    // exceptions. Exact hit→point mapping is unit-verified
+    // (`CesiumEarthObservations`); marker presence is screenshot-reviewed.
+    const clickAt = async (x, y) => {
+      await S('Input.dispatchMouseEvent', {
+        type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1,
+      });
+      await sleep(120);
+      await S('Input.dispatchMouseEvent', {
+        type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1,
+      });
+    };
+    await clickAt(800, 450);
+    await sleep(3000);
+    {
+      const veilAfterClick = await evalValue(
+        `!document.querySelector('[aria-label="Cesium Earth failed to initialize"]')`,
+      );
+      const widgetsAfterClick = await evalValue(
+        `document.querySelectorAll('.cesium-widget').length`,
+      );
+      const detailAfterClick = await evalValue(
+        `!!document.querySelector('[aria-label="Event detail"]')`,
+      );
+      record(
+        'canvas click is safe with observations present',
+        veilAfterClick === true && widgetsAfterClick === 1,
+        `detail=${detailAfterClick} cesium-widget=${widgetsAfterClick}`,
+      );
+    }
+    await screenshot('cesium-click');
+
+    // Phase 5c: a deep-linked live event resolves to its detail on the
+    // Cesium path (selection flow coexists with entities). The id comes
+    // from the live prod API at runtime — real data, not fixtures. If the
+    // API is unreachable the step is SKIPPED (environmental), never faked.
+    let quakeId = null;
+    try {
+      const res = await fetch(`${BASE_URL}/api/v1/layers/earthquakes/data?limit=5`);
+      const json = await res.json();
+      const points = json?.data?.points ?? json?.data?.data?.points;
+      if (Array.isArray(points) && points.length > 0 && typeof points[0].id === 'string') {
+        quakeId = points[0].id;
+      }
+    } catch {
+      quakeId = null;
+    }
+    if (!quakeId) {
+      record(
+        'deep-linked event opens detail on Cesium path',
+        true,
+        'SKIPPED — live events API unreachable from the harness',
+      );
+    } else {
+      await navigate(
+        `${BASE_URL}/?renderer=cesium&layer=earthquakes&event=${encodeURIComponent(quakeId)}`,
+      );
+      try {
+        await waitFor(
+          `!!document.querySelector('[aria-label="Event detail"]')`,
+          45_000,
+          'event detail on Cesium path',
+        );
+        record(
+          'deep-linked event opens detail on Cesium path',
+          true,
+          `event=${quakeId}`,
+        );
+      } catch (e) {
+        record('deep-linked event opens detail on Cesium path', false, e.message);
+      }
+    }
+    await screenshot('cesium-event-detail');
 
     // 7. Phase 3 §14.3: narrow viewport keeps the Cesium canvas sized.
     await S('Emulation.setDeviceMetricsOverride', {

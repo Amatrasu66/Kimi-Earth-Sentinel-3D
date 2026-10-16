@@ -48,6 +48,8 @@ function makeViewer() {
       },
       backgroundColor: undefined as { css?: string } | undefined,
       msaaSamples: 4,
+      // Phase 5: entity misses resolve through here (fake: always a miss).
+      pick: vi.fn(() => undefined),
     },
     imageryLayers: {
       addImageryProvider: vi.fn(() => {
@@ -55,6 +57,11 @@ function makeViewer() {
         gridLayers.push(layer);
         return layer;
       }),
+    },
+    // Phase 5: observation entities (untouched while dataPoints is empty).
+    entities: {
+      add: vi.fn(),
+      remove: vi.fn(),
     },
     resolutionScale: 1,
     destroy: vi.fn(),
@@ -68,7 +75,10 @@ function makeViewer() {
 type FakeViewer = ReturnType<typeof makeViewer>;
 
 let viewers: FakeViewer[];
-let clickCallback: ((movement: { position?: { x: number; y: number } }) => void) | null;
+type InputAction = (movement: { position?: { x: number; y: number } }) => void;
+// Phase 5 parity: the component subscribes per input type (down/up for the
+// 6 px drag rule, move for rAF-throttled hover) — captured by type.
+let inputActions: Record<string, InputAction>;
 let ViewerCtor: ReturnType<typeof vi.fn>;
 let GridImageryProviderCtor: ReturnType<typeof vi.fn>;
 
@@ -99,13 +109,13 @@ function fakeCesiumNamespace() {
     Viewer: ViewerCtor,
     ScreenSpaceEventHandler: vi.fn(function (this: unknown) {
       return {
-        setInputAction: vi.fn((cb: typeof clickCallback) => {
-          clickCallback = cb;
+        setInputAction: vi.fn((cb: InputAction, type: string) => {
+          inputActions[type] = cb;
         }),
         destroy: vi.fn(),
       };
     }),
-    ScreenSpaceEventType: { LEFT_CLICK: 'LEFT_CLICK' },
+    ScreenSpaceEventType: { LEFT_DOWN: 'LEFT_DOWN', LEFT_UP: 'LEFT_UP', MOUSE_MOVE: 'MOUSE_MOVE' },
     Cartesian3: { fromDegrees: vi.fn((lon: number, lat: number, h: number) => ({ lon, lat, h })) },
     Cartographic: {
       // Fixed fixture: 15°N, 70.7°W in radians, echoing camera altitude.
@@ -135,7 +145,7 @@ const baseProps = {
 
 beforeEach(() => {
   viewers = [];
-  clickCallback = null;
+  inputActions = {};
   ViewerCtor = vi.fn(function (this: unknown) {
     const viewer = makeViewer();
     viewers.push(viewer);
@@ -293,13 +303,20 @@ describe('CesiumEarth scientific scene (Phase 3)', () => {
 });
 
 describe('CesiumEarth picking and fly-to (Phase 2)', () => {
+  // Phase 5 parity helper: a tap is down+up at the same position (inside
+  // the 6 px drag rule); anything wider is a camera drag, never a click.
+  function tap(x: number, y: number) {
+    inputActions['LEFT_DOWN']?.({ position: { x, y } });
+    inputActions['LEFT_UP']?.({ position: { x, y } });
+  }
+
   it('reports validated globe-surface picks in degrees', async () => {
     const onCoordinatePick = vi.fn();
     render(<CesiumEarth {...baseProps} onCoordinatePick={onCoordinatePick} />);
     await waitFor(() => expect(ViewerCtor).toHaveBeenCalledTimes(1));
-    expect(clickCallback).not.toBeNull();
+    expect(inputActions['LEFT_UP']).not.toBeUndefined();
 
-    clickCallback?.({ position: { x: 10, y: 20 } });
+    tap(10, 20);
     expect(onCoordinatePick).toHaveBeenCalledTimes(1);
     const [lat, lon] = onCoordinatePick.mock.calls[0] as [number, number];
     expect(lat).toBeCloseTo(15, 0);
@@ -312,11 +329,31 @@ describe('CesiumEarth picking and fly-to (Phase 2)', () => {
     await waitFor(() => expect(ViewerCtor).toHaveBeenCalledTimes(1));
 
     // No position (UI-adjacent click).
-    clickCallback?.({});
+    inputActions['LEFT_DOWN']?.({});
+    inputActions['LEFT_UP']?.({});
     // Ellipsoid miss (clicked space).
     viewers[0].camera.pickEllipsoid.mockReturnValueOnce(undefined);
-    clickCallback?.({ position: { x: 1, y: 1 } });
+    tap(1, 1);
     expect(onCoordinatePick).not.toHaveBeenCalled();
+  });
+
+  it('suppresses picks after camera drags (parity with the 6 px rule)', async () => {
+    const onCoordinatePick = vi.fn();
+    const onMarkerClick = vi.fn();
+    render(
+      <CesiumEarth
+        {...baseProps}
+        onCoordinatePick={onCoordinatePick}
+        onMarkerClick={onMarkerClick}
+      />,
+    );
+    await waitFor(() => expect(ViewerCtor).toHaveBeenCalledTimes(1));
+
+    // 99 px of travel: a drag, never a click — neither callback fires.
+    inputActions['LEFT_DOWN']?.({ position: { x: 1, y: 1 } });
+    inputActions['LEFT_UP']?.({ position: { x: 100, y: 1 } });
+    expect(onCoordinatePick).not.toHaveBeenCalled();
+    expect(onMarkerClick).not.toHaveBeenCalled();
   });
 
   it('flies to search targets at the current altitude', async () => {
