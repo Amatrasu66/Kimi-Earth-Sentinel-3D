@@ -237,6 +237,14 @@ export const api = {
     return fetchEnvelope<import('@/types').LayerData>(buildLayerDataPath(layerId, params), opts);
   },
 
+  /**
+   * Phase 6 scene-search envelope variant: `path` is the canonical key built
+   * by `buildSceneSearchPath` (hooks/useSceneSearch), so the SWR key and the
+   * fetched URL can never diverge (same pattern as fetchLayerDataPath).
+   */
+  fetchScenesPath: (path: string, opts?: RequestOptions) =>
+    fetchEnvelope<import('@/types').SceneSearchPayload>(path, opts),
+
   getLayerHeatmap: (
     layerId: string,
     params?: { resolution?: number; time_range?: string },

@@ -176,3 +176,55 @@ export function parseSearchQuery(
   }
   return { value: query, error: null };
 }
+
+// --- Phase 6: Sentinel scene-search window (CDSE OData) --------------------
+
+/** Hard ceiling on the resolved start/end span (catalogue + UX budget). */
+export const MAX_SCENE_WINDOW_DAYS = 45;
+/** Default window when neither start nor end is provided. */
+export const DEFAULT_SCENE_WINDOW_DAYS = 14;
+
+const DAY_MS = 86_400_000;
+
+/**
+ * Phase 6 scene search: `start`/`end` bound `ContentDate/Start` (ISO-8601).
+ * Documented rules: end defaults to now; start defaults to end minus
+ * DEFAULT_SCENE_WINDOW_DAYS; start must precede end; the resolved span may
+ * not exceed MAX_SCENE_WINDOW_DAYS. Returns canonical ISO strings so cache
+ * keys are stable for equivalent requests.
+ */
+export function parseSceneWindow(
+  startRaw: string | null | undefined,
+  endRaw: string | null | undefined,
+): { value: { start: string; end: string } | null; error: string | null } {
+  const parseOne = (
+    raw: string | null | undefined,
+  ): Date | null | "bad" => {
+    if (raw === null || raw === undefined || raw.trim() === "") return null;
+    const d = new Date(raw.trim());
+    return Number.isNaN(d.getTime()) ? "bad" : d;
+  };
+  const endParsed = parseOne(endRaw);
+  if (endParsed === "bad") {
+    return { value: null, error: "Invalid end: must be an ISO-8601 date." };
+  }
+  const startParsed = parseOne(startRaw);
+  if (startParsed === "bad") {
+    return { value: null, error: "Invalid start: must be an ISO-8601 date." };
+  }
+  const end = endParsed ?? new Date();
+  const start = startParsed ?? new Date(end.getTime() - DEFAULT_SCENE_WINDOW_DAYS * DAY_MS);
+  if (start.getTime() >= end.getTime()) {
+    return { value: null, error: "Invalid window: start must precede end." };
+  }
+  if ((end.getTime() - start.getTime()) / DAY_MS > MAX_SCENE_WINDOW_DAYS) {
+    return {
+      value: null,
+      error: `Invalid window: the start/end span exceeds ${MAX_SCENE_WINDOW_DAYS} days.`,
+    };
+  }
+  return {
+    value: { start: start.toISOString(), end: end.toISOString() },
+    error: null,
+  };
+}

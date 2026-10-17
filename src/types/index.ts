@@ -197,3 +197,56 @@ export const LAYER_IDS = [
 //   see DataPanel for the current single-layer implementation to extend.
 
 export type LayerId = (typeof LAYER_IDS)[number];
+
+// --- Phase 6: Sentinel catalogue discovery (CDSE OData) ---
+
+/** Curated Sentinel product classes exposed by the scene-search route. */
+export type SceneCollectionId =
+  | 'sentinel-2-l1c'
+  | 'sentinel-2-l2a'
+  | 'sentinel-1-grd';
+
+/**
+ * GeoJSON geometry exactly as CDSE returns it in `GeoFootprint`
+ * ([lon, lat] coordinate order). The client renders the outer ring of each
+ * polygon; holes are not visualized.
+ */
+export type SceneFootprint =
+  | { type: 'Polygon'; coordinates: number[][][] }
+  | { type: 'MultiPolygon'; coordinates: number[][][][] };
+
+/**
+ * One Sentinel catalogue result (wire shape mirrors the route payload's
+ * snake_case convention, like EventDetail/LayerData).
+ */
+export interface SceneSummary {
+  /** CDSE OData product Id (stable GUID — entity identity on the globe). */
+  id: string;
+  /** Product name, e.g. `S2C_MSIL2A_20261015T011651_...SAFE`. */
+  name: string;
+  collection: SceneCollectionId;
+  /** Sensing start (ContentDate/Start, ISO-8601). */
+  content_date: string;
+  /** Publication timestamp (ISO-8601) when the catalogue reports one. */
+  publication_date: string | null;
+  /** Download availability flag; null when the catalogue omits it. */
+  online: boolean | null;
+  /** Parsed footprint geometry; null when absent or structurally invalid. */
+  footprint: SceneFootprint | null;
+}
+
+/** `/api/v1/scenes` payload (client mirror of the route envelope data). */
+export interface SceneSearchPayload {
+  query: {
+    bbox: string;
+    start: string;
+    end: string;
+    collection: SceneCollectionId;
+    limit: number;
+  };
+  scenes: SceneSummary[];
+  count: number;
+  /** Copernicus attribution string shown wherever results are displayed. */
+  attribution: string;
+  data_status?: DataStatus;
+}

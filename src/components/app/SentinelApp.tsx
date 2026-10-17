@@ -8,6 +8,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 
 import { useState, useCallback, useEffect, useRef, memo } from 'react';
+import dynamic from 'next/dynamic';
 import EarthRenderer from '@/components/globe/EarthRenderer';
 import type { RendererInfo } from '@/components/globe/EarthRenderer';
 import AppShell from '@/components/shell/AppShell';
@@ -21,6 +22,7 @@ import DataPanel from '@/components/intelligence/DataPanel';
 import SettingsModal from '@/components/panels/SettingsModal';
 import MarkerHoverCard from '@/components/overlays/MarkerHoverCard';
 import { useLayers, useLayerData, useIdlePrefetchLayer } from '@/hooks/useLayers';
+import { useSceneSearch } from '@/hooks/useSceneSearch';
 import { useSunDirection } from '@/hooks/useSunDirection';
 import { useKeyboardShortcuts, SHORTCUT_LAYERS } from '@/hooks/useKeyboardShortcuts';
 import { useAppUrlState } from '@/components/app/useAppUrlState';
@@ -33,7 +35,16 @@ import { useGlobeGrid } from '@/components/app/useGlobeGrid';
 import { useImageryOpacity } from '@/components/app/useImageryOpacity';
 import { useFlyTo } from '@/components/app/useFlyTo';
 import { usePendingEventResolution } from '@/components/app/usePendingEventResolution';
-import type { DataPoint, LayerId } from '@/types';
+import type { DataPoint, LayerId, SceneSummary } from '@/types';
+import type { CommittedSceneQuery } from '@/components/panels/SceneSearchPanel';
+
+// Phase 6: the scene-search panel is a lazy client-only chunk — the form +
+// results UI leaves the initial route graph (200 KiB budget protection) and
+// loads only when the user opens Scenes on the Cesium branch.
+const SceneSearchPanel = dynamic(
+  () => import('@/components/panels/SceneSearchPanel'),
+  { ssr: false },
+);
 
 // Memoized renderer boundary so shell-only state (hover, search typing)
 // never re-renders the 3D scene; the selection callbacks stay stable.
@@ -105,9 +116,40 @@ function SentinelApp() {
   const handleLayerError = useCallback((message: string | null) => {
     setImageryError(message);
   }, []);
+
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isRotating, setIsRotating] = useState(true);
   const [allDataPoints, setAllDataPoints] = useState<DataPoint[]>([]);
+  // Phase 6: Sentinel scene search. The committed query owns the SWR key
+  // (fantype changes fetch); the panel keeps its own draft form state.
+  const [sceneSearchOpen, setSceneSearchOpen] = useState(false);
+  const [sceneQuery, setSceneQuery] = useState<CommittedSceneQuery | null>(null);
+  const [selectedScene, setSelectedScene] = useState<SceneSummary | null>(null);
+  const sceneSearch = useSceneSearch(
+    sceneQuery
+      ? { bbox: sceneQuery.bbox, start: sceneQuery.start, end: sceneQuery.end, collection: sceneQuery.collection }
+      : { bbox: null },
+  );
+
+  // Phase 6 handlers: commit a search, resolve a footprint pick, clear.
+  const handleSceneSearch = useCallback((query: CommittedSceneQuery) => {
+    setSceneSearchOpen(true);
+    setSceneQuery(query);
+    setSelectedScene(null);
+  }, []);
+  const handleSceneSelect = useCallback((scene: SceneSummary) => {
+    setSelectedScene(scene);
+    setSceneSearchOpen(true);
+  }, []);
+  const handleSceneClear = useCallback(() => {
+    // Committed query goes null → the hook fetches nothing → the globe
+    // drains its footprint entities (and the SWR cache stays harmless).
+    setSceneQuery(null);
+    setSelectedScene(null);
+  }, []);
+  const handleScenePanelToggle = useCallback(() => {
+    setSceneSearchOpen((prev) => !prev);
+  }, []);
   const [rendererInfo, setRendererInfo] = useState<RendererInfo>({
     active: 'loading',
     detail: 'starting globe…',
@@ -261,6 +303,9 @@ function SentinelApp() {
           onCoordinatePick={handleCoordinatePick}
           onLayerError={handleLayerError}
           layerError={imageryError}
+          footprints={sceneSearch.scenes}
+          selectedSceneId={selectedScene?.id ?? null}
+          onSceneSelect={handleSceneSelect}
         />
       )}
 
@@ -304,12 +349,40 @@ function SentinelApp() {
         }
         panel={
           // List mode: the stage is the primary presentation, so the panel
-          // stands down entirely and no row is ever rendered twice.
+          // stands down entirely and no row is ever rendered twice. Phase 6:
+          // the explicit Scenes toggle wins while it is open (otherwise a
+          // pre-opened layer would swallow the click with no feedback);
+          // closing it restores whichever panel was showing before.
           view === 'list'
             ? null
-            : activeLayer || selectedEvent ? (
+            : sceneSearchOpen ? (
+            <SceneSearchPanel
+              // Remount per committed query: a fresh search re-seeds the
+              // draft form; ordinary re-renders keep the user's edits.
+              key={
+                sceneQuery
+                  ? `${sceneQuery.bbox}|${sceneQuery.start ?? ''}|${sceneQuery.end ?? ''}|${sceneQuery.collection}`
+                  : 'draft'
+              }
+              pickedCoord={pickedCoord}
+              committedQuery={sceneQuery}
+              results={{
+                payload: sceneSearch.payload,
+                loading: sceneSearch.loading,
+                validating: sceneSearch.validating,
+                error: sceneSearch.error ? sceneSearch.error.message : null,
+                dataStatus: sceneSearch.dataStatus,
+                cacheHit: sceneSearch.cacheHit,
+              }}
+              selectedScene={selectedScene}
+              onSearch={handleSceneSearch}
+              onSelect={handleSceneSelect}
+              onClear={handleSceneClear}
+              onClose={() => setSceneSearchOpen(false)}
+            />
+            ) : activeLayer || selectedEvent ? (
           <DataPanel {...layerPresentationProps} />
-          ) : null
+            ) : null
         }
         status={
           <StatusDock
@@ -321,6 +394,8 @@ function SentinelApp() {
             dataStatus={dataStatus}
             cacheHit={layerCacheHit}
             rendererInfo={rendererInfo}
+            sceneSearchOpen={sceneSearchOpen}
+            onToggleSceneSearch={handleScenePanelToggle}
           />
         }
       />

@@ -117,6 +117,18 @@ interface EarthRendererProps {
    * Phase 4: parent-owned layer error mirrored back for diagnostics.
    */
   layerError?: string | null;
+  /**
+   * Phase 6: Sentinel catalogue footprints (Cesium branch only; the legacy
+   * branches ignore them). Drawn as ground polygons with click-to-select.
+   */
+  footprints?: import('@/types').SceneSummary[];
+  /** Phase 6: scene whose footprint is highlighted (Cesium branch only). */
+  selectedSceneId?: string | null;
+  /**
+   * Phase 6: footprint click-selection from the Cesium branch (after the
+   * marker-priority rule). Optional so the legacy branches are untouched.
+   */
+  onSceneSelect?: (scene: import('@/types').SceneSummary) => void;
 }
 
 export default function EarthRenderer({
@@ -136,6 +148,9 @@ export default function EarthRenderer({
   onCoordinatePick,
   onLayerError,
   layerError = null,
+  footprints = [],
+  selectedSceneId = null,
+  onSceneSelect,
 }: EarthRendererProps) {
   // Session 5 A/B test: `?renderer=webgl` / `?renderer=webgpu` resolves
   // synchronously at mount (no probe, no cascading render).
@@ -308,6 +323,9 @@ export default function EarthRenderer({
             onCoordinatePick={onCoordinatePick}
             onLayerError={onLayerError}
             layerError={layerError}
+            footprints={footprints}
+            selectedSceneId={selectedSceneId}
+            onSceneSelect={onSceneSelect}
           />
         </Suspense>
       ) : activeMode === 'webgl' ? (

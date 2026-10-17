@@ -18,7 +18,10 @@
  * opacity). Phase 5 syncs the active layer's observations as billboard
  * entities with hover/click parity (the corresponding props are now live;
  * `isRotating` and `sunDirection` stay intentionally unused — auto-rotate
- * and sun wiring are deferred, not silently broken).
+ * and sun wiring are deferred, not silently broken). Phase 6 draws Sentinel
+ * catalogue footprints as ground-polygon entities with click-to-select
+ * routing (observations outrank footprints; both outrank the ellipsoid
+ * coordinate readout).
  *
  * Lifecycle guarantees:
  * - `cesium` is imported dynamically inside the mount effect, after
@@ -64,11 +67,18 @@ import {
 } from './cesiumObservations';
 import type { ObservationSyncState } from './cesiumObservations';
 import {
+  createFootprintSyncState,
+  disposeFootprintEntities,
+  pickFootprintAt,
+  syncFootprintEntities,
+} from './cesiumFootprints';
+import type { FootprintSyncState } from './cesiumFootprints';
+import {
   clampLayerOpacity,
   resolveBaseLayerId,
 } from './imageryLayers';
 import type { GlobeMode } from './rendererMode';
-import type { DataPoint, LayerId } from '@/types';
+import type { DataPoint, LayerId, SceneSummary } from '@/types';
 import type {
   Cartesian2,
   Cartesian3,
@@ -139,6 +149,18 @@ export interface CesiumEarthProps {
    * switch effect below never calls setState synchronously.
    */
   layerError?: string | null;
+  /**
+   * Phase 6: Sentinel catalogue footprints to draw as ground polygons
+   * (id-diffed sync; empty array clears them). Ignored before init.
+   */
+  footprints?: SceneSummary[];
+  /** Phase 6: scene whose footprint is highlighted (`null` = none). */
+  selectedSceneId?: string | null;
+  /**
+   * Phase 6: footprint pick from a click on a drawn footprint (after the
+   * observation-priority rule misses). Absent/undefined = no routing.
+   */
+  onSceneSelect?: (scene: SceneSummary) => void;
 }
 
 type CesiumPhase = 'loading' | 'ready' | 'error';
@@ -168,6 +190,9 @@ export default function CesiumEarth({
   onCoordinatePick,
   onLayerError,
   layerError = null,
+  footprints = [],
+  selectedSceneId = null,
+  onSceneSelect,
 }: CesiumEarthProps) {
   void _activeLayer;
   // Phase 5 defers O5 auto-rotate parity: the toggle stays a no-op on this
@@ -185,6 +210,8 @@ export default function CesiumEarth({
   // Phase 5: live observation-entity sync state (id → entity/point).
   // Owned here, never serialized, disposed on unmount.
   const obsStateRef = useRef<ObservationSyncState | null>(null);
+  // Phase 6: live footprint-entity sync state (same ownership contract).
+  const footprintStateRef = useRef<FootprintSyncState | null>(null);
   const spriteRef = useRef<HTMLCanvasElement | string | null>(null);
   // Phase 4: live base layer + the id it was built for. Replacements are
   // add-then-remove (never a blank globe) keyed off these refs.
@@ -201,12 +228,15 @@ export default function CesiumEarth({
     onMarkerClick,
     onMarkerHover,
     onLayerError,
+    onSceneSelect,
     lowPowerActive,
     globeGridVisible,
     baseLayerId,
     baseOpacity,
     gridOpacity,
     dataPoints,
+    footprints,
+    selectedSceneId,
   });
   useEffect(() => {
     callbackRef.current = {
@@ -215,12 +245,15 @@ export default function CesiumEarth({
       onMarkerClick,
       onMarkerHover,
       onLayerError,
+      onSceneSelect,
       lowPowerActive,
       globeGridVisible,
       baseLayerId,
       baseOpacity,
       gridOpacity,
       dataPoints,
+      footprints,
+      selectedSceneId,
     };
   });
 
@@ -318,6 +351,17 @@ export default function CesiumEarth({
           points: callbackRef.current.dataPoints,
         });
 
+        // Phase 6: catalogue footprints — same ownership contract as the
+        // observation sync (created once here, prop-synced below).
+        footprintStateRef.current = createFootprintSyncState();
+        syncFootprintEntities({
+          viewer,
+          cesium,
+          state: footprintStateRef.current,
+          scenes: callbackRef.current.footprints,
+          selectedId: callbackRef.current.selectedSceneId,
+        });
+
         // Click, hover, and coordinate picking: canvas-only handlers, so
         // dashboard controls never reach them.
         // - Phase 5 parity: LEFT_DOWN/LEFT_UP with the legacy 6 px drag
@@ -339,8 +383,18 @@ export default function CesiumEarth({
             obsStateRef.current,
             position,
           );
+          // Footprints get pointer feedback too (no hover card — selection
+          // is click-driven, so only the cursor changes).
+          let footprintHovered = false;
+          if (!hovered) {
+            const fpState = footprintStateRef.current;
+            footprintHovered = fpState
+              ? pickFootprintAt(activeViewer, fpState, position) !== null
+              : false;
+          }
           try {
-            activeViewer.scene.canvas.style.cursor = hovered ? 'pointer' : 'grab';
+            activeViewer.scene.canvas.style.cursor =
+              hovered || footprintHovered ? 'pointer' : 'grab';
           } catch {
             // Canvas styling is best-effort during teardown.
           }
@@ -370,6 +424,16 @@ export default function CesiumEarth({
               : null;
             if (observed) {
               callbackRef.current.onMarkerClick(observed);
+              return;
+            }
+            // Phase 6 priority: observations outrank footprints, footprints
+            // outrank the ellipsoid readout (each hit short-circuits).
+            const footprintState = footprintStateRef.current;
+            const footprint = footprintState
+              ? pickFootprintAt(activeViewer, footprintState, up)
+              : null;
+            if (footprint) {
+              callbackRef.current.onSceneSelect?.(footprint);
               return;
             }
             const pick = callbackRef.current.onCoordinatePick;
@@ -482,6 +546,15 @@ export default function CesiumEarth({
       }
       obsStateRef.current = null;
       spriteRef.current = null;
+      // Phase 6: footprints obey the same ownership contract.
+      try {
+        if (owned && !owned.isDestroyed() && footprintStateRef.current) {
+          disposeFootprintEntities(owned, footprintStateRef.current);
+        }
+      } catch {
+        // Disposal is best-effort; Viewer destroy disposes the rest.
+      }
+      footprintStateRef.current = null;
       if (owned && !owned.isDestroyed()) {
         owned.destroy();
       }
@@ -576,6 +649,22 @@ export default function CesiumEarth({
       points: dataPoints,
     });
   }, [dataPoints]);
+
+  // Phase 6: footprint sync — same id-diff pattern as observations. A
+  // selection change repaints only the affected scenes' materials.
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    const cesium = cesiumRef.current;
+    const syncState = footprintStateRef.current;
+    if (!viewer || viewer.isDestroyed() || !cesium || !syncState) return;
+    syncFootprintEntities({
+      viewer,
+      cesium,
+      state: syncState,
+      scenes: footprints,
+      selectedId: selectedSceneId,
+    });
+  }, [footprints, selectedSceneId]);
 
   // Phase 4: base-imagery replacement. Add-then-remove keeps the globe
   // covered during ordinary transitions (no blank frame); the old layer is

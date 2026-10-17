@@ -127,15 +127,17 @@ export function checkLimit(
 
 /**
  * Route classification. Heavy = upstream-expensive (provider quota burn):
- * per-layer data, heatmaps, search, reverse-geocode, GIBS tiles.
- * Light = cheap metadata/health. Everything else under /api/v1 is standard.
- * Returns null for paths outside the protected surface.
+ * per-layer data, heatmaps, search, Sentinel catalogue scenes,
+ * reverse-geocode, GIBS tiles. Light = cheap metadata/health. Everything
+ * else under /api/v1 is standard. Returns null for paths outside the
+ * protected surface.
  */
 export function classifyRoute(pathname: string): RouteClass | null {
   if (!pathname.startsWith("/api/v1/") && pathname !== "/api/v1") return null;
   if (
     /^\/api\/v1\/layers\/[^/]+\/(data|heatmap)$/.test(pathname) ||
     pathname === "/api/v1/search" ||
+    pathname === "/api/v1/scenes" ||
     pathname === "/api/v1/geocode/reverse" ||
     /^\/api\/v1\/imagery\/gibs\/tile\//.test(pathname)
   ) {

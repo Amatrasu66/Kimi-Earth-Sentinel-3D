@@ -12,6 +12,7 @@ export const DEFAULTS = {
   AIRNOW_API_URL: "https://www.airnowapi.org/aq/observation",
   NASA_FIRMS_URL: "https://firms.modaps.eosdis.nasa.gov/api",
   OPEN_METEO_GEOCODING_URL: "https://geocoding-api.open-meteo.com/v1",
+  CDSE_ODATA_URL: "https://catalogue.dataspace.copernicus.eu/odata/v1",
   REQUEST_TIMEOUT: 8,
   MAX_UPSTREAM_TIMEOUT_SEC: 30,
   CACHE_DEFAULT_TIMEOUT: 300,
@@ -69,6 +70,14 @@ export const serverConfig = {
   get nasaFirmsUrl(): string {
     return envStr("NASA_FIRMS_URL", DEFAULTS.NASA_FIRMS_URL);
   },
+  /**
+   * Phase 6: Copernicus Data Space Ecosystem OData catalogue (keyless —
+   * verified live; the STAC item search is auth-gated, so OData is the
+   * compliant no-credential path).
+   */
+  get cdseOdataUrl(): string {
+    return envStr("CDSE_ODATA_URL", DEFAULTS.CDSE_ODATA_URL);
+  },
   get airnowApiKey(): string | null {
     return process.env.AIRNOW_API_KEY || null;
   },
@@ -97,6 +106,9 @@ export const serverConfig = {
   },
   get nasaFirmsTimeoutMs(): number {
     return envTimeoutSec("FIRMS_TIMEOUT", this.requestTimeoutSec) * 1000;
+  },
+  get cdseTimeoutMs(): number {
+    return envTimeoutSec("CDSE_TIMEOUT", this.requestTimeoutSec) * 1000;
   },
   get cacheDefaultTimeout(): number {
     return envInt("CACHE_DEFAULT_TIMEOUT", DEFAULTS.CACHE_DEFAULT_TIMEOUT);

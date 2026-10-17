@@ -12,7 +12,10 @@
 // What it verifies against a running server (dev or production):
 //   1. `/?renderer=cesium` opens and the Cesium Viewer initializes.
 //   2. No "failed to initialize" veil and no runtime exceptions.
-//   3. GIBS `wmts.cgi` tile responses arrive with HTTP 200.
+//   3. GIBS `wmts.cgi` GetTile exchanges arrive with HTTP 200 (image
+//      exchanges gate imagery); GetFeatureInfo probes fired by Cesium's
+//      imagery pick are tallied but never gate (GIBS answers 501 for
+//      raster layers that do not implement feature info).
 //   4. `/cesium/` static assets (incl. `Workers/`) serve 200.
 //   5. Mouse drag changes the rendered frame (camera interaction).
 //   6. Wheel zoom + viewport resize update the canvas.
@@ -36,6 +39,12 @@
 //      violation-message text: the app must not ship an ENFORCING
 //      Content-Security-Policy header. Violation notes against the
 //      report-only policy are collected but cannot block anything.
+//  13. Phase 6: the Scenes dock control appears on the Cesium path; the
+//      panel opens via the toggle; a real globe click seeds the AOI; a
+//      live search resolves to an honest status (scene existence is
+//      environmental); a scene-row click expands its inline detail. The
+//      `/api/v1/scenes` traffic is tallied in `report.json`. Footprints
+//      on the globe are screenshot-reviewed.
 //
 // Evidence (screenshots + JSON report) is written to `--out`. Screenshots
 // require human review for visual claims; the programmatic checks assert
@@ -398,19 +407,34 @@ async function main() {
     record('no failure veil', noErrorVeil === true, noErrorVeil ? undefined : 'error veil is visible');
     await screenshot('cesium-ready');
 
-    // 2. Imagery tiles stream in.
-    const wmtsCount = () => responses.filter((r) => r.url?.includes('wmts.cgi')).length;
-    const wmtsOk = () =>
-      responses.filter((r) => r.url?.includes('wmts.cgi') && r.status === 200).length;
+    // 2. Imagery tiles stream in. The hard gate distinguishes the two
+    // wmts.cgi request families: GetTile exchanges must all return 200
+    // (that is what renders pixels), while Cesium's imagery pick also
+    // fires GetFeatureInfo during globe clicks — GIBS answers 501 "Not
+    // Implemented" for raster layers that do not support feature info
+    // (a Cesium-level "no features found" outcome, not a tile failure),
+    // so those are tallied, never gating.
+    const wmtsTiles = () =>
+      responses.filter(
+        (r) => r.url?.includes('wmts.cgi') && /request=GetTile/i.test(r.url),
+      );
+    const wmtsTilesOk = () =>
+      wmtsTiles().filter((r) => r.status === 200).length;
+    const wmtsFeatureInfo = () =>
+      responses.filter(
+        (r) => r.url?.includes('wmts.cgi') && /request=GetFeatureInfo/i.test(r.url),
+      );
+    const wmtsFeatureInfoOk = () =>
+      wmtsFeatureInfo().filter((r) => r.status === 200).length;
     const tileDeadline = Date.now() + 45_000;
-    while (Date.now() < tileDeadline && wmtsOk() === 0) await sleep(1000);
+    while (Date.now() < tileDeadline && wmtsTilesOk() === 0) await sleep(1000);
     await sleep(TILE_WAIT_MS);
     // Informational at this point: CDP response events can lag the renderer
     // under software GL. The authoritative imagery check runs at report time.
     record(
       'GIBS imagery requests observed',
       true,
-      `${wmtsOk()} × 200 of ${wmtsCount()} so far (final tally at report time)`,
+      `${wmtsTilesOk()} × 200 tiles of ${wmtsTiles().length} so far (final tally at report time)`,
     );
     await screenshot('cesium-tiles');
 
@@ -689,6 +713,131 @@ async function main() {
     }
     await screenshot('cesium-event-detail');
 
+    // Phase 6: Sentinel scene discovery. Everything is driven by real
+    // clicks over the live CDSE-backed route: pick the globe → seed the
+    // AOI → search → scene rows + status chip. Environment-dependent
+    // outcomes (catalogue reachability, scenes in view) are asserted as
+    // honest labels, never as "scenes must exist"; the hard checks are
+    // wiring (controls appear, panel opens, a status resolves) and no
+    // crash. Footprint rendering on the globe is screenshot-reviewed.
+    await navigate(`${BASE_URL}/?renderer=cesium`);
+    // Dismiss the first-run hint for this profile phase so it cannot
+    // swallow the canvas click that seeds the AOI.
+    await evalValue(
+      `window.localStorage.setItem('sentinel:first-run-hint-dismissed:v1', '1')`,
+    );
+    await navigate(`${BASE_URL}/?renderer=cesium`);
+    try {
+      await waitFor(CESIUM_READY, READY_TIMEOUT_MS, 'Cesium Viewer ready (scenes)');
+      await sleep(6000);
+      await clickAt(800, 450);
+      await sleep(1500);
+      const scenesBtn = await evalValue(
+        `!!document.getElementById('sentinel-scenes-toggle')`,
+      );
+      record('scenes control present on the Cesium path', scenesBtn === true);
+    } catch (e) {
+      record('scenes control present on the Cesium path', false, e.message);
+    }
+    try {
+      await evalValue(`document.getElementById('sentinel-scenes-toggle')?.click()`);
+      await waitFor(
+        `!!document.querySelector('section[aria-label="Sentinel scene search"]')`,
+        15_000,
+        'scene search panel',
+      );
+      record('scenes toggle opens the search panel', true);
+    } catch (e) {
+      record('scenes toggle opens the search panel', false, e.message);
+    }
+    await screenshot('scenes-panel-open');
+
+    try {
+      await evalValue(`document.getElementById('sentinel-scenes-use-pick')?.click()`);
+      await sleep(500);
+      const aoi = await evalValue(
+        `document.getElementById('scene-bbox')?.value ?? null`,
+      );
+      const aoiOk =
+        typeof aoi === 'string' &&
+        /^-?\d+(\.\d+)?, ?-?\d+(\.\d+)?, ?-?\d+(\.\d+)?, ?-?\d+(\.\d+)?$/.test(aoi);
+      record('globe pick seeds the bbox control', aoiOk, `bbox=${aoi}`);
+      if (aoiOk) {
+        await evalValue(`document.getElementById('sentinel-scenes-search')?.click()`);
+        await waitFor(
+          `(() => {
+            const s = document.querySelector('section[aria-label="Sentinel scene search"]');
+            if (!s) return false;
+            return Boolean(
+              s.querySelector('div[aria-label^="Data status:"]') ||
+                s.querySelector('p[role="alert"]'),
+            );
+          })()`,
+          75_000,
+          'scene search resolves (status chip or error)',
+        );
+        const post = await evalValue(
+          `(() => {
+            const s = document.querySelector('section[aria-label="Sentinel scene search"]');
+            if (!s) return null;
+            return {
+              status: s.querySelector('div[aria-label^="Data status:"]')?.getAttribute('aria-label') ?? null,
+              rows: s.querySelectorAll('button[aria-expanded]').length,
+              unavailable: Boolean(s.querySelector('[role="status"] p')),
+              unavailableText: s.querySelector('[role="status"] p')?.textContent ?? null,
+              error: s.querySelector('p[role="alert"]')?.textContent ?? null,
+            };
+          })()`,
+        );
+        const searchOk =
+          post !== null &&
+          (post.status !== null || post.error !== null) &&
+          (post.unavailableText === null || // empty available result
+            typeof post.unavailableText === 'string'); // honest unavailable banner
+        record(
+          'scene search resolves against the live catalogue',
+          searchOk,
+          post ? JSON.stringify(post).slice(0, 220) : 'panel vanished after search',
+        );
+        await evalValue(
+          `(() => {
+            const row = document.querySelector(
+              'section[aria-label="Sentinel scene search"] button[aria-expanded="false"]',
+            );
+            row?.click();
+          })()`,
+        );
+        await sleep(800);
+        const transAct = await evalValue(
+          `(() => {
+            const s = document.querySelector('section[aria-label="Sentinel scene search"]');
+            const dt = s?.querySelector('dl dt');
+            const rows = s?.querySelectorAll('button[aria-expanded]').length ?? null;
+            return { hasDetail: Boolean(dt), text: dt?.textContent ?? null, rows };
+          })()`,
+        );
+        // Rows absent => nothing selectable (a valid empty LIVE window);
+        // rows present => clicking one must reliably open the detail.
+        if (transAct?.rows === 0) {
+          record(
+            'scene row click expands the inline detail',
+            true,
+            'no scene rows in this window (empty LIVE result) — step not exercised',
+          );
+        } else {
+          record(
+            'scene row click expands the inline detail',
+            transAct?.hasDetail === true && transAct.text === 'Scene detail',
+            `rows=${transAct?.rows ?? 'panel missing'}`,
+          );
+        }
+      }
+    } catch (e) {
+      record('scene search executes against the live catalogue', false, e.message);
+    }
+    await sleep(4000);
+    await screenshot('scenes-results');
+
     // 7. Phase 3 §14.3: narrow viewport keeps the Cesium canvas sized.
     await S('Emulation.setDeviceMetricsOverride', {
       width: 430, height: 820, deviceScaleFactor: 2, mobile: true,
@@ -752,11 +901,15 @@ async function main() {
 
     // Authoritative final checks — evaluated after every step so late-arriving
     // CDP events (possible under software GL) cannot produce false failures.
+    const scenesResponses = responses.filter((r) => r.url?.includes('/api/v1/scenes'));
+    const scenesOk = scenesResponses.filter(
+      (r) => r.status === 200 || r.status === 304,
+    ).length;
     const finalChecks = [
       {
-        name: 'GIBS imagery: ≥1 wmts response, all 200',
-        pass: wmtsOk() > 0 && wmtsOk() === wmtsCount(),
-        detail: `${wmtsOk()} × 200 of ${wmtsCount()} total`,
+        name: 'GIBS imagery: ≥1 GetTile, all 200 (tile exchanges gate; feature-info probes are informational below)',
+        pass: wmtsTilesOk() > 0 && wmtsTilesOk() === wmtsTiles().length,
+        detail: `${wmtsTilesOk()} × 200 of ${wmtsTiles().length} tiles; ${wmtsFeatureInfoOk()}/${wmtsFeatureInfo().length} feature-info 200`,
       },
       {
         name: 'no runtime exceptions (final tally)',
@@ -787,14 +940,35 @@ async function main() {
       log: logEntries,
       network: {
         wmts: {
-          total: wmtsCount(),
-          ok: wmtsOk(),
-          statuses: statusHistogram(responses.filter((r) => r.url?.includes('wmts.cgi'))),
+          tiles: {
+            total: wmtsTiles().length,
+            ok: wmtsTilesOk(),
+            statuses: statusHistogram(wmtsTiles()),
+            // Upstream hiccup forensics: GIBS occasionally answers 5xx for a
+            // tile (e.g. today's date not fully ingested). Per-URL capture
+            // distinguishes transient upstream errors from real failures.
+            nonOk: wmtsTiles()
+              .filter((r) => r.status !== 200)
+              .map((r) => `${r.status} ${r.url.slice(0, 220)}`),
+          },
+          // Cesium fires GetFeatureInfo when picking imagery under a click;
+          // raster GIBS layers answer 501 (unsupported), which Cesium treats
+          // as "no features found". Tallied for forensics only.
+          featureInfo: {
+            total: wmtsFeatureInfo().length,
+            ok: wmtsFeatureInfoOk(),
+            statuses: statusHistogram(wmtsFeatureInfo()),
+          },
         },
         cesiumAssets: {
           total: cesiumAssets.length,
           workers: workerAssets.length,
           statuses: statusHistogram(cesiumAssets),
+        },
+        scenes: {
+          total: scenesResponses.length,
+          ok: scenesOk,
+          statuses: statusHistogram(scenesResponses),
         },
         csp: {
           documentPolicies: documentCsp,

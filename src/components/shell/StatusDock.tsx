@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Crosshair, Cpu } from 'lucide-react';
+import { Crosshair, Cpu, Satellite } from 'lucide-react';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { formatCoordinates } from '@/lib/format';
 import { provenanceChipLabel, resolveProvenance } from '@/lib/provenance';
@@ -17,6 +17,13 @@ interface StatusDockProps {
   /** Server L1 bit (T3.7): a live result served from cache reads CACHED. */
   cacheHit?: boolean | null;
   rendererInfo?: RendererInfo | null;
+  /**
+   * Phase 6: renderer-gated Sentinel search control. Rendered only when the
+   * active renderer is Cesium (footprints are a Cesium-branch feature) and
+   * a handler is provided — optional so every other caller is untouched.
+   */
+  sceneSearchOpen?: boolean;
+  onToggleSceneSearch?: () => void;
 }
 
 /** Display names for every selectable renderer (incl. the default). */
@@ -32,7 +39,7 @@ const RENDERER_NAMES: Record<string, string> = {
  * context · provenance (wide) · UTC · renderer state. In-flow footer
  * row owned by AppShell, 38px, hairline top border, no pill chrome.
  */
-export default function StatusDock({ coordinates, activeLayer, dataCount, dataStatus = null, cacheHit = null, rendererInfo = null }: StatusDockProps) {
+export default function StatusDock({ coordinates, activeLayer, dataCount, dataStatus = null, cacheHit = null, rendererInfo = null, sceneSearchOpen = false, onToggleSceneSearch }: StatusDockProps) {
   // Null until client mount: SSR and the first client render must produce
   // identical markup, so the live clock starts only inside useEffect (after
   // hydration) — never from `new Date()` during render.
@@ -129,6 +136,30 @@ export default function StatusDock({ coordinates, activeLayer, dataCount, dataSt
               {dataStatus.message ?? `Source: ${dataStatus.source}`}
             </TooltipContent>
           </Tooltip>
+        )}
+        {rendererInfo?.active === 'cesium' && onToggleSceneSearch && (
+          <>
+            <span className="hidden h-3 w-px bg-white/10 sm:block" aria-hidden />
+            <Tooltip delayDuration={200}>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  id="sentinel-scenes-toggle"
+                  onClick={onToggleSceneSearch}
+                  aria-pressed={sceneSearchOpen}
+                  className="hidden items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-white/50 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-sentinel-accent sm:flex"
+                >
+                  <Satellite className={cn('h-3.5 w-3.5', sceneSearchOpen && 'text-sentinel-accent')} aria-hidden />
+                  <span className={cn('sentinel-micro sentinel-mono whitespace-nowrap', sceneSearchOpen && 'text-sentinel-accent')}>
+                    Scenes
+                  </span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="border-white/10 bg-sentinel-elev text-xs text-white">
+                {sceneSearchOpen ? 'Hide the Sentinel scene search' : 'Search Sentinel scenes for the picked area'}
+              </TooltipContent>
+            </Tooltip>
+          </>
         )}
       </div>
 
