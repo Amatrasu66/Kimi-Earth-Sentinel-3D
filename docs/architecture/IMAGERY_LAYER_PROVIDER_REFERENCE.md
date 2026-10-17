@@ -1,4 +1,4 @@
-# Imagery & Layer Provider Reference (Phase 4)
+# Imagery & Layer Provider Reference (Phases 4–6)
 
 Authoritative record of every imagery provider the application actually
 supports. Only listed providers may appear in the layer registry
@@ -43,6 +43,27 @@ asserted against the server allow-list (`isAllowedLayer`) in tests.
 | Limitations | Density refines with zoom by construction; carries no data |
 | Lifecycle | Created once per Viewer; `show` toggles visibility; `alpha` fades; disposed with the Viewer |
 
+## 1a. Catalogue (metadata) provider — CDSE OData (Phase 6; NOT an imagery layer)
+
+Added by Phase 6. This provider supplies **scene metadata discovery**
+(search results + product footprints), not imagery tiles, and therefore
+is **not** part of `IMAGERY_LAYER_REGISTRY` — it lives server-side in
+`src/server/providers/cdse-catalogue.ts` behind `GET /api/v1/scenes`
+and renders only as footprint entities in the lazy Cesium chunk.
+
+| Aspect | Verified value |
+|---|---|
+| Service | Copernicus Data Space Ecosystem OData catalogue, `https://catalogue.dataspace.copernicus.eu/odata/v1/Products` (code constant; env-overridable for tests only) |
+| Auth | **none (keyless)** — verified live repeatedly (Stage A §4.6–4.7; Stage B entry + close) |
+| Query form | `$filter=Collection/Name eq '…' and contains(Name,'…') and OData.CSC.Intersects(area=geography'SRID=4326;POLYGON((…))') and ContentDate/Start gt … lt …` + `$select=Id,Name,ContentDate,GeoFootprint,Online,PublicationDate` + `$orderby=ContentDate/Start desc` + `$top` |
+| Collections | allow-list only: `sentinel-2-l1c` (default), `sentinel-2-l2a`, `sentinel-1-grd`; forged ids throw before any fetch |
+| Geometry | `GeoFootprint` GeoJSON (Polygon \| MultiPolygon, `[lon,lat]`); parse cap 4,096 vertices (over cap → footprint `null`, scene kept); entity caps 400 entities / 1,024 vertices per outer ring |
+| Temporal semantics | `ContentDate/Start` = **acquisition/sensed time — never live coverage**; `PublicationDate` shown separately; both displayed in UTC, distinct from fetch/cache times |
+| Attribution | `Contains modified Copernicus Sentinel data [<current year>]` (payload + panel display) |
+| Caching / rate | route TTL 900 s + `stale-while-revalidate=1800`; limit 20/20; one upstream request per user action; heavy rate-limit class; no polling |
+| Honesty states | LIVE / CACHED / STALE (expired cache served during upstream failure, labeled) / UNAVAILABLE (empty labeled payload) — failures never fabricated, never blank the globe |
+| Licensing boundary | metadata discovery only; product downloads require CDSE OIDC credentials (not implemented; Phase 7 decision) |
+
 ## 2. Layer roles and ordering
 
 - Exactly one base is active at a time (`DEFAULT_BASE_LAYER_ID =
@@ -69,10 +90,15 @@ asserted against the server allow-list (`isAllowedLayer`) in tests.
 
 ## 4. Explicitly unimplemented (future integrations, NOT supported)
 
-- Sentinel-1/2 ingestion, STAC discovery, NDVI or derived rasters,
+- Sentinel scene **raster rendering/ingestion** (Phase 7 by backlog),
+  scene **downloads** and authenticated STAC item search (require CDSE
+  OIDC credentials — keyless STAC item search returns zero features,
+  proven in the Phase 6 proposal §4), NDVI or derived rasters,
   precipitation/pollution/fire overlays, commercial WMTS/WMS, ion World
   Imagery/Terrain (requires a token — forbidden on the default path),
   self-hosted quantized-mesh terrain, Sentinel Hub (OAuth + quota).
+  (Scene **metadata discovery** is now supported — see §1a; it is not
+  an imagery layer and does not change the registry rules above.)
 - Each requires: endpoint + tiling verification, auth review, CSP review,
   attribution/licensing clearance, temporal-semantics documentation, and
   a registry + factory + UI + test + smoke update. Until then they must

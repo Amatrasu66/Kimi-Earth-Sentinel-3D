@@ -230,6 +230,55 @@ contract change unless stated and approved.
 
 ## Phase 6 — Sentinel catalogue (STAC search + footprints + metadata)
 
+> Phase 6 status (2026-10-17, Stage B approved Candidate A): IMPLEMENTED —
+> see `PHASE_6_SCOPE_PROPOSAL.md` (Stage A + binding Approval record:
+> Q1 approve Candidate A, Q2 keyless CDSE OData, Q3 defer O5/O6, Q4
+> approve the new route, Q5 fallback only if the spatial filter failed,
+> Q6 standing rule), `PHASE_6_IMPLEMENTATION_REPORT.md` (20 sections),
+> and `PHASE_6_ACCEPTANCE_CHECKLIST.md` (all §§16.A–G passed).
+> **Access-path substitution (approved):** the backlog's STAC item
+> search is auth-gated (proposal §4: 200s with zero features keyless);
+> delivery uses the **keyless CDSE OData catalogue**
+> (`catalogue.dataspace.copernicus.eu/odata/v1/Products`) instead.
+> The canonical spatial filter
+> `OData.CSC.Intersects(area=geography'SRID=4326;POLYGON((…))')` **works
+> keylessly** (solves the Stage A §4.8 400 — that was a syntax issue);
+> Q5's bounded-retrieval fallback was NOT needed.
+> Delivered: `src/server/providers/cdse-catalogue.ts` (allow-listed
+> collections sentinel-2-l1c default / -l2a / sentinel-1-grd, pinned
+> filter + encoder, envelope validation, 4,096-vertex footprint cap,
+> attribution `Contains modified Copernicus Sentinel data [year]`,
+> TTL 900 s, limit 20/20); new validated route
+> `GET /api/v1/scenes` (bbox/collection/window/limit matrix, 45-day
+> span cap, MemoryCache, LIVE `s-maxage=900` + SWR, honest
+> STALE/UNAVAILABLE, heavy rate class); client
+> `useSceneSearch` (SWR, no retries/polling);
+> `SceneSearchPanel` (+ tiny `sceneCollections.ts`) as a lazy dynamic
+> chunk with globe-pick AOI seeding, provenance chips, inline scene
+> detail; `cesiumFootprints.ts` lazy entity sync (id-keyed diff,
+> outer-ring raw hierarchy, caps 400 entities / 1,024 ring vertices,
+> selection repaint, pick via owner map); `CesiumEarth` click routing
+> extends to **observation → footprint → ellipsoid readout**; dock
+> "Scenes" toggle (Cesium-gated); panel slot: explicit Scenes toggle
+> wins while open, closing restores the previous panel.
+> Verified: 41 new tests in 4 suites; full suite 92 files / 891 green
+> (pre-existing Radix jsdom noise worktree-verified at HEAD; one known
+> contention flake re-run green); typecheck/lint clean; build green;
+> bundle **204,168 / 204,800 B gzip PASS** (headroom 632 B; panel
+> chunk lazy-only); textures MET; live route probes (12 real S2 L2A +
+> 12 S1 GRD scenes for a Tokyo AOI; cold 1,587 ms → warm 40 ms with
+> `cache_hit:true`; exact 400 messages across the validation matrix);
+> production smoke **30/30** with a fully real-click live search
+> (globe pick → bbox → 20 live rows → expanded detail; LIVE and CACHED
+> both observed; footprint quad screenshot-reviewed). Harness: gate
+> refined to GetTile-only 200s (GetFeatureInfo 501s are GIBS raster
+> pick probes, tallied informationally — 438/438 tiles × 200).
+> O5 auto-rotate, O6 home/reset, O8 scene rasters, authenticated STAC,
+> downloads, and the default-renderer flip remain deferred/out of
+> scope by binding decision. Simplification adopted as deterministic
+> caps (not geometric simplification) — available for Phase 7 if
+> rendering perf demands. Phase 7 not started; nothing committed.
+
 - Objective: real Sentinel-1/2 discovery integrated with existing search/panels.
 - Scope: server STAC client (`stac.dataspace.copernicus.eu`:
   bbox+datetime+collection+limit, validated like other providers);

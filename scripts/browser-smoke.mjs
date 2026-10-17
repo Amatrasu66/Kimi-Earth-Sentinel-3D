@@ -77,8 +77,14 @@ for (let i = 0; i < argv.length; i += 1) {
 }
 
 const BASE_URL = flag.get('base-url') ?? 'http://localhost:3100';
+// A valueless `--out` parses as the string 'true' (see the flag parser above);
+// treating that as "not provided" keeps a bare `--out` from writing a stray
+// `./true/edge-profile` directory (incl. a full browser profile) into the repo.
+const outArg = flag.get('out');
 const OUT_DIR = path.resolve(
-  flag.get('out') ?? path.join(os.tmpdir(), 'sentinel-browser-smoke'),
+  outArg !== undefined && outArg !== 'true'
+    ? outArg
+    : path.join(os.tmpdir(), 'sentinel-browser-smoke'),
 );
 const PORT = Number(flag.get('port') ?? 9333);
 const READY_TIMEOUT_MS = Number(flag.get('ready-timeout-ms') ?? 90_000);
