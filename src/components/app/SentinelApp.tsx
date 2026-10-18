@@ -23,6 +23,7 @@ import SettingsModal from '@/components/panels/SettingsModal';
 import MarkerHoverCard from '@/components/overlays/MarkerHoverCard';
 import { useLayers, useLayerData, useIdlePrefetchLayer } from '@/hooks/useLayers';
 import { useSceneSearch } from '@/hooks/useSceneSearch';
+import { useSceneRaster } from '@/hooks/useSceneRaster';
 import { useSunDirection } from '@/hooks/useSunDirection';
 import { useKeyboardShortcuts, SHORTCUT_LAYERS } from '@/hooks/useKeyboardShortcuts';
 import { useAppUrlState } from '@/components/app/useAppUrlState';
@@ -130,6 +131,24 @@ function SentinelApp() {
       ? { bbox: sceneQuery.bbox, start: sceneQuery.start, end: sceneQuery.end, collection: sceneQuery.collection }
       : { bbox: null },
   );
+  // Phase 7: raster availability resolves per selected scene (single
+  // request, no polling); the explicit toggle below is the only way a
+  // raster ever appears on the globe.
+  const sceneRaster = useSceneRaster(selectedScene?.id ?? null);
+  const [sceneRasterEnabled, setSceneRasterEnabled] = useState(false);
+  const [sceneRasterLayerError, setSceneRasterLayerError] = useState<string | null>(null);
+  const handleSceneRasterError = useCallback((message: string | null) => {
+    setSceneRasterLayerError(message);
+  }, []);
+  const handleSceneRasterToggle = useCallback(() => {
+    setSceneRasterEnabled((prev) => !prev);
+  }, []);
+  // Only a validated renderable resolution becomes a globe layer, and only
+  // while the toggle is on (default off).
+  const sceneRasterDescriptor =
+    sceneRasterEnabled && sceneRaster.payload?.status === 'renderable'
+      ? sceneRaster.payload.raster
+      : null;
 
   // Phase 6 handlers: commit a search, resolve a footprint pick, clear.
   const handleSceneSearch = useCallback((query: CommittedSceneQuery) => {
@@ -306,6 +325,11 @@ function SentinelApp() {
           footprints={sceneSearch.scenes}
           selectedSceneId={selectedScene?.id ?? null}
           onSceneSelect={handleSceneSelect}
+          sceneRaster={sceneRasterDescriptor}
+          sceneRasterCredit={
+            sceneRaster.payload?.status === 'renderable' ? sceneRaster.payload.attribution : null
+          }
+          onSceneRasterError={handleSceneRasterError}
         />
       )}
 
@@ -375,6 +399,17 @@ function SentinelApp() {
                 cacheHit: sceneSearch.cacheHit,
               }}
               selectedScene={selectedScene}
+              raster={{
+                enabled: sceneRasterEnabled,
+                // Only the selected scene's resolution is relevant; the hook
+                // key is the selection, so a stale payload cannot leak.
+                resolution: selectedScene ? sceneRaster.payload : null,
+                loading: selectedScene ? sceneRaster.loading : false,
+                error:
+                  selectedScene && sceneRaster.error ? sceneRaster.error.message : null,
+                layerError: sceneRasterLayerError,
+                onToggle: handleSceneRasterToggle,
+              }}
               onSearch={handleSceneSearch}
               onSelect={handleSceneSelect}
               onClear={handleSceneClear}

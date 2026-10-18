@@ -1,4 +1,4 @@
-# Imagery & Layer Provider Reference (Phases 4–6)
+# Imagery & Layer Provider Reference (Phases 4–7)
 
 Authoritative record of every imagery provider the application actually
 supports. Only listed providers may appear in the layer registry
@@ -64,6 +64,32 @@ and renders only as footprint entities in the lazy Cesium chunk.
 | Honesty states | LIVE / CACHED / STALE (expired cache served during upstream failure, labeled) / UNAVAILABLE (empty labeled payload) — failures never fabricated, never blank the globe |
 | Licensing boundary | metadata discovery only; product downloads require CDSE OIDC credentials (not implemented; Phase 7 decision) |
 
+## 1b. Selected-scene raster provider — Microsoft Planetary Computer (Phase 7; dynamic, NOT a registry layer)
+
+Added by Phase 7 (backlog "Sentinel scene rendering (tiled imagery)";
+provider substitution recorded in `PHASE_7_IMPLEMENTATION_REPORT.md` §2 —
+the backlog's credentialed Sentinel Hub / COG-proxy paths were not
+authorized or provisioned). This is a **dynamic per-scene provider**, not
+a `IMAGERY_LAYER_REGISTRY` entry and never user-selectable: it is created
+by `src/components/globe/cesiumSceneRaster.ts` (lazy chunk) from a
+server-validated, server-pinned descriptor for the currently selected
+scene, and destroyed when the selection or toggle changes. The registry
+rules above are unchanged; `SUPPORTED_IMAGERY_PROVIDERS` gained
+`microsoft-planetary-computer` for the imagery engine's accounting only.
+
+| Aspect | Verified value |
+|---|---|
+| Service / endpoint | Microsoft Planetary Computer Data API, `https://planetarycomputer.microsoft.com/api/data/v1/item/tiles/WebMercatorQuad/{z}/{x}/{y}@1x?…` via Cesium `UrlTemplateImageryProvider` |
+| Auth | **none (keyless)** — verified live 2026-10: HTTP 200 PNG tiles, no SAS token anywhere in the URL |
+| Item resolution | PC STAC API `https://planetarycomputer.microsoft.com/api/stac/v1`; collection-items endpoint with exact-name CQL2 `filter` + `limit=1` (the `/search?filter=` form returned 504 in probes and is not used); identity re-checked against `s2:product_uri` (L2A) / `s1:product_identifier` (S1 GRD); a mismatch is a failure state — never a swapped raster |
+| Collections / rendering | `sentinel-2-l2a` true color (`assets=visual&asset_bidx=visual%7C1,2,3&nodata=0&format=png`); `sentinel-1-grd` default dual-pol composite (`assets=vv&assets=vh&expression=vv;vh;vv%2Fvh&rescale=…&asset_as_band=True&tile_format=png&format=png`); no L1C collection exists on PC → honest `unsupported` |
+| CRS / tiling | WebMercatorQuad EPSG:3857 XYZ (tilejson: scheme `xyz`, 256 px, zoom 0–24) — matches Cesium's `WebMercatorTilingScheme`; descriptor clamps to 0–14 (~10 m native); zooming beyond 14 interpolates pixels, stated in `resolution_note` |
+| Temporal semantics | Pixels are the archive product rendered by PC; acquisition/sensed time is shown from the Phase 6 scene record — never labelled live |
+| Attribution | `Rendered by Microsoft Planetary Computer` (panel), Copernicus disclosure reused (`Contains modified Copernicus Sentinel data [year]`) |
+| Error handling | Descriptor validation failure → previous map kept + visible report; tile failures reported once per layer generation; retries capped (`SCENE_RASTER_MAX_TILE_RETRIES = 2`) then disabled — no retry loops, no blank globe |
+| Licensing | PC renders Copernicus Sentinel data; disclosures kept in the panel |
+| CSP | The PC host will appear in report-only CSP reports exactly like the pre-existing direct GIBS tiles; enforcement decision deferred to Phase 8 (host recorded, not silently allowed) |
+
 ## 2. Layer roles and ordering
 
 - Exactly one base is active at a time (`DEFAULT_BASE_LAYER_ID =
@@ -74,6 +100,10 @@ and renders only as footprint entities in the lazy Cesium chunk.
   overlay there is no user-controlled ordering (`supportsReordering:
   false`); the control appears only when a second reorderable overlay
   ships with verified semantics.
+- The Phase 7 scene raster (§1b) is a dynamic overlay above the base,
+  beneath the graticule (the graticule is re-raised on every raster
+  attach); it is created/destroyed by selection + toggle, not a registry
+  layer, and never participates in reordering.
 
 ## 3. State, persistence, and validation
 
@@ -87,18 +117,22 @@ and renders only as footprint entities in the lazy Cesium chunk.
   preferences win for display state (opacity/visibility). Malformed
   storage or URL values fall back to registry defaults — never a crash,
   never an arbitrary request.
+- Scene raster visibility ("Show raster on globe", Phase 7) is **session
+  state only** — default off, not URL-encoded, not persisted; it resets
+  on reload. The raster descriptor itself is never persisted.
 
 ## 4. Explicitly unimplemented (future integrations, NOT supported)
 
-- Sentinel scene **raster rendering/ingestion** (Phase 7 by backlog),
-  scene **downloads** and authenticated STAC item search (require CDSE
-  OIDC credentials — keyless STAC item search returns zero features,
-  proven in the Phase 6 proposal §4), NDVI or derived rasters,
+- Sentinel scene **downloads** and authenticated STAC item search
+  (require CDSE OIDC credentials — keyless STAC item search returns zero
+  features, proven in the Phase 6 proposal §4), NDVI or derived rasters,
   precipitation/pollution/fire overlays, commercial WMTS/WMS, ion World
   Imagery/Terrain (requires a token — forbidden on the default path),
   self-hosted quantized-mesh terrain, Sentinel Hub (OAuth + quota).
-  (Scene **metadata discovery** is now supported — see §1a; it is not
-  an imagery layer and does not change the registry rules above.)
+  (Scene **metadata discovery** is supported — §1a; selected-scene
+  **raster rendering** is supported through the keyless Planetary
+  Computer path — §1b. Neither is a registry imagery layer and neither
+  changes the registry rules above.)
 - Each requires: endpoint + tiling verification, auth review, CSP review,
   attribution/licensing clearance, temporal-semantics documentation, and
   a registry + factory + UI + test + smoke update. Until then they must
@@ -118,3 +152,9 @@ and renders only as footprint entities in the lazy Cesium chunk.
 5. Add registry + validation + factory + lifecycle + UI + smoke coverage;
    re-run typecheck, lint, full tests, build, bundle, and the production
    smoke suite. Update this reference.
+
+Dynamic per-scene providers (§1b pattern) are an approved variant:
+they bypass the registry but must keep server-validated descriptors,
+pinned origins (re-validated client-side), explicit lifecycle tests,
+bounded retries, and honest failure states. They must never become
+user-selectable controls or accept client-supplied URLs.

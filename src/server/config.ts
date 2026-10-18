@@ -13,6 +13,7 @@ export const DEFAULTS = {
   NASA_FIRMS_URL: "https://firms.modaps.eosdis.nasa.gov/api",
   OPEN_METEO_GEOCODING_URL: "https://geocoding-api.open-meteo.com/v1",
   CDSE_ODATA_URL: "https://catalogue.dataspace.copernicus.eu/odata/v1",
+  PC_STAC_URL: "https://planetarycomputer.microsoft.com/api/stac/v1",
   REQUEST_TIMEOUT: 8,
   MAX_UPSTREAM_TIMEOUT_SEC: 30,
   CACHE_DEFAULT_TIMEOUT: 300,
@@ -78,6 +79,14 @@ export const serverConfig = {
   get cdseOdataUrl(): string {
     return envStr("CDSE_ODATA_URL", DEFAULTS.CDSE_ODATA_URL);
   },
+  /**
+   * Phase 7: Microsoft Planetary Computer STAC API (keyless — verified
+   * live; serves the Sentinel-2 L2A and Sentinel-1 GRD collections used
+   * for scene-raster resolution).
+   */
+  get pcStacUrl(): string {
+    return envStr("PC_STAC_URL", DEFAULTS.PC_STAC_URL);
+  },
   get airnowApiKey(): string | null {
     return process.env.AIRNOW_API_KEY || null;
   },
@@ -109,6 +118,9 @@ export const serverConfig = {
   },
   get cdseTimeoutMs(): number {
     return envTimeoutSec("CDSE_TIMEOUT", this.requestTimeoutSec) * 1000;
+  },
+  get pcTimeoutMs(): number {
+    return envTimeoutSec("PC_TIMEOUT", this.requestTimeoutSec) * 1000;
   },
   get cacheDefaultTimeout(): number {
     return envInt("CACHE_DEFAULT_TIMEOUT", DEFAULTS.CACHE_DEFAULT_TIMEOUT);

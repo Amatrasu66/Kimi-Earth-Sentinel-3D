@@ -57,8 +57,18 @@ export interface ImageryLayerDescriptor {
  * Provider keys currently verified for browser use. Anything else —
  * commercial endpoints, token-gated terrain, invented URLs — is documented
  * as a future integration in the provider reference, never exposed here.
+ *
+ * `microsoft-planetary-computer` (Phase 7) is a *dynamic* provider: it has
+ * no fixed registry entry above because its layers are per-scene rasters
+ * resolved from the selected catalogue product (see
+ * `scene-raster.ts` / `cesiumSceneRaster.ts`), not selectable catalogue
+ * layers. The key is listed here so provider identities stay centralized.
  */
-export const SUPPORTED_IMAGERY_PROVIDERS = ['nasa-gibs', 'cesium-native'] as const;
+export const SUPPORTED_IMAGERY_PROVIDERS = [
+  'nasa-gibs',
+  'cesium-native',
+  'microsoft-planetary-computer',
+] as const;
 
 export type SupportedImageryProviderId = (typeof SUPPORTED_IMAGERY_PROVIDERS)[number];
 

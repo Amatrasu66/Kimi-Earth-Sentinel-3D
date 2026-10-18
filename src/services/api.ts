@@ -245,6 +245,14 @@ export const api = {
   fetchScenesPath: (path: string, opts?: RequestOptions) =>
     fetchEnvelope<import('@/types').SceneSearchPayload>(path, opts),
 
+  /**
+   * Phase 7 scene-raster envelope variant: `path` is the canonical key
+   * built by `buildSceneRasterPath` (hooks/useSceneRaster) — same
+   * SWR-key/URL coupling as fetchScenesPath.
+   */
+  fetchSceneRasterPath: (path: string, opts?: RequestOptions) =>
+    fetchEnvelope<import('@/types').SceneRasterPayload>(path, opts),
+
   getLayerHeatmap: (
     layerId: string,
     params?: { resolution?: number; time_range?: string },

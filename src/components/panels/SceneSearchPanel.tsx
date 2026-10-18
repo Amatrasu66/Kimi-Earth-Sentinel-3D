@@ -20,7 +20,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils';
 import { provenanceChipLabel, resolveProvenance } from '@/lib/provenance';
 import { SCENE_COLLECTION_OPTIONS, SCENE_COLLECTION_LABELS } from './sceneCollections';
-import type { DataStatus, SceneSearchPayload, SceneSummary } from '@/types';
+import type { DataStatus, SceneRasterPayload, SceneSearchPayload, SceneSummary } from '@/types';
 
 export interface CommittedSceneQuery {
   bbox: string;
@@ -41,6 +41,20 @@ export interface SceneSearchPanelProps {
     cacheHit: boolean;
   };
   selectedScene: SceneSummary | null;
+  /**
+   * Phase 7: scene-raster state for the selected scene. `resolution` is
+   * the `/scenes/raster` payload (only present once resolved); `error` is
+   * a resolution-fetch failure; `layerError` is a tile-load failure
+   * reported by the globe, kept separate so the two are never conflated.
+   */
+  raster: {
+    enabled: boolean;
+    resolution: SceneRasterPayload | null;
+    loading: boolean;
+    error: string | null;
+    layerError: string | null;
+    onToggle: () => void;
+  };
   onSearch: (query: CommittedSceneQuery) => void;
   onSelect: (scene: SceneSummary) => void;
   onClear: () => void;
@@ -67,6 +81,7 @@ export default function SceneSearchPanel({
   committedQuery,
   results,
   selectedScene,
+  raster,
   onSearch,
   onSelect,
   onClear,
@@ -352,6 +367,78 @@ export default function SceneSearchPanel({
                         </span>
                       </div>
                       <p className="sentinel-micro mt-2 text-white/35">{results.payload?.attribution}</p>
+
+                      {/* Phase 7: resolved raster for the selected scene. */}
+                      <dt className="sentinel-label mt-3 border-t border-white/[0.06] pt-2">
+                        Scene raster
+                      </dt>
+                      <dd className="mt-1.5">
+                        {raster.loading && (
+                          <p className="sentinel-micro flex items-center gap-1.5 text-white/45">
+                            <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                            Resolving raster availability…
+                          </p>
+                        )}
+                        {!raster.loading && raster.error && (
+                          <p role="alert" className="sentinel-micro text-[color:var(--status-error)]">
+                            {raster.error}
+                          </p>
+                        )}
+                        {!raster.loading &&
+                          !raster.error &&
+                          raster.resolution &&
+                          (raster.resolution.status === 'renderable' &&
+                          raster.resolution.raster ? (
+                            <div className="grid gap-2">
+                              <Button
+                                type="button"
+                                id="sentinel-scene-raster-toggle"
+                                size="sm"
+                                onClick={raster.onToggle}
+                                aria-pressed={raster.enabled}
+                                className={cn(
+                                  'h-8 w-fit gap-1.5 rounded-[6px] border px-3 text-xs font-semibold',
+                                  raster.enabled
+                                    ? 'border-sentinel-accent/40 bg-sentinel-accent/10 text-sentinel-accent hover:bg-sentinel-accent/20'
+                                    : 'border-white/15 bg-white/[0.04] text-white/75 hover:bg-white/[0.08]',
+                                )}
+                              >
+                                {raster.enabled ? 'Hide raster from globe' : 'Show raster on globe'}
+                              </Button>
+                              {raster.resolution.raster.preview_url && (
+                                // Provider-rendered preview (Planetary Computer).
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={raster.resolution.raster.preview_url}
+                                  alt="Provider-rendered preview of the selected scene"
+                                  loading="lazy"
+                                  className="w-full rounded-[6px] border border-white/10"
+                                />
+                              )}
+                              <p className="sentinel-micro text-white/50">
+                                {raster.resolution.raster.rendering}
+                              </p>
+                              <p className="sentinel-micro text-white/35">
+                                {raster.resolution.raster.resolution_note}
+                              </p>
+                              <p className="sentinel-micro text-white/35">
+                                {raster.resolution.attribution}
+                              </p>
+                            </div>
+                          ) : (
+                            <p className="sentinel-micro text-white/45">
+                              {raster.resolution.reason}
+                            </p>
+                          ))}
+                        {raster.layerError && (
+                          <p
+                            role="alert"
+                            className="sentinel-micro mt-1.5 text-[color:var(--status-error)]"
+                          >
+                            {raster.layerError}
+                          </p>
+                        )}
+                      </dd>
                     </dl>
                   )}
                 </div>

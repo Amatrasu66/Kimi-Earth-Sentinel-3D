@@ -228,3 +228,38 @@ export function parseSceneWindow(
     error: null,
   };
 }
+
+// --- Phase 7: Sentinel scene id (CDSE product GUID) ------------------------
+
+/**
+ * CDSE product ids are UUIDs. The raster resolver interpolates the id into
+ * an OData `Id eq <guid>` filter (unquoted — the only form the verified
+ * catalogue accepts), so this shape guard is the injection boundary: only
+ * a canonical hyphenated UUID is ever forwarded, everything else is
+ * rejected before any request is built.
+ */
+const SCENE_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Whether `raw` is a CDSE product id (canonical UUID shape, any case). */
+export function isSceneId(raw: unknown): raw is string {
+  return typeof raw === "string" && SCENE_ID_RE.test(raw.trim());
+}
+
+/**
+ * Parse the `scene` query parameter of `/scenes/raster`. Empty input means
+ * "not provided" (`null` value, no error — the route reports required);
+ * malformed input yields an error, never a 500.
+ */
+export function parseSceneId(
+  raw: string | null | undefined,
+): { value: string | null; error: string | null } {
+  if (raw === null || raw === undefined || raw.trim() === "") {
+    return { value: null, error: null };
+  }
+  const value = raw.trim();
+  if (!SCENE_ID_RE.test(value)) {
+    return { value: null, error: "Invalid scene: expected a CDSE product id (UUID)." };
+  }
+  return { value: value.toLowerCase(), error: null };
+}

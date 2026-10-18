@@ -303,6 +303,49 @@ contract change unless stated and approved.
 
 ## Phase 7 — Sentinel scene rendering (tiled imagery)
 
+> Phase 7 status (2026-10-18; working constraints: implementation only —
+> no test/lint/build/smoke execution by the implementer, no new
+> infrastructure or credentials, no CSP changes): IMPLEMENTED —
+> **VERIFICATION PENDING** (suites authored, none run). See
+> `PHASE_7_IMPLEMENTATION_REPORT.md` (12 sections + evidence tail) and
+> `PHASE_7_ACCEPTANCE_CHECKLIST.md` (runtime items Not Run).
+> **Provider substitution (recorded):** the backlog's Sentinel Hub
+> Process API / COG tiling proxy paths require credentials and new
+> infrastructure that were not authorized or provisioned; delivery uses
+> the **keyless Microsoft Planetary Computer Data API** instead
+> (consistent with the Phase 6 Q2 keyless standing rule). No proxy route
+> was added — the browser fetches tiles directly from a server-resolved,
+> server-pinned descriptor. Verified live (read-only probes only):
+> keyless HTTP 200 PNG tiles; exact-name PC item filters for
+> `sentinel-2-l2a` (`s2:product_uri`) and `sentinel-1-grd`
+> (`s1:product_identifier`); PC `/search?filter=` returns 504 (not used —
+> collection-items endpoint is); PC has no L1C collection (honest
+> `unsupported`); CDSE by-id filter works unquoted only (GUID regex is
+> the injection boundary).
+> Delivered: `src/server/providers/scene-raster.ts` + validated route
+> `GET /api/v1/scenes/raster?scene=<guid>` (`parseSceneId` GUID guard;
+> CDSE by-id → canonical name → PC item → identity re-check; identity
+> mismatch or missing/unusable bbox = failure, never a fabricated raster;
+> zoom clamp 0–14 with `resolution_note`; TTL 900 s positive / 300 s
+> negative; LIVE / STALE / UNAVAILABLE honesty; no-store for
+> non-renderable); `useSceneRaster` (SWR, single request per selection,
+> no retries/polling); `cesiumSceneRaster.ts` lazy-chunk factory
+> (descriptor re-validated against pinned PC origins, `token=` rejected,
+> 256 px, bbox rectangle); `CesiumEarth` overlay lifecycle
+> (add-then-remove, graticule re-raised, `SCENE_RASTER_MAX_TILE_RETRIES
+> = 2` then disabled, one honest failure report per layer generation);
+> `SceneSearchPanel` raster section ("Show raster on globe" toggle,
+> default off, session-only; preview + rendering/resolution note +
+> attribution; resolve-failure and tile-failure alerts kept separate);
+> `SUPPORTED_IMAGERY_PROVIDERS` gains `microsoft-planetary-computer`
+> (registry unchanged; see provider reference §1b).
+> Verification performed: live read-only provider probes only. **NOT
+> run:** typecheck, lint, the 3 authored suites (36 cases), full suite,
+> build, bundle gate (Phase 6 close headroom was 632 B — re-measure),
+> textures, browser smoke, browser CORS pass, CSP report inspection.
+> Nothing committed. Phase 8 not started; O5/O6, downloads, NDVI,
+> Sentinel Hub, and the default-renderer flip remain deferred.
+
 - Objective: render selected Sentinel scenes on the globe.
 - Scope: chosen path from Phase 6 findings — (a) Sentinel Hub Process API →
   server proxy → WMTS/URL-template layer, or (b) COG tiling proxy; per-scene

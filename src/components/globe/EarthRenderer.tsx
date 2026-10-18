@@ -129,6 +129,15 @@ interface EarthRendererProps {
    * marker-priority rule). Optional so the legacy branches are untouched.
    */
   onSceneSelect?: (scene: import('@/types').SceneSummary) => void;
+  /**
+   * Phase 7: resolved scene-raster descriptor + attribution for the Cesium
+   * branch (the legacy branches ignore them). Descriptor is the validated
+   * payload from `/api/v1/scenes/raster`; `null` removes the layer.
+   */
+  sceneRaster?: import('@/types').SceneRasterDescriptor | null;
+  sceneRasterCredit?: string | null;
+  /** Phase 7: scene-raster failure reports from the Cesium branch. */
+  onSceneRasterError?: (message: string | null) => void;
 }
 
 export default function EarthRenderer({
@@ -151,6 +160,9 @@ export default function EarthRenderer({
   footprints = [],
   selectedSceneId = null,
   onSceneSelect,
+  sceneRaster = null,
+  sceneRasterCredit = null,
+  onSceneRasterError,
 }: EarthRendererProps) {
   // Session 5 A/B test: `?renderer=webgl` / `?renderer=webgpu` resolves
   // synchronously at mount (no probe, no cascading render).
@@ -326,6 +338,9 @@ export default function EarthRenderer({
             footprints={footprints}
             selectedSceneId={selectedSceneId}
             onSceneSelect={onSceneSelect}
+            sceneRaster={sceneRaster}
+            sceneRasterCredit={sceneRasterCredit}
+            onSceneRasterError={onSceneRasterError}
           />
         </Suspense>
       ) : activeMode === 'webgl' ? (

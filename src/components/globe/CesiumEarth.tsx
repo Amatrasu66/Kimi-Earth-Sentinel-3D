@@ -21,7 +21,9 @@
  * and sun wiring are deferred, not silently broken). Phase 6 draws Sentinel
  * catalogue footprints as ground-polygon entities with click-to-select
  * routing (observations outrank footprints; both outrank the ellipsoid
- * coordinate readout).
+ * coordinate readout). Phase 7 adds the resolved scene-raster overlay —
+ * one per-scene tiled layer from Microsoft Planetary Computer, validated
+ * before construction, swapped add-then-remove, with bounded tile retries.
  *
  * Lifecycle guarantees:
  * - `cesium` is imported dynamically inside the mount effect, after
@@ -77,8 +79,12 @@ import {
   clampLayerOpacity,
   resolveBaseLayerId,
 } from './imageryLayers';
+import {
+  SCENE_RASTER_MAX_TILE_RETRIES,
+  createSceneRasterImageryProvider,
+} from './cesiumSceneRaster';
 import type { GlobeMode } from './rendererMode';
-import type { DataPoint, LayerId, SceneSummary } from '@/types';
+import type { DataPoint, LayerId, SceneRasterDescriptor, SceneSummary } from '@/types';
 import type {
   Cartesian2,
   Cartesian3,
@@ -161,6 +167,22 @@ export interface CesiumEarthProps {
    * observation-priority rule misses). Absent/undefined = no routing.
    */
   onSceneSelect?: (scene: SceneSummary) => void;
+  /**
+   * Phase 7: resolved scene-raster descriptor to draw as a dedicated
+   * overlay layer (`null` = none). Added above the base imagery, below the
+   * graticule; the previous raster stays until the replacement is
+   * attached. Descriptors are re-validated before construction — an
+   * invalid one reports and keeps the previous map.
+   */
+  sceneRaster?: SceneRasterDescriptor | null;
+  /** Phase 7: display attribution for the raster's Cesium credit. */
+  sceneRasterCredit?: string | null;
+  /**
+   * Phase 7: scene-raster failure reports (`null` on recovery or when the
+   * raster is removed). Tile failures are reported once per layer
+   * generation; the previous map remains visible.
+   */
+  onSceneRasterError?: (message: string | null) => void;
 }
 
 type CesiumPhase = 'loading' | 'ready' | 'error';
@@ -193,6 +215,9 @@ export default function CesiumEarth({
   footprints = [],
   selectedSceneId = null,
   onSceneSelect,
+  sceneRaster = null,
+  sceneRasterCredit = null,
+  onSceneRasterError,
 }: CesiumEarthProps) {
   void _activeLayer;
   // Phase 5 defers O5 auto-rotate parity: the toggle stays a no-op on this
@@ -218,6 +243,12 @@ export default function CesiumEarth({
   const baseLayerRef = useRef<CesiumImageryLayer | null>(null);
   const activeBaseIdRef = useRef<string | null>(null);
   const detachBaseErrorRef = useRef<(() => void) | null>(null);
+  // Phase 7: live scene-raster layer + its generation key, same
+  // add-then-remove contract as the base layer.
+  const rasterLayerRef = useRef<CesiumImageryLayer | null>(null);
+  const activeRasterKeyRef = useRef<string | null>(null);
+  const detachRasterErrorRef = useRef<(() => void) | null>(null);
+  const rasterErrorCountRef = useRef(0);
   const cesiumRef = useRef<typeof import('cesium') | null>(null);
   const reducedMotion = usePrefersReducedMotion();
 
@@ -229,6 +260,7 @@ export default function CesiumEarth({
     onMarkerHover,
     onLayerError,
     onSceneSelect,
+    onSceneRasterError,
     lowPowerActive,
     globeGridVisible,
     baseLayerId,
@@ -246,6 +278,7 @@ export default function CesiumEarth({
       onMarkerHover,
       onLayerError,
       onSceneSelect,
+      onSceneRasterError,
       lowPowerActive,
       globeGridVisible,
       baseLayerId,
@@ -529,12 +562,21 @@ export default function CesiumEarth({
         // Listener removal is best-effort during unmount.
       }
       detachBaseErrorRef.current = null;
+      try {
+        detachRasterErrorRef.current?.();
+      } catch {
+        // Listener removal is best-effort during unmount.
+      }
+      detachRasterErrorRef.current = null;
       const owned = viewer;
       viewer = null;
       viewerRef.current = null;
       gridLayerRef.current = null;
       baseLayerRef.current = null;
       activeBaseIdRef.current = null;
+      rasterLayerRef.current = null;
+      activeRasterKeyRef.current = null;
+      rasterErrorCountRef.current = 0;
       // Phase 5: entities outlive nothing — dispose before destroy, then
       // drop the state so a remount starts empty (StrictMode-safe).
       try {
@@ -665,6 +707,118 @@ export default function CesiumEarth({
       selectedId: selectedSceneId,
     });
   }, [footprints, selectedSceneId]);
+
+  // Phase 7: scene-raster overlay lifecycle. Same add-then-remove contract
+  // as the base layer: the previous raster is removed only after the
+  // replacement is attached (never a blank globe), and any construction
+  // failure keeps the previous map. The graticule is raised back above the
+  // raster so the reference frame stays legible. Tile failures are
+  // reported once per layer generation; after a bounded retry budget the
+  // failing tile stops retrying (`error.retry = false`) so a broken
+  // endpoint can never loop forever. `phase` participates in the deps so a
+  // descriptor present at mount attaches once the Viewer is ready.
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    const cesium = cesiumRef.current;
+    if (!viewer || viewer.isDestroyed() || !cesium) return;
+    const report = callbackRef.current.onSceneRasterError;
+    const want = sceneRaster;
+    const key = want ? `${want.collection}|${want.item_id}` : null;
+    if (key === activeRasterKeyRef.current) {
+      // Same generation — nothing to swap. Recovery is acknowledged by a
+      // real change (new scene or an off/on toggle), never by a re-render.
+      return;
+    }
+    const previous = rasterLayerRef.current;
+
+    const detach = () => {
+      try {
+        detachRasterErrorRef.current?.();
+      } catch {
+        // Listener removal is best-effort during replacement.
+      }
+      detachRasterErrorRef.current = null;
+    };
+
+    if (want === null) {
+      detach();
+      if (previous) {
+        try {
+          if (viewer.imageryLayers.contains(previous)) {
+            viewer.imageryLayers.remove(previous, true);
+          }
+        } catch {
+          // Removal is best-effort; the Viewer owns disposal on destroy.
+        }
+      }
+      rasterLayerRef.current = null;
+      activeRasterKeyRef.current = null;
+      rasterErrorCountRef.current = 0;
+      report?.(null);
+      return;
+    }
+
+    let nextLayer: CesiumImageryLayer;
+    try {
+      const provider = createSceneRasterImageryProvider(
+        cesium,
+        want,
+        sceneRasterCredit,
+      );
+      nextLayer = viewer.imageryLayers.addImageryProvider(provider);
+      if (viewer.isDestroyed()) {
+        // Torn down mid-replacement: drop the orphan so the swap cannot
+        // leak a layer past the Viewer.
+        try {
+          if (viewer.imageryLayers.contains(nextLayer)) {
+            viewer.imageryLayers.remove(nextLayer, true);
+          }
+        } catch {
+          // Best-effort orphan cleanup during teardown.
+        }
+        return;
+      }
+      const grid = gridLayerRef.current;
+      if (grid && viewer.imageryLayers.contains(grid)) {
+        viewer.imageryLayers.raiseToTop(grid);
+      }
+      detach();
+      rasterErrorCountRef.current = 0;
+      detachRasterErrorRef.current = provider.errorEvent.addEventListener(
+        (tileError) => {
+          const err = tileError as { retry?: boolean; timesRetried?: number };
+          if (
+            typeof err.timesRetried === 'number' &&
+            err.timesRetried >= SCENE_RASTER_MAX_TILE_RETRIES &&
+            typeof err.retry === 'boolean'
+          ) {
+            err.retry = false;
+          }
+          rasterErrorCountRef.current += 1;
+          if (rasterErrorCountRef.current === 1) {
+            report?.(
+              'Sentinel scene raster tiles are failing to load. The previous map remains visible.',
+            );
+          }
+        },
+      );
+    } catch (err) {
+      report?.(err instanceof Error ? err.message : 'Scene raster unavailable.');
+      return;
+    }
+    if (previous && previous !== nextLayer) {
+      try {
+        if (viewer.imageryLayers.contains(previous)) {
+          viewer.imageryLayers.remove(previous, true);
+        }
+      } catch {
+        // Removal is best-effort; the Viewer owns disposal on destroy.
+      }
+    }
+    rasterLayerRef.current = nextLayer;
+    activeRasterKeyRef.current = key;
+    report?.(null);
+  }, [sceneRaster, sceneRasterCredit, phase]);
 
   // Phase 4: base-imagery replacement. Add-then-remove keeps the globe
   // covered during ordinary transitions (no blank frame); the old layer is

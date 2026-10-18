@@ -250,3 +250,59 @@ export interface SceneSearchPayload {
   attribution: string;
   data_status?: DataStatus;
 }
+
+// --- Phase 7: Sentinel scene raster (Microsoft Planetary Computer) ---
+
+/**
+ * Resolution outcome for one selected scene. `renderable` is the only
+ * status that carries a raster descriptor; every other status is an honest
+ * terminal answer (never a fabricated layer).
+ */
+export type SceneRasterStatus =
+  | 'renderable'
+  | 'unsupported'
+  | 'not_found'
+  | 'unavailable';
+
+/** Raster collections with a verified tiled rendering path. */
+export type SceneRasterCollection = 'sentinel-2-l2a' | 'sentinel-1-grd';
+
+/**
+ * Everything the client needs to draw one scene raster. Tile templates
+ * always point at the verified Microsoft Planetary Computer host; the
+ * client factory re-validates the origin before constructing a provider.
+ */
+export interface SceneRasterDescriptor {
+  provider: 'microsoft-planetary-computer';
+  collection: SceneRasterCollection;
+  /** Planetary Computer STAC item id (resolved by filter, never guessed). */
+  item_id: string;
+  /** XYZ URL template with `{z}`/`{x}`/`{y}` placeholders. */
+  tile_url_template: string;
+  /** Provider-rendered preview image for the same item, when available. */
+  preview_url: string | null;
+  /** [west, south, east, north] in degrees from the verified STAC item. */
+  bbox: [number, number, number, number];
+  min_zoom: number;
+  max_zoom: number;
+  /** What the raster shows (e.g. true color vs radar composite). */
+  rendering: string;
+  /** Honest native-resolution note (displayed next to the raster). */
+  resolution_note: string;
+}
+
+/** `/api/v1/scenes/raster` payload (client mirror of the route data). */
+export interface SceneRasterPayload {
+  /** CDSE product GUID this resolution is for. */
+  scene_id: string;
+  /** CDSE product name as the catalogue reports it (includes `.SAFE`). */
+  scene_name: string | null;
+  status: SceneRasterStatus;
+  /** Present iff `status === 'renderable'`. */
+  raster: SceneRasterDescriptor | null;
+  /** Human explanation of the status (always present, never empty). */
+  reason: string;
+  /** Attribution string for display next to the raster. */
+  attribution: string;
+  data_status?: DataStatus;
+}
