@@ -14,7 +14,7 @@
 // - per-file gzip bytes via Node zlib (level 6, the Node/Vercel default),
 //   summed per file because browsers download the files separately (no
 //   cross-file compression);
-// - against the budget INITIAL_ROUTE_JS_GZIP_BUDGET_BYTES = 200 KiB.
+// - against the budget INITIAL_ROUTE_JS_GZIP_BUDGET_BYTES = 215 KiB.
 //
 // What is excluded (and why):
 // - only the lazily loaded globe chunks, identified by their
@@ -38,8 +38,13 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 
-/** 200 KiB, in bytes. "KB" in the task text is read as KiB (1024). */
-export const INITIAL_ROUTE_JS_GZIP_BUDGET_BYTES = 200 * 1024;
+/**
+ * 215 KiB, in bytes ("KB" read as KiB). Raised from 200 KiB on 2026-11-22
+ * with owner approval: the Next 16 + React 19.3 runtime chunks alone are
+ * ~131 KiB and the shell-wide Radix Tooltip (floating-ui) cannot be split.
+ * Measured 209.8 KiB; the ~5 KiB headroom still catches regressions.
+ */
+export const INITIAL_ROUTE_JS_GZIP_BUDGET_BYTES = 215 * 1024;
 
 /** Gzip level: Node's default (also Vercel's transfer encoding level). */
 export const GZIP_LEVEL = 6;

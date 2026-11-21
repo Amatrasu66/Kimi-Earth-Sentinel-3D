@@ -40,7 +40,7 @@ import type { CommittedSceneQuery } from '@/components/panels/SceneSearchPanel';
 import { Skeleton } from '@/components/ui/skeleton';
 
 // Phase 6: the scene-search panel is a lazy client-only chunk — the form +
-// results UI leaves the initial route graph (200 KiB budget protection) and
+// results UI leaves the initial route graph (215 KiB budget protection) and
 // loads only when the user opens Scenes on the Cesium branch.
 const SceneSearchPanel = dynamic(
   () => import('@/components/panels/SceneSearchPanel'),
@@ -56,7 +56,7 @@ const SceneSearchPanel = dynamic(
 );
 
 // Settings (Dialog/Sheet/Tabs/Switch) only matters after a click: keep it
-// out of the initial route JS (200 KiB budget); it loads after hydration.
+// out of the initial route JS (215 KiB budget); it loads after hydration.
 const SettingsModal = dynamic(() => import('@/components/panels/SettingsModal'), {
   ssr: false,
 });

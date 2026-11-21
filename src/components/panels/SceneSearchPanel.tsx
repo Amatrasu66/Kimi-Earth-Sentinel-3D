@@ -3,7 +3,7 @@
 /**
  * Sentinel scene-search panel (Phase 6). Dynamic-imported by `SentinelApp`
  * (`ssr: false`) so the form + result UI never enters the initial route
- * bundle — the 200 KiB initial-JS budget stays untouched; the chunk loads
+ * bundle — the 215 KiB initial-JS budget stays untouched; the chunk loads
  * only when the user opens Scenes on the Cesium branch.
  *
  * Honesty contract: results are labelled with their provenance (LIVE /

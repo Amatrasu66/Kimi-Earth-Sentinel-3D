@@ -60,8 +60,8 @@ const LOADABLE = {
 };
 
 describe('budget constants', () => {
-  it('pins the 200 KiB budget in bytes and the gzip level', () => {
-    expect(INITIAL_ROUTE_JS_GZIP_BUDGET_BYTES).toBe(200 * 1024);
+  it('pins the 215 KiB budget in bytes and the gzip level', () => {
+    expect(INITIAL_ROUTE_JS_GZIP_BUDGET_BYTES).toBe(215 * 1024);
     expect(GZIP_LEVEL).toBe(6);
   });
 });

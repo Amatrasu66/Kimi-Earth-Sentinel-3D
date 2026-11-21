@@ -35,7 +35,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      # T4.5: initial-route JS ≤200 KiB gzip (lazy globe chunks excluded).
+      # T4.5: initial-route JS ≤215 KiB gzip (lazy globe chunks excluded).
       # Runs against this job's own build output; fails the job on breach
       # or on any asset-accounting failure. No browser tooling involved.
       - run: npm run bundle:check
