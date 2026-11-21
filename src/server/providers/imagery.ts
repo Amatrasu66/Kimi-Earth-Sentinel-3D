@@ -48,13 +48,22 @@ export function isAllowedLayer(layer: string): boolean {
   return LAYER_BY_ID.has(layer);
 }
 
+/**
+ * [MatrixWidth, MatrixHeight] per level of the GIBS EPSG:4326 `250m` and
+ * `1km` tile matrix sets (identical for shared levels), copied from the
+ * WMTS GetCapabilities. Not powers of two: level 1 is 3×2, level 2 is 5×3.
+ */
+const GIBS_4326_MATRIX: ReadonlyArray<readonly [number, number]> = [
+  [2, 1], [3, 2], [5, 3], [10, 5], [20, 10], [40, 20], [80, 40], [160, 80], [320, 160],
+];
+
 export function isValidTile(layer: string, z: number, x: number, y: number): boolean {
   const meta = LAYER_BY_ID.get(layer);
   if (!meta) return false;
   if (!meta.zoom_levels.includes(z)) return false;
   if (x < 0 || y < 0) return false;
-  const maxIndex = 2 ** z;
-  return x < maxIndex && y < maxIndex;
+  const [width, height] = GIBS_4326_MATRIX[z];
+  return x < width && y < height;
 }
 
 export function buildTileUrl(
@@ -67,7 +76,8 @@ export function buildTileUrl(
 ): string {
   const meta = LAYER_BY_ID.get(layer);
   if (!meta) throw new Error(`Imagery layer ${JSON.stringify(layer)} not found.`);
-  const day = date ?? new Date().toISOString().slice(0, 10);
+  // Previous UTC day: today's daily composite is incomplete (swath gaps).
+  const day = date ?? new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
   const ext = EXTENSION_BY_FORMAT[meta.format] ?? "jpeg";
   return (
     `${baseUrl.replace(/\/+$/, "")}/wmts/epsg4326/best/` +

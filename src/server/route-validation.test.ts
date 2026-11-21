@@ -109,7 +109,7 @@ describe("GIBS tile route validation (already strict — regression lock)", () =
   it("rejects bad layer, bad zoom, out-of-range and non-integer tiles", async () => {
     expect((await tile("EVIL_LAYER", "2", "1", "1")).status).toBe(404);
     expect((await tile(LAYER, "99", "1", "1")).status).toBe(400);
-    expect((await tile(LAYER, "2", "4", "1")).status).toBe(400);
+    expect((await tile(LAYER, "2", "5", "1")).status).toBe(400);
     expect((await tile(LAYER, "2", "-1", "1")).status).toBe(400);
     expect((await tile(LAYER, "2", "1.5", "1")).status).toBe(400);
   });

@@ -14,7 +14,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { getCache } from "@/server/cache";
-import { middleware } from "@/middleware";
+import { proxy } from "@/proxy";
 import {
   NO_STORE,
   publicCacheControl,
@@ -334,13 +334,13 @@ describe("freshness-sensitive and error responses are never public", () => {
   it("429 throttles keep Retry-After and never take the success cache policy", async () => {
     const ip = "203.0.113.77";
     for (let i = 0; i < RATE_LIMITS.heavy; i++) {
-      await middleware(
+      await proxy(
         new NextRequest(`http://localhost:3000/api/v1/search?q=t21flood${i}`, {
           headers: { "x-forwarded-for": ip },
         }),
       );
     }
-    const limited = await middleware(
+    const limited = await proxy(
       new NextRequest("http://localhost:3000/api/v1/search?q=t21floodX", {
         headers: { "x-forwarded-for": ip },
       }),

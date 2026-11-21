@@ -73,7 +73,7 @@ describe('imagery provider factory (Phase 4)', () => {
     expect(options.tileMatrixSetID).toBe(GIBS_TILE_MATRIX_SET_ID);
     expect(options.maximumLevel).toBe(GIBS_MAXIMUM_LEVEL);
     // TIME carries the UTC calendar day of the daily composite.
-    expect(options.dimensions).toEqual({ Time: '2026-10-15' });
+    expect(options.dimensions).toEqual({ Time: '2026-10-14' }); // previous UTC day
     // The configured product stays within the server allow-list.
     expect(isAllowedLayer(options.layer as string)).toBe(true);
     expect(GIBS_CREDIT_TEXT).toMatch(/GIBS/);

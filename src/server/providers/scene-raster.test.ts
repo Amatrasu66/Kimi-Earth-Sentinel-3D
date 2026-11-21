@@ -2,14 +2,11 @@
  * Phase 7 scene-raster provider tests. Deterministic and offline-safe:
  * upstream fetches are stubbed per test (any unstubbed URL throws). The
  * URL/filter assertions pin the exact syntax captured live during the
- * Phase 7 provider probes — the unquoted `Id eq <guid>` CDSE filter, the
- * collection-items endpoint with `limit=1`, and the exact-name filters
- * (`s2:product_uri` / `s1:product_identifier`) — so the builders cannot
- * drift from the only request shapes the providers were verified to accept.
- *
- * NOTE: these tests were authored during implementation and have NOT been
- * executed by the implementing agent (see PHASE_7_IMPLEMENTATION_REPORT.md
- * §12). They run with the standard `npm test`.
+ * provider probes — the unquoted `Id eq <guid>` CDSE filter and the direct
+ * `/collections/{c}/items/{id}` PC lookup with the id derived from the
+ * product name — so the builders cannot drift from the only request shapes
+ * the providers were verified to accept. (PC ignores `?filter=` on the
+ * collection-items endpoint and returns the newest item instead.)
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { serverConfig } from "@/server/config";
@@ -22,10 +19,10 @@ import {
   SCENE_RASTER_NEGATIVE_TTL,
   SCENE_RASTER_TTL,
   buildCdseProductUrl,
-  buildPcItemsUrl,
+  buildPcItemUrl,
   buildPcTileTemplate,
   classifySceneName,
-  pcItemFilter,
+  pcItemId,
   resolveSceneRaster,
 } from "@/server/providers/scene-raster";
 
@@ -59,27 +56,19 @@ const PREVIEW_HREF = `${PC_DATA_API_URL}/item/preview.png?collection=sentinel-2-
 const CDSE_L2A_PAGE = { value: [{ Name: L2A_NAME }] };
 
 const PC_L2A_PAGE = {
-  type: "FeatureCollection",
-  features: [
-    {
-      id: L2A_ITEM,
-      bbox: [139.9, 35.0, 141.2, 36.1],
-      properties: { "s2:product_uri": L2A_NAME },
-      assets: { rendered_preview: { href: PREVIEW_HREF } },
-    },
-  ],
+  type: "Feature",
+  id: L2A_ITEM,
+  bbox: [139.9, 35.0, 141.2, 36.1],
+  properties: { "s2:product_uri": L2A_NAME },
+  assets: { rendered_preview: { href: PREVIEW_HREF } },
 };
 
 const PC_S1_PAGE = {
-  type: "FeatureCollection",
-  features: [
-    {
-      id: S1_ITEM,
-      bbox: [139.5, 34.8, 141.4, 36.4],
-      properties: { "s1:product_identifier": S1_IDENTIFIER },
-      assets: {},
-    },
-  ],
+  type: "Feature",
+  id: S1_ITEM,
+  bbox: [139.5, 34.8, 141.4, 36.4],
+  properties: { "s1:product_identifier": S1_IDENTIFIER },
+  assets: { vv: { href: "x" }, vh: { href: "y" } },
 };
 
 function stubHappyPath(pcPage: unknown) {
@@ -137,22 +126,25 @@ describe("request builders", () => {
     expect(url).not.toContain("%27");
   });
 
-  it("builds the exact-name filters verified live for both collections", () => {
-    expect(pcItemFilter("sentinel-2-l2a", L2A_NAME)).toBe(
-      `s2:product_uri = '${L2A_NAME}'`,
-    );
-    expect(pcItemFilter("sentinel-1-grd", S1_NAME)).toBe(
-      `s1:product_identifier = '${S1_IDENTIFIER}'`,
-    );
+  it("derives the PC item id from the product name for both collections", () => {
+    expect(pcItemId("sentinel-2-l2a", L2A_NAME)).toBe(L2A_ITEM);
+    expect(pcItemId("sentinel-2-l2a", L2A_NAME.slice(0, -5))).toBe(L2A_ITEM);
+    expect(pcItemId("sentinel-1-grd", S1_NAME)).toBe(S1_ITEM);
+    expect(pcItemId("sentinel-1-grd", S1_IDENTIFIER)).toBe(S1_ITEM);
+    // CDSE serves current S1 products as `_COG.SAFE` copies (live-verified).
+    expect(pcItemId("sentinel-1-grd", `${S1_IDENTIFIER}_COG.SAFE`)).toBe(S1_ITEM);
   });
 
-  it("uses the collection-items endpoint (never /search) with limit=1", () => {
-    const url = buildPcItemsUrl("sentinel-2-l2a", L2A_NAME);
-    expect(url.startsWith(`${serverConfig.pcStacUrl}/collections/sentinel-2-l2a/items?`)).toBe(true);
-    expect(url).toContain("filter=");
-    expect(url).toContain("limit=1");
-    // Spaces encode as %20 and quotes as %27, both verified.
-    expect(url).toContain("s2%3Aproduct_uri%20%3D%20%27");
+  it("returns null for names without the expected shape", () => {
+    expect(pcItemId("sentinel-2-l2a", "S2B_MSIL2A_garbage.SAFE")).toBeNull();
+    expect(pcItemId("sentinel-1-grd", "S1C_IW_GRDH_1SDV_garbage_COG.SAFE")).toBeNull();
+    expect(pcItemId("sentinel-2-l2a", "")).toBeNull();
+  });
+
+  it("uses the direct item endpoint (never ?filter= or /search)", () => {
+    const url = buildPcItemUrl("sentinel-2-l2a", L2A_ITEM);
+    expect(url).toBe(`${serverConfig.pcStacUrl}/collections/sentinel-2-l2a/items/${L2A_ITEM}`);
+    expect(url).not.toContain("filter=");
     expect(url).not.toContain("/search");
   });
 
@@ -214,6 +206,32 @@ describe("resolveSceneRaster", () => {
     expect(result.raster?.preview_url).toBeNull();
   });
 
+  it("resolves a CDSE `_COG` S1 product to its original PC item", async () => {
+    stubFetch((url: string) => {
+      if (url.startsWith("https://catalogue.dataspace.copernicus.eu/")) {
+        return okJson({ value: [{ Name: `${S1_IDENTIFIER}_COG.SAFE` }] });
+      }
+      expect(url).toContain(`/items/${S1_ITEM}`);
+      return okJson(PC_S1_PAGE);
+    });
+    const result = await resolveSceneRaster(SCENE_ID);
+    expect(result.status).toBe("renderable");
+    expect(result.raster?.item_id).toBe(S1_ITEM);
+  });
+
+  it("reports an S1 scene without a VV+VH pair as unsupported", async () => {
+    stubFetch((url: string) => {
+      if (url.startsWith("https://catalogue.dataspace.copernicus.eu/")) {
+        return okJson({ value: [{ Name: S1_NAME }] });
+      }
+      return okJson({ ...PC_S1_PAGE, assets: { hh: { href: "x" } } });
+    });
+    const result = await resolveSceneRaster(SCENE_ID);
+    expect(result.status).toBe("unsupported");
+    expect(result.raster).toBeNull();
+    expect(result.reason).toMatch(/VV\+VH/);
+  });
+
   it("returns a terminal 'unsupported' answer for L1C without calling PC", async () => {
     const fetchMock = stubFetch((url: string) => {
       if (url.startsWith("https://catalogue.dataspace.copernicus.eu/")) {
@@ -237,7 +255,13 @@ describe("resolveSceneRaster", () => {
   });
 
   it("returns 'not_found' when the product is not yet mirrored on PC", async () => {
-    stubHappyPath({ type: "FeatureCollection", features: [] });
+    stubFetch((url: string) => {
+      if (url.startsWith("https://catalogue.dataspace.copernicus.eu/")) {
+        return okJson(CDSE_L2A_PAGE);
+      }
+      expect(url).toContain(`/items/${L2A_ITEM}`);
+      return okJson({ code: "NotFoundError" }, 404);
+    });
     const result = await resolveSceneRaster(SCENE_ID);
     expect(result.status).toBe("not_found");
     expect(result.scene_name).toBe(L2A_NAME);
@@ -246,25 +270,22 @@ describe("resolveSceneRaster", () => {
 
   it("rejects an identity mismatch instead of serving the wrong product", async () => {
     stubHappyPath({
-      type: "FeatureCollection",
-      features: [
-        {
-          id: L2A_ITEM,
-          bbox: [139.9, 35.0, 141.2, 36.1],
-          properties: { "s2:product_uri": "S2A_MSIL2A_20250101T000000_N0513_R033_T48VUJ_20250101T000000.SAFE" },
-          assets: {},
-        },
-      ],
+      type: "Feature",
+      id: L2A_ITEM,
+      bbox: [139.9, 35.0, 141.2, 36.1],
+      properties: { "s2:product_uri": "S2A_MSIL2A_20250101T000000_N0513_R033_T48VUJ_20250101T000000.SAFE" },
+      assets: {},
     });
     await expect(resolveSceneRaster(SCENE_ID)).rejects.toThrow(/different product/);
   });
 
   it("rejects a PC item without a usable bounding box", async () => {
     stubHappyPath({
-      type: "FeatureCollection",
-      features: [
-        { id: L2A_ITEM, bbox: [140, 36, 139, 35], properties: { "s2:product_uri": L2A_NAME }, assets: {} },
-      ],
+      type: "Feature",
+      id: L2A_ITEM,
+      bbox: [140, 36, 139, 35],
+      properties: { "s2:product_uri": L2A_NAME },
+      assets: {},
     });
     await expect(resolveSceneRaster(SCENE_ID)).rejects.toThrow(/bounding box/);
   });
@@ -282,7 +303,7 @@ describe("resolveSceneRaster", () => {
       if (url.startsWith("https://catalogue.dataspace.copernicus.eu/")) {
         return okJson(CDSE_L2A_PAGE);
       }
-      return okJson({ notFeatures: true });
+      return okJson(null);
     });
     await expect(resolveSceneRaster(SCENE_ID)).rejects.toThrow(/shape/);
   });

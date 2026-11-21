@@ -6,7 +6,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULTS, serverConfig } from "@/server/config";
-import { fetchJsonWithTimeout, UpstreamTimeoutError } from "@/server/http";
+import { fetchJsonWithTimeout, readTextCapped, UpstreamTimeoutError } from "@/server/http";
 import { GET as layerDataGET } from "@/app/api/v1/layers/[layerId]/data/route";
 import { maxDuration as dataMaxDuration } from "@/app/api/v1/layers/[layerId]/data/route";
 import { maxDuration as eventsMaxDuration } from "@/app/api/v1/events/[eventId]/route";
@@ -192,6 +192,32 @@ describe("fetchJsonWithTimeout deadline", () => {
     const assertion = expect(pending).rejects.toThrow("after 8000ms");
     await vi.advanceTimersByTimeAsync(8000);
     await assertion;
+  });
+});
+
+describe("readTextCapped (upstream body cap)", () => {
+  it("returns bodies within the cap, including multi-byte text", async () => {
+    expect(await readTextCapped(new Response("héllo"), 16)).toBe("héllo");
+    expect(await readTextCapped(new Response(null), 16)).toBe("");
+  });
+
+  it("rejects an oversized declared content-length before reading", async () => {
+    const res = new Response("x", { headers: { "content-length": "999" } });
+    await expect(readTextCapped(res, 16)).rejects.toThrow(/exceeds 16 bytes/);
+  });
+
+  it("stops a chunked body as soon as it passes the cap", async () => {
+    const enc = new TextEncoder();
+    let pulls = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1;
+        controller.enqueue(enc.encode("0123456789"));
+        if (pulls > 100) controller.close();
+      },
+    });
+    await expect(readTextCapped(new Response(body), 25)).rejects.toThrow(/exceeds 25 bytes/);
+    expect(pulls).toBeLessThan(10);
   });
 });
 

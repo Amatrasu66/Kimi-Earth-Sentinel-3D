@@ -48,7 +48,7 @@ export default function AppHeader({ onSearchResultClick, onSettingsClick, dataSt
   const showStatus = dataStatus !== null && dataStatus !== undefined;
 
   return (
-    <header className="sentinel-chrome grid h-[var(--header-height)] grid-cols-[minmax(0,1fr)_minmax(0,420px)_minmax(0,1fr)] items-center gap-2 border-b border-white/[0.07] px-2.5 sm:px-3 md:px-4 lg:gap-3">
+    <header className="sentinel-chrome grid h-[var(--header-height)] grid-cols-[auto_minmax(0,1fr)_auto] items-center md:grid-cols-[minmax(0,1fr)_minmax(0,420px)_minmax(0,1fr)] gap-2 border-b border-white/[0.07] px-2.5 sm:px-3 md:px-4 lg:gap-3">
       {/* LEFT — brand / active layer, separated by typography not pills */}
       <div className="flex min-w-0 items-center gap-2">
         <span

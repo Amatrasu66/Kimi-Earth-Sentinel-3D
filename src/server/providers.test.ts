@@ -125,8 +125,16 @@ describe("imagery", () => {
   it("enforces allow-list and tile bounds", () => {
     expect(isAllowedLayer("MODIS_Terra_CorrectedReflectance_TrueColor")).toBe(true);
     expect(isAllowedLayer("evil")).toBe(false);
-    expect(isValidTile(GIBS_LAYERS[0].id, 0, 5, 0)).toBe(false); // x >= 2^0
-    expect(isValidTile(GIBS_LAYERS[0].id, 1, 1, 0)).toBe(true);
+    // EPSG:4326 matrices from GIBS GetCapabilities: level 0 is 2×1,
+    // level 1 is 3×2, level 8 is 320×160 (not powers of two).
+    expect(isValidTile(GIBS_LAYERS[0].id, 0, 1, 0)).toBe(true); // eastern hemisphere
+    expect(isValidTile(GIBS_LAYERS[0].id, 0, 2, 0)).toBe(false);
+    expect(isValidTile(GIBS_LAYERS[0].id, 0, 0, 1)).toBe(false);
+    expect(isValidTile(GIBS_LAYERS[0].id, 1, 2, 1)).toBe(true);
+    expect(isValidTile(GIBS_LAYERS[0].id, 1, 3, 0)).toBe(false);
+    expect(isValidTile(GIBS_LAYERS[0].id, 8, 319, 159)).toBe(true);
+    expect(isValidTile(GIBS_LAYERS[0].id, 8, 320, 0)).toBe(false);
+    expect(isValidTile(GIBS_LAYERS[2].id, 7, 0, 0)).toBe(false); // 1km stops at level 6
     const url = buildTileUrl("https://gibs.earthdata.nasa.gov", GIBS_LAYERS[0].id, 2, 1, 1, "2026-01-01");
     expect(url).toContain("/2/1/1.jpeg"); // y before x per WMTS template used by backend
   });

@@ -6,7 +6,7 @@
  * Vercel plan (WAF custom rules are a paid-tier feature). The owner rule for
  * T1.3 is: verify plan capabilities, prefer Vercel-native where available,
  * add no paid infrastructure. This module is therefore the repo-side,
- * no-cost layer: it runs in `middleware.ts` (Edge-safe: pure TS, `Date.now`
+ * no-cost layer: it runs in `proxy.ts` (runtime-agnostic: pure TS, `Date.now`
  * only, no Node APIs) and shields provider quota from casual abuse.
  *
  * Serverless limitations (honest by design):
@@ -65,7 +65,7 @@ export function runtimeStore(): RateLimitStore {
   return singleton;
 }
 
-/** Test-only reset for the runtime singleton (isolates middleware tests). */
+/** Test-only reset for the runtime singleton (isolates proxy tests). */
 export function resetRuntimeStore(): void {
   singleton = createRateLimitStore();
 }
@@ -127,10 +127,11 @@ export function checkLimit(
 
 /**
  * Route classification. Heavy = upstream-expensive (provider quota burn):
- * per-layer data, heatmaps, search, Sentinel catalogue scenes,
- * reverse-geocode, GIBS tiles. Light = cheap metadata/health. Everything
- * else under /api/v1 is standard. Returns null for paths outside the
- * protected surface.
+ * per-layer data, heatmaps, search, Sentinel catalogue scenes + raster
+ * resolution, reverse-geocode, GIBS tiles. Event detail stays standard:
+ * users click through many events and repeat lookups are server-cached.
+ * Light = cheap metadata/health. Everything else under /api/v1 is standard.
+ * Returns null for paths outside the protected surface.
  */
 export function classifyRoute(pathname: string): RouteClass | null {
   if (!pathname.startsWith("/api/v1/") && pathname !== "/api/v1") return null;
@@ -138,6 +139,7 @@ export function classifyRoute(pathname: string): RouteClass | null {
     /^\/api\/v1\/layers\/[^/]+\/(data|heatmap)$/.test(pathname) ||
     pathname === "/api/v1/search" ||
     pathname === "/api/v1/scenes" ||
+    pathname === "/api/v1/scenes/raster" ||
     pathname === "/api/v1/geocode/reverse" ||
     /^\/api\/v1\/imagery\/gibs\/tile\//.test(pathname)
   ) {
@@ -155,18 +157,20 @@ export function classifyRoute(pathname: string): RouteClass | null {
 }
 
 /**
- * Client identity for limiting. On Vercel `x-forwarded-for` is
- * platform-appended (client IP is the first entry); direct-to-origin
- * spoofing is a documented limitation, mitigated by the bounded store.
- * Unidentifiable clients share one "unknown" bucket (fail-closed direction:
- * they are limited together, never unlimited).
+ * Client identity for limiting. Uses the LAST `x-forwarded-for` entry: it is
+ * the one appended by the nearest proxy (on Vercel the platform overwrites
+ * the header, so it holds just the client IP). Earlier entries are whatever
+ * the client sent and are trivially spoofable. Direct-to-origin traffic with
+ * no proxy can still forge the whole header — a documented limitation,
+ * mitigated by the bounded store. Unidentifiable clients share one "unknown"
+ * bucket (fail-closed direction: they are limited together, never unlimited).
  */
 export function identityFromHeaders(
   forwardedFor: string | null,
   realIp: string | null,
 ): string {
-  const first = (forwardedFor ?? "").split(",")[0]?.trim();
-  if (first) return first.slice(0, 64);
+  const last = (forwardedFor ?? "").split(",").pop()?.trim();
+  if (last) return last.slice(0, 64);
   const ip = (realIp ?? "").trim();
   if (ip) return ip.slice(0, 64);
   return "unknown";

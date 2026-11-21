@@ -6,9 +6,11 @@
 // the build step so manifests and assets exist)
 //
 // What it measures:
-// - the actual initial JavaScript assets for `/`, taken from the
-//   production `app-build-manifest.json` `pages["/page"]` list (the exact
-//   files Next.js schedules for the route — never filename guesses);
+// - the actual initial JavaScript assets for `/`, taken from the `<script
+//   src>` tags of the prerendered `server/app/index.html` (the exact files
+//   the browser downloads — never filename guesses). Next 16 no longer
+//   writes `app-build-manifest.json`. `noModule` polyfills are skipped:
+//   only legacy browsers without module support fetch them;
 // - per-file gzip bytes via Node zlib (level 6, the Node/Vercel default),
 //   summed per file because browsers download the files separately (no
 //   cross-file compression);
@@ -42,8 +44,8 @@ export const INITIAL_ROUTE_JS_GZIP_BUDGET_BYTES = 200 * 1024;
 /** Gzip level: Node's default (also Vercel's transfer encoding level). */
 export const GZIP_LEVEL = 6;
 
-/** Route key for `/` in app-build-manifest.json `pages`. */
-export const INITIAL_ROUTE_KEY = '/page';
+/** Prerendered `/` document, relative to `.next`. */
+export const INITIAL_ROUTE_HTML = 'server/app/index.html';
 
 /**
  * Import-graph keys (react-loadable-manifest.json) whose files are the
@@ -72,28 +74,27 @@ export function loadJson(filePath) {
 }
 
 /**
- * The initial JavaScript asset set for `/`: the manifest's route file
- * list, `.js` only, deduplicated in order. Throws when the set cannot be
- * determined safely — an unknown set must never read as zero bytes.
+ * The initial JavaScript asset set for `/`: every `<script src="/_next/…js">`
+ * in the prerendered HTML except `noModule` ones, deduplicated in order.
+ * Throws when the set cannot be determined safely — an unknown set must
+ * never read as zero bytes.
  */
-export function selectInitialJsFiles(appBuildManifest) {
-  const pages = appBuildManifest?.pages;
-  if (!pages || typeof pages !== 'object') {
-    throw new Error('bundle-budget: app-build-manifest.json has no `pages` map');
+export function selectInitialJsFiles(html) {
+  if (typeof html !== 'string' || html === '') {
+    throw new Error(`bundle-budget: ${INITIAL_ROUTE_HTML} is empty or unreadable`);
   }
-  const routeFiles = pages[INITIAL_ROUTE_KEY];
-  if (!Array.isArray(routeFiles)) {
+  const files = [];
+  for (const [, attrs] of html.matchAll(/<script\b([^>]*)>/gi)) {
+    if (/\bnomodule\b/i.test(attrs)) continue;
+    const src = attrs.match(/\bsrc="\/_next\/([^"?]+\.js)(?:\?[^"]*)?"/)?.[1];
+    if (src && !files.includes(src)) files.push(src);
+  }
+  if (files.length === 0) {
     throw new Error(
-      `bundle-budget: app-build-manifest.json has no "${INITIAL_ROUTE_KEY}" file list`,
+      `bundle-budget: ${INITIAL_ROUTE_HTML} lists no JavaScript assets — refusing to report 0 bytes`,
     );
   }
-  const jsFiles = [...new Set(routeFiles.filter((f) => typeof f === 'string' && f.endsWith('.js')))];
-  if (jsFiles.length === 0) {
-    throw new Error(
-      `bundle-budget: "${INITIAL_ROUTE_KEY}" lists no JavaScript assets — refusing to report 0 bytes`,
-    );
-  }
-  return jsFiles;
+  return files;
 }
 
 /**
@@ -186,7 +187,7 @@ export function formatBytes(bytes) {
 export function printReport(report, nextDir) {
   const lines = [];
   lines.push(`initial-route JS bundle report — ${nextDir}`);
-  lines.push(`route: / (app-build-manifest pages["${INITIAL_ROUTE_KEY}"])`);
+  lines.push(`route: / (<script> tags of ${INITIAL_ROUTE_HTML})`);
   lines.push('');
   lines.push(`counted (initial, ${report.rows.length} files):`);
   for (const row of report.rows) {
@@ -222,9 +223,15 @@ function main() {
   const repoRoot = path.resolve(scriptDir, '..');
   const nextDir = path.join(repoRoot, '.next');
   try {
-    const appManifest = loadJson(path.join(nextDir, 'app-build-manifest.json'));
+    const htmlPath = path.join(nextDir, INITIAL_ROUTE_HTML);
+    let html;
+    try {
+      html = fs.readFileSync(htmlPath, 'utf8');
+    } catch (err) {
+      throw new Error(`bundle-budget: cannot read ${htmlPath} — run \`npm run build\` first (${err.message})`);
+    }
     const loadableManifest = loadJson(path.join(nextDir, 'react-loadable-manifest.json'));
-    const initialFiles = selectInitialJsFiles(appManifest);
+    const initialFiles = selectInitialJsFiles(html);
     const lazyGlobeFiles = selectLazyGlobeFiles(loadableManifest);
     const report = evaluateBudget({
       nextDir,

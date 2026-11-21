@@ -18,6 +18,9 @@ export default defineConfig({
     // are DOM-independent pure logic and run fine in the same environment.
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
+    // The first full-app render per file pays the cold import of the whole
+    // shell (~2 s alone); under a parallel run that exceeds the 5 s default.
+    testTimeout: 15_000,
     include: ["src/**/*.test.{ts,tsx}"],
     exclude: [
       "**/node_modules/**",

@@ -64,11 +64,14 @@ describe('Cesium PoC configuration (Phase 2)', () => {
   });
 
   it('builds a valid TIME dimension for today by default', () => {
+    // Previous UTC day: today's composite is still incomplete.
     const { Time } = buildGibsTimeDimension(new Date('2026-10-15T12:00:00Z'));
-    expect(Time).toBe('2026-10-15');
+    expect(Time).toBe('2026-10-14');
+    // Month/year rollover at the UTC boundary.
+    expect(buildGibsTimeDimension(new Date('2026-01-01T00:30:00Z')).Time).toBe('2025-12-31');
   });
 
-  it('falls back to today instead of emitting an invalid TIME', () => {
+  it('falls back to the real clock instead of emitting an invalid TIME', () => {
     const { Time } = buildGibsTimeDimension(new Date(NaN));
     expect(Time).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });

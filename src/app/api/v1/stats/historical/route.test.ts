@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { getCache } from "@/server/cache";
-import { middleware } from "@/middleware";
+import { proxy } from "@/proxy";
 import { resetRuntimeStore } from "@/server/rate-limit";
 import { GET as historicalGET } from "@/app/api/v1/stats/historical/route";
 import { statsHistoryKey } from "@/server/services/stats";
@@ -293,13 +293,13 @@ describe("/stats/historical validation and policy", () => {
   it("keeps the standard rate-limit class (429 envelope preserved)", async () => {
     const ip = "203.0.113.99";
     for (let i = 0; i < 60; i++) {
-      await middleware(
+      await proxy(
         new NextRequest(`http://localhost:3111/api/v1/stats/historical?metric=earthquakes&period=7d&n=${i}`, {
           headers: { "x-forwarded-for": ip },
         }),
       );
     }
-    const limited = await middleware(
+    const limited = await proxy(
       new NextRequest("http://localhost:3111/api/v1/stats/historical?metric=earthquakes&period=7d&n=x", {
         headers: { "x-forwarded-for": ip },
       }),

@@ -154,6 +154,6 @@ export function createSceneRasterImageryProvider(
     maximumLevel: descriptor.max_zoom,
     rectangle: cesium.Rectangle.fromDegrees(west, south, east, north),
     credit: creditText ? new cesium.Credit(creditText) : undefined,
-    hasAlpha: true,
+    hasAlphaChannel: true,
   });
 }

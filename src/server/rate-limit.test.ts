@@ -15,7 +15,7 @@ import {
   identityFromHeaders,
   resetRuntimeStore,
 } from "@/server/rate-limit";
-import { middleware } from "@/middleware";
+import { proxy } from "@/proxy";
 
 const T0 = 1_700_000_000_000;
 
@@ -26,6 +26,8 @@ describe("classifyRoute", () => {
     expect(classifyRoute("/api/v1/search")).toBe("heavy");
     expect(classifyRoute("/api/v1/geocode/reverse")).toBe("heavy");
     expect(classifyRoute("/api/v1/imagery/gibs/tile/layer/3/1/1")).toBe("heavy");
+    // Two upstream calls per resolution (CDSE + Planetary Computer).
+    expect(classifyRoute("/api/v1/scenes/raster")).toBe("heavy");
   });
   it("marks cheap metadata/health routes light", () => {
     expect(classifyRoute("/api/v1")).toBe("light");
@@ -104,8 +106,10 @@ describe("checkLimit", () => {
 });
 
 describe("identityFromHeaders", () => {
-  it("takes the first x-forwarded-for entry, falls back safely", () => {
-    expect(identityFromHeaders("203.0.113.7, 70.41.3.18", null)).toBe("203.0.113.7");
+  it("takes the proxy-appended (last) x-forwarded-for entry, falls back safely", () => {
+    // A client-forged first entry must not choose the bucket.
+    expect(identityFromHeaders("1.2.3.4, 203.0.113.7", null)).toBe("203.0.113.7");
+    expect(identityFromHeaders("203.0.113.7", null)).toBe("203.0.113.7");
     expect(identityFromHeaders(null, "198.51.100.9")).toBe("198.51.100.9");
     expect(identityFromHeaders(null, null)).toBe("unknown");
     expect(identityFromHeaders("", "")).toBe("unknown");
@@ -115,7 +119,7 @@ describe("identityFromHeaders", () => {
   });
 });
 
-describe("middleware (T1.3 acceptance)", () => {
+describe("proxy (T1.3 acceptance)", () => {
   beforeEach(() => resetRuntimeStore());
 
   function heavyRequest(ip: string, n = 0) {
@@ -126,10 +130,10 @@ describe("middleware (T1.3 acceptance)", () => {
 
   it("passes normal traffic and throttles a heavy-route flood with 429 + Retry-After", async () => {
     for (let i = 0; i < RATE_LIMITS.heavy; i++) {
-      const res = await middleware(heavyRequest("203.0.113.7", i));
+      const res = await proxy(heavyRequest("203.0.113.7", i));
       expect(res.status).not.toBe(429);
     }
-    const limited = await middleware(heavyRequest("203.0.113.7", 999));
+    const limited = await proxy(heavyRequest("203.0.113.7", 999));
     expect(limited.status).toBe(429);
     const retryAfter = limited.headers.get("Retry-After");
     expect(retryAfter).not.toBeNull();
@@ -146,13 +150,13 @@ describe("middleware (T1.3 acceptance)", () => {
 
   it("does not throttle other identities or light routes", async () => {
     for (let i = 0; i < RATE_LIMITS.heavy; i++) {
-      await middleware(heavyRequest("203.0.113.7", i));
+      await proxy(heavyRequest("203.0.113.7", i));
     }
-    const other = await middleware(heavyRequest("198.51.100.9", 0));
+    const other = await proxy(heavyRequest("198.51.100.9", 0));
     expect(other.status).not.toBe(429);
     const light = new NextRequest("http://localhost:3000/api/v1/health", {
       headers: { "x-forwarded-for": "203.0.113.7" },
     });
-    expect((await middleware(light)).status).not.toBe(429);
+    expect((await proxy(light)).status).not.toBe(429);
   });
 });

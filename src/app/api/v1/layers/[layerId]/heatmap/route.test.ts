@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { getCache } from "@/server/cache";
-import { middleware } from "@/middleware";
+import { proxy } from "@/proxy";
 import { resetRuntimeStore } from "@/server/rate-limit";
 import { GET as heatmapGET } from "@/app/api/v1/layers/[layerId]/heatmap/route";
 import { decodeGrid } from "@/server/providers/heatmap";
@@ -181,13 +181,13 @@ describe("heatmap route live grids (T2.8)", () => {
   it("keeps the heavy rate-limit class (429 envelope preserved)", async () => {
     const ip = "203.0.113.98";
     for (let i = 0; i < 20; i++) {
-      await middleware(
+      await proxy(
         new NextRequest(`http://localhost:3000/api/v1/layers/temperature/heatmap?resolution=8&n=${i}`, {
           headers: { "x-forwarded-for": ip },
         }),
       );
     }
-    const limited = await middleware(
+    const limited = await proxy(
       new NextRequest("http://localhost:3000/api/v1/layers/temperature/heatmap?resolution=8&n=x", {
         headers: { "x-forwarded-for": ip },
       }),

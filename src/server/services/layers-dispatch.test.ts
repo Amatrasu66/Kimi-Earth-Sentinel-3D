@@ -12,10 +12,7 @@ const USGS_FIXTURE = {
 };
 
 function mockFetchJson(payload: unknown, status = 200) {
-  return vi.fn(async () => ({
-    status,
-    text: async () => JSON.stringify(payload),
-  }));
+  return vi.fn(async () => new Response(JSON.stringify(payload), { status }));
 }
 
 afterEach(() => {

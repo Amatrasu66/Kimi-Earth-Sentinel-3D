@@ -436,9 +436,11 @@
     }
   }
   @media (max-width: 767px) {
+    /* The stage minimum lives on the TRACK: a minmax(0, …) row ignores the
+       item's min-height and lets the globe paint over the rail and panel. */
     .sentinel-workspace {
       grid-template-columns: minmax(0, 1fr);
-      grid-template-rows: minmax(0, 1fr) auto auto;
+      grid-template-rows: minmax(50dvh, 1fr) auto auto;
       grid-template-areas: 'stage' 'rail' 'panel';
       gap: 8px;
       padding: 8px;
@@ -446,14 +448,31 @@
     }
     .sentinel-workspace--no-panel {
       grid-template-columns: minmax(0, 1fr);
-      grid-template-rows: minmax(0, 1fr) auto;
+      grid-template-rows: minmax(50dvh, 1fr) auto;
       grid-template-areas: 'stage' 'rail';
     }
-    .sentinel-stage-cell { min-height: 50dvh; }
     .sentinel-shell {
       grid-template-rows: var(--header-height) minmax(0, 1fr) var(--status-height);
     }
     .globe-stage-coords { display: none; }
+  }
+}
+
+/* The Cesium Viewer is fixed full-screen behind the chrome, so its credit
+   strip (required imagery attribution) sat under the status dock. Lift it
+   above the dock; phones stack rail + panel at the bottom, so it goes under
+   the header there. !important: the Viewer writes left/bottom as inline
+   styles. Kept outside @layer so Tailwind cannot purge it (no source file
+   uses these class names). */
+.cesium-viewer-bottom {
+  bottom: calc(var(--status-height) + 6px) !important;
+  left: calc(var(--shell-padding) + var(--rail-width) + var(--workspace-gap)) !important;
+}
+@media (max-width: 1023px) {
+  .cesium-viewer-bottom {
+    top: calc(var(--header-height) + 6px);
+    bottom: auto !important;
+    left: 8px !important;
   }
 }
 

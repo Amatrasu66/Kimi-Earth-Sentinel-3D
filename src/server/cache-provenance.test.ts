@@ -56,4 +56,18 @@ describe("cache + stale fallback", () => {
     c.set("c", [3, null]);
     expect(c.size).toBe(2);
   });
+
+  it("MemoryCache evicts the least recently used entry", () => {
+    const c = new MemoryCache(300, 2);
+    c.set("a", [1, null]);
+    c.set("b", [2, null]);
+    c.get("a"); // read makes "a" recent
+    c.set("c", [3, null]);
+    expect(c.getStale("a")).not.toBeNull();
+    expect(c.getStale("b")).toBeNull();
+    c.set("a", [4, null]); // refresh makes "a" recent again
+    c.set("d", [5, null]);
+    expect(c.getStale("a")).toEqual([4, null]);
+    expect(c.getStale("c")).toBeNull();
+  });
 });

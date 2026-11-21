@@ -78,8 +78,11 @@ describe('imagery layer registry (Phase 4)', () => {
     expect(GIBS_TRUE_COLOR_BASE_LAYER.temporalNote).toMatch(/daily composite/i);
     expect(GIBS_TRUE_COLOR_BASE_LAYER.temporalNote).toMatch(/not live/i);
     // The configured TIME dimension is a calendar day, not a timestamp.
+    // Previous UTC day: today's composite is still incomplete.
     const { Time } = buildGibsTimeDimension(new Date('2026-10-15T12:00:00Z'));
-    expect(Time).toBe('2026-10-15');
+    expect(Time).toBe('2026-10-14');
+    // Month/year rollover at the UTC boundary.
+    expect(buildGibsTimeDimension(new Date('2026-01-01T00:30:00Z')).Time).toBe('2025-12-31');
   });
 
   it('exposes no secrets or provider URLs in serializable metadata', () => {

@@ -107,17 +107,14 @@ export async function loadCesiumRuntime(): Promise<typeof import('cesium')> {
 /**
  * Build the WMTS `dimensions` for the daily GIBS layer (`{ Time }`, verified
  * against the installed provider source: static dimensions become KVP params).
- * Invalid input falls back to today (UTC) rather than sending a bad TIME that
- * would fail every tile.
+ * Uses the PREVIOUS UTC day: today's composite is still being filled in by
+ * later orbits, so requesting it shows black swath gaps or blank tiles.
+ * Invalid input falls back to the real clock rather than sending a bad TIME
+ * that would fail every tile.
  */
 export function buildGibsTimeDimension(now: Date = new Date()): { Time: string } {
-  const day =
-    Number.isFinite(now.getTime())
-      ? now.toISOString().slice(0, 10)
-      : new Date().toISOString().slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(day)
-    ? { Time: day }
-    : { Time: new Date().toISOString().slice(0, 10) };
+  const base = Number.isFinite(now.getTime()) ? now : new Date();
+  return { Time: new Date(base.getTime() - 86_400_000).toISOString().slice(0, 10) };
 }
 
 /**
@@ -156,8 +153,9 @@ export const GIBS_PROVIDER_DESCRIPTOR: GibsProviderDescriptor = {
     name: 'Time',
     meaning:
       'UTC calendar day of the MODIS Terra CorrectedReflectance TrueColor daily composite (250 m). ' +
-      'A daily composite — not real-time: same-day imagery appears only after processing and ' +
-      'publishing latency, and the globe never claims a live satellite observation.',
+      'A daily composite — not real-time: the globe shows the previous UTC day (the same-day ' +
+      'composite is incomplete until later orbits are processed) and never claims a live ' +
+      'satellite observation.',
   },
   attribution: GIBS_CREDIT_TEXT,
   supportedZoomRange: 'WMTS levels 0–9 (quadtree); visibly soft beyond regional zoom',

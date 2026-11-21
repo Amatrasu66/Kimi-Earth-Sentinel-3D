@@ -16,13 +16,13 @@ export const config = {
   matcher: ["/api/v1/:path*"],
 };
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const routeClass = classifyRoute(req.nextUrl.pathname);
   if (!routeClass) return NextResponse.next();
   const identity = identityFromHeaders(
     req.headers.get("x-forwarded-for"),
-    // `req.ip` is not typed on NextRequest; read defensively.
-    (req as unknown as { ip?: string }).ip ?? null,
+    // NextRequest has no `ip` since Next 15; Vercel and most proxies set this.
+    req.headers.get("x-real-ip"),
   );
   const decision = checkLimit(runtimeStore(), identity, routeClass);
   if (decision.allowed) return NextResponse.next();

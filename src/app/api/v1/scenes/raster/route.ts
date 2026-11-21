@@ -18,7 +18,7 @@ import {
   publicCacheControl,
 } from "@/server/route-helpers";
 import { parseSceneId } from "@/server/validation";
-import type { SceneRasterPayload } from "@/types";
+import type { DataStatus, SceneRasterPayload } from "@/types";
 
 export const dynamic = "force-dynamic";
 
@@ -26,16 +26,19 @@ function sceneRasterCacheKey(sceneId: string): string {
   return `scene-raster:v1:${sceneId}`;
 }
 
-type CachedRaster = [SceneRasterPayload, string | null | undefined] | null;
+/** Route-side payload: always carries data_status (set by withStatus). */
+type RasterPayload = SceneRasterPayload & Record<string, unknown> & { data_status: DataStatus };
+
+type CachedRaster = [RasterPayload, string | null | undefined] | null;
 
 /** Rewrite a cached entry as STALE, preserving the original fetched_at. */
-function asStale(data: SceneRasterPayload): SceneRasterPayload {
+function asStale(data: RasterPayload): RasterPayload {
   return {
     ...data,
     data_status: {
       ...data.data_status,
       status: STALE,
-      message: `Provider refresh failed — showing cached resolution fetched at ${data.data_status?.fetched_at ?? "unknown"}.`,
+      message: `Provider refresh failed — showing cached resolution fetched at ${data.data_status.fetched_at}.`,
     },
   };
 }

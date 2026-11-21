@@ -41,7 +41,8 @@ afterEach(() => {
   }
 });
 
-const MANIFEST = (pageFiles: unknown) => ({ pages: { '/page': pageFiles } });
+const HTML = (...tags: string[]) => `<!DOCTYPE html><html><head>${tags.join('')}</head><body></body></html>`;
+const SCRIPT = (file: string, extra = ' async=""') => `<script src="/_next/${file}"${extra}></script>`;
 
 const LOADABLE = {
   'components\\globe\\EarthRenderer.tsx -> ./WebGPUEarth': {
@@ -66,34 +67,40 @@ describe('budget constants', () => {
 });
 
 describe('selectInitialJsFiles', () => {
-  it('selects the /page JavaScript assets in order', () => {
+  it('selects the document script assets in order', () => {
     expect(
-      selectInitialJsFiles(MANIFEST(['static/chunks/a.js', 'static/chunks/b.js'])),
+      selectInitialJsFiles(HTML(SCRIPT('static/chunks/a.js'), SCRIPT('static/chunks/b.js', ' id="_R_" async=""'))),
     ).toEqual(['static/chunks/a.js', 'static/chunks/b.js']);
   });
 
-  it('deduplicates repeated chunk references', () => {
-    expect(
-      selectInitialJsFiles(MANIFEST(['static/chunks/a.js', 'static/chunks/a.js', 'static/chunks/b.js'])),
-    ).toEqual(['static/chunks/a.js', 'static/chunks/b.js']);
-  });
-
-  it('ignores non-JavaScript entries (CSS, maps)', () => {
+  it('deduplicates repeated chunk references and strips query strings', () => {
     expect(
       selectInitialJsFiles(
-        MANIFEST(['static/chunks/a.js', 'static/css/app.css', 'static/chunks/a.js.map']),
+        HTML(SCRIPT('static/chunks/a.js'), SCRIPT('static/chunks/a.js?v=1'), SCRIPT('static/chunks/b.js')),
+      ),
+    ).toEqual(['static/chunks/a.js', 'static/chunks/b.js']);
+  });
+
+  it('skips noModule polyfills, inline scripts and non-JavaScript assets', () => {
+    expect(
+      selectInitialJsFiles(
+        HTML(
+          SCRIPT('static/chunks/a.js'),
+          SCRIPT('static/chunks/polyfills.js', ' noModule=""'),
+          '<script>self.__next_f=[]</script>',
+          '<link rel="stylesheet" href="/_next/static/css/app.css"/>',
+        ),
       ),
     ).toEqual(['static/chunks/a.js']);
   });
 
   it.each([
-    ['missing pages map', {}],
-    ['missing /page key', { pages: {} }],
-    ['non-array file list', MANIFEST('nope')],
-    ['empty file list', MANIFEST([])],
-    ['no JavaScript after filtering', MANIFEST(['static/css/app.css'])],
-  ])('fails safely on %s (never a silent 0-byte pass)', (_label, manifest) => {
-    expect(() => selectInitialJsFiles(manifest)).toThrow();
+    ['non-string input', undefined],
+    ['empty document', ''],
+    ['no scripts', HTML()],
+    ['only noModule scripts', HTML(SCRIPT('static/chunks/p.js', ' noModule=""'))],
+  ])('fails safely on %s (never a silent 0-byte pass)', (_label, html) => {
+    expect(() => selectInitialJsFiles(html)).toThrow();
   });
 });
 

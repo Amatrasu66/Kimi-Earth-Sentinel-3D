@@ -12,6 +12,38 @@ export class UpstreamTimeoutError extends Error {
   }
 }
 
+/**
+ * Hard cap on one upstream body. The largest legitimate response (FIRMS
+ * worldwide 1-day CSV) is tens of MB; anything past this is a broken or
+ * hostile upstream and must not exhaust server memory.
+ */
+export const MAX_UPSTREAM_BYTES = 64 * 1024 * 1024;
+
+/** Read a response body as text, failing fast once it exceeds `maxBytes`. */
+export async function readTextCapped(res: Response, maxBytes = MAX_UPSTREAM_BYTES): Promise<string> {
+  const tooLarge = () => new Error(`Upstream response exceeds ${maxBytes} bytes`);
+  if (Number(res.headers.get("content-length")) > maxBytes) {
+    await res.body?.cancel();
+    throw tooLarge();
+  }
+  if (!res.body) return "";
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let size = 0;
+  let text = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > maxBytes) {
+      await reader.cancel();
+      throw tooLarge();
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+  return text + decoder.decode();
+}
+
 /** fetch JSON with a timeout. Throws UpstreamTimeoutError on abort-by-timeout. */
 export async function fetchJsonWithTimeout(
   url: string,
@@ -56,8 +88,8 @@ export async function fetchJsonWithTimeout(
       signal: controller.signal,
       headers: opts.headers,
     });
-    const text = await res.text();
-    let json: unknown = null;
+    const text = await readTextCapped(res);
+    let json: unknown;
     try {
       json = text ? JSON.parse(text) : null;
     } catch {

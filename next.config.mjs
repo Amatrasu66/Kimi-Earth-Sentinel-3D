@@ -1,38 +1,43 @@
 /**
  * T1.2 security headers + report-only CSP.
  *
- * Built from the app's ACTUAL resource requirements (verified in source):
+ * Built from the app's ACTUAL resource requirements (verified in a real
+ * browser via scripts/browser-smoke.mjs):
  * - scripts: Next.js App Router emits inline bootstrap/hydration scripts, so
  *   `script-src` needs 'unsafe-inline' until a nonce-based setup lands.
- *   No `unsafe-eval` anywhere (three/R3F production builds don't eval).
- * - styles: single Tailwind CSS file, no runtime <style> injection found.
- * - images: self-hosted `/textures/*` only (three TextureLoader, same-origin).
- * - connections: client calls same-origin `/api/v1` only (services/api.ts).
- *   Upstream hosts (USGS/EONET/GIBS/Open-Meteo/AirNow/FIRMS) are fetched
- *   SERVER-side, so browsers never need them in connect-src/img-src.
+ *   App code never evals (dev-mode webpack eval reports are expected).
+ * - styles: single Tailwind CSS file (third-party inline styles: see below).
+ * - images + connections: same-origin `/api/v1` and `/textures/*`, plus the
+ *   two hosts the Cesium globe loads tiles from directly in the browser:
+ *   NASA GIBS (base imagery, WMTS) and Microsoft Planetary Computer (Sentinel
+ *   scene tiles + previews). Cesium fetches tiles with XHR/fetch and shows
+ *   previews as <img>, so the hosts are needed in both directives.
  * - fonts: system stack, no external @font-face/@import found.
- * - workers / blob: / data: URLs: none found in src — NOT allow-listed.
- *   If report-only console output later proves a need, extend deliberately.
- * - GIBS tile hosts: the UI never loads them today (gibsTileUrl is only a
- *   builder + test). T2.8 extends img-src when real imagery ships.
  *
  * Report-Only on purpose: switching to enforcing is a separate, later task
-  * after zero violations are observed across all layers and both renderers.
-  *
-  * CSP-1: `upgrade-insecure-requests` is deliberately NOT in this
-  * report-only policy — browsers ignore that directive outside an enforced
-  * policy, so shipping it here only produces a permanent console warning
-  * with zero protection. It is reserved for the future enforced policy.
-  */
+ * after zero violations are observed across all layers and both renderers.
+ * Production smoke run (2026-11-22) still reports: inline style attributes
+ * from react-dom/Radix/Cesium (needs style-src 'unsafe-inline'), WebAssembly
+ * compile from the Cesium chunk ('wasm-unsafe-eval'), and string eval from
+ * Cesium's Knockout widgets ('unsafe-eval') — an owner decision before
+ * enforcing.
+ *
+ * CSP-1: `upgrade-insecure-requests` is deliberately NOT in this
+ * report-only policy — browsers ignore that directive outside an enforced
+ * policy, so shipping it here only produces a permanent console warning
+ * with zero protection. It is reserved for the future enforced policy.
+ */
 import { fileURLToPath } from "node:url";
+
+const TILE_HOSTS = "https://gibs.earthdata.nasa.gov https://planetarycomputer.microsoft.com";
 
 const cspDirectives = [
   "default-src 'self'",
   // Next.js App Router requires inline scripts (no nonce plumbing yet).
   "script-src 'self' 'unsafe-inline'",
   "style-src 'self'",
-  "img-src 'self'",
-  "connect-src 'self'",
+  `img-src 'self' ${TILE_HOSTS}`,
+  `connect-src 'self' ${TILE_HOSTS}`,
   "font-src 'self'",
   "worker-src 'self'",
   "object-src 'none'",
@@ -51,7 +56,7 @@ const securityHeaders = [
   {
     key: "Permissions-Policy",
     value:
-      "camera=(), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=(), magnetometer=(), gyroscope=(), accelerometer=()",
+      "camera=(), microphone=(), geolocation=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()",
   },
   { key: "X-Frame-Options", value: "DENY" },
 ];
@@ -60,6 +65,8 @@ const securityHeaders = [
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // Don't let `next dev` write an AGENTS.md into the repo root.
+  agentRules: false,
   async headers() {
     // One rule for every route: `/`, `/api/*`, and static/texture assets.
     // Headers only — response bodies (incl. the { success, data, meta }

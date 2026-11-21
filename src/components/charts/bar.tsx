@@ -302,9 +302,6 @@ const BarInner = memo(function BarInner({
             }
           } else {
             x = 0;
-            // For grouped bars, offset y position
-            const effectiveGroupGap = seriesCount > 1 ? groupGap : 0;
-            y = bandPos + seriesIndex * (barWidth + effectiveGroupGap);
           }
           y = stacked
             ? bandPos
@@ -328,9 +325,6 @@ const BarInner = memo(function BarInner({
             }
           } else {
             y = valuePos;
-            // For grouped bars, offset x position
-            const effectiveGroupGap = seriesCount > 1 ? groupGap : 0;
-            x = bandPos + seriesIndex * (barWidth + effectiveGroupGap);
           }
           x = stacked
             ? bandPos

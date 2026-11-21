@@ -30,9 +30,10 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
           {
             target,
             contentRect: { width: 300, height: 100, top: 0, left: 0, bottom: 100, right: 300, x: 0, y: 0, toJSON: () => ({}) },
-            borderBoxSize: [],
-            contentBoxSize: [],
-            devicePixelContentBoxSize: [],
+            // Radix use-size reads borderBoxSize[0] — empty arrays crash it.
+            borderBoxSize: [{ inlineSize: 300, blockSize: 100 }],
+            contentBoxSize: [{ inlineSize: 300, blockSize: 100 }],
+            devicePixelContentBoxSize: [{ inlineSize: 300, blockSize: 100 }],
           } as unknown as ResizeObserverEntry,
         ],
         this as unknown as ResizeObserver,

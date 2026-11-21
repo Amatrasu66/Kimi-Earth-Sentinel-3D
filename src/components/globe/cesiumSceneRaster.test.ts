@@ -171,7 +171,7 @@ describe('scene-raster provider factory (Phase 7)', () => {
     expect(options.tileHeight).toBe(SCENE_RASTER_TILE_SIZE);
     expect(options.minimumLevel).toBe(0);
     expect(options.maximumLevel).toBe(14);
-    expect(options.hasAlpha).toBe(true);
+    expect(options.hasAlphaChannel).toBe(true);
     expect(cesium.rectangleArgs).toEqual([[139.9, 35.0, 141.2, 36.1]]);
     expect(cesium.creditArgs).toHaveLength(1);
     expect(cesium.creditArgs[0]).toMatch(/Copernicus/);

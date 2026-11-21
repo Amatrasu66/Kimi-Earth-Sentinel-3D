@@ -24,6 +24,9 @@ export class MemoryCache {
     const entry = this.store.get(key);
     if (!entry) return null;
     if (entry.expiresAt <= Date.now()) return null; // keep for getStale()
+    // LRU: Map order is eviction order, so a hit moves the key to the end.
+    this.store.delete(key);
+    this.store.set(key, entry);
     return entry.value;
   }
 
@@ -38,6 +41,7 @@ export class MemoryCache {
       const oldest = this.store.keys().next();
       if (!oldest.done) this.store.delete(oldest.value);
     }
+    this.store.delete(key); // re-insert at the end (most recently used)
     this.store.set(key, { value, expiresAt: Date.now() + Math.max(ttl, 0) * 1000 });
   }
 

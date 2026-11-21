@@ -265,7 +265,7 @@ Full app (repo root):
 npm run lint            # eslint (app + server)
 npm run typecheck       # tsc --noEmit
 npm test                # vitest run (node API tests + jsdom UI tests)
-npm run build           # next build (all /api routes + globe page)
+npm run build           # next build --webpack (all /api routes + globe page)
 ```
 
 CI (`.github/workflows/ci.yml`) runs a single app job (`npm ci` → `lint` → `typecheck` → `test` → `build`, Node 24) on pushes to `main` and all pull requests.

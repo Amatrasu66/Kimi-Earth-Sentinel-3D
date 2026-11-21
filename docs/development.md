@@ -48,7 +48,7 @@ Never commit `.env` files or keys; both are git-ignored.
 npm run lint            # eslint (app + server)
 npm run typecheck       # tsc --noEmit
 npm test                # vitest run (node API tests + jsdom UI tests)
-npm run build           # next build
+npm run build           # next build --webpack (Turbopack is the Next 16 default; the Cesium SPZ stub alias needs webpack)
 ```
 
 ## Audit trail
@@ -228,7 +228,7 @@ Successful `LIVE` or static-catalogue responses carry `Cache-Control: public, s-
 | Search (STALE re-serve, SIMULATED event fallback, UNAVAILABLE), stats overview / historical series (STALE re-serve, UNAVAILABLE), reverse geocode (always UNAVAILABLE) | `no-store` | — | fallbacks and unavailable results are never extended via CDN |
 | GIBS tile 302 redirect | (unchanged, no policy) | — | `Location` embeds the current date; upstream owns tile caching |
 | 400 / 404 / 500 (`fail`/`notFound`/`internalError`) | `no-store` | — | invalid-input and internal errors are never public data |
-| 429 (middleware) | `no-store` (+ `Retry-After`) | — | per-client throttle decisions, never cached as success |
+| 429 (proxy) | `no-store` (+ `Retry-After`) | — | per-client throttle decisions, never cached as success |
 
 How the layers interact:
 
@@ -308,7 +308,7 @@ Limitations (do not overclaim):
 
 ## Rate limiting (T1.3)
 
-Enforced in `src/middleware.ts` (matcher `/api/v1/:path*`) via the token bucket in `src/server/rate-limit.ts` — light 120 / standard 60 / heavy 20 requests per 60 s per client IP (route classes in `classifyRoute()`). Throttled callers get `429` + the standard `{ success: false, error: { code: "RATE_LIMITED", … } }` envelope + `Retry-After`, before any provider call. The store is hard-bounded (`MAX_ENTRIES=2000`, expiry + oldest-first eviction) and Edge-safe (no Node APIs).
+Enforced in `src/proxy.ts` (Next 16's renamed middleware; matcher `/api/v1/:path*`) via the token bucket in `src/server/rate-limit.ts` — light 120 / standard 60 / heavy 20 requests per 60 s per client IP — the last `x-forwarded-for` entry, i.e. the one the platform/proxy appended (route classes in `classifyRoute()`). Throttled callers get `429` + the standard `{ success: false, error: { code: "RATE_LIMITED", … } }` envelope + `Retry-After`, before any provider call. The store is hard-bounded (`MAX_ENTRIES=2000`, expiry + oldest-first eviction) and runtime-agnostic (no Node APIs).
 
 Know the limits of this layer — it is per isolate/region, not global:
 

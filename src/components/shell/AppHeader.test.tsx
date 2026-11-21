@@ -18,10 +18,12 @@ function TestHeader() {
 }
 
 describe('AppHeader responsive layout (T3.9)', () => {
-  it('uses flexible three-zone grid with minmax(0,1fr) side columns', () => {
+  it('uses content-sized side columns on phones and a centered search from md', () => {
     render(<TestHeader />);
     const header = screen.getByRole('banner');
-    expect(header).toHaveClass('grid-cols-[minmax(0,1fr)_minmax(0,420px)_minmax(0,1fr)]');
+    // Phones: 1fr side columns collapsed to 0 and the logo overlapped search.
+    expect(header).toHaveClass('grid-cols-[auto_minmax(0,1fr)_auto]');
+    expect(header).toHaveClass('md:grid-cols-[minmax(0,1fr)_minmax(0,420px)_minmax(0,1fr)]');
   });
 
   it('has responsive gap and padding', () => {

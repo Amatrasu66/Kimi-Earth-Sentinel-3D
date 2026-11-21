@@ -4,9 +4,6 @@
  * OData, Planetary Computer STAC) are stubbed per test (any unstubbed URL
  * throws) and the cache is cleared per test for isolation.
  *
- * NOTE: these tests were authored during implementation and have NOT been
- * executed by the implementing agent (see PHASE_7_IMPLEMENTATION_REPORT.md
- * §12). They run with the standard `npm test`.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
@@ -37,19 +34,15 @@ const L1C_NAME = "S2B_MSIL1C_20261017T144729_N0513_R139_T19MFT_20261017T182518.S
 
 const CDSE_PAGE = { value: [{ Name: L2A_NAME }] };
 const PC_PAGE = {
-  type: "FeatureCollection",
-  features: [
-    {
-      id: L2A_ITEM,
-      bbox: [139.9, 35.0, 141.2, 36.1],
-      properties: { "s2:product_uri": L2A_NAME },
-      assets: {
-        rendered_preview: {
-          href: `https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=${L2A_ITEM}`,
-        },
-      },
+  type: "Feature",
+  id: L2A_ITEM,
+  bbox: [139.9, 35.0, 141.2, 36.1],
+  properties: { "s2:product_uri": L2A_NAME },
+  assets: {
+    rendered_preview: {
+      href: `https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png?collection=sentinel-2-l2a&item=${L2A_ITEM}`,
     },
-  ],
+  },
 };
 
 interface RasterBody {

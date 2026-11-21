@@ -17,16 +17,18 @@ const LAYER_CONFIG: Array<{
   id: LayerId;
   icon: React.ReactNode;
   label: string;
+  /** Rail footer code (the 68px rail cannot fit the full label). */
+  short: string;
   hint: string;
 }> = [
-  { id: 'temperature', icon: <Thermometer className="h-[17px] w-[17px]" />, label: 'Temperature', hint: 'Surface temperature anomalies' },
-  { id: 'precipitation', icon: <CloudRain className="h-[17px] w-[17px]" />, label: 'Precipitation', hint: 'Rainfall & drought extent' },
-  { id: 'clouds', icon: <Cloud className="h-[17px] w-[17px]" />, label: 'Cloud Cover', hint: 'Live cloud coverage' },
-  { id: 'wind', icon: <Wind className="h-[17px] w-[17px]" />, label: 'Wind', hint: 'Wind speed & storm tracks' },
-  { id: 'earthquakes', icon: <Activity className="h-[17px] w-[17px]" />, label: 'Earthquakes', hint: 'USGS seismic events' },
-  { id: 'disasters', icon: <AlertTriangle className="h-[17px] w-[17px]" />, label: 'Disasters', hint: 'EONET natural events' },
-  { id: 'air_quality', icon: <Sparkles className="h-[17px] w-[17px]" />, label: 'Air Quality', hint: 'AQI & particulates' },
-  { id: 'wildfires', icon: <Flame className="h-[17px] w-[17px]" />, label: 'Wildfires', hint: 'Active fire detections' },
+  { id: 'temperature', icon: <Thermometer className="h-[17px] w-[17px]" />, label: 'Temperature', short: 'TEMP', hint: 'Surface temperature anomalies' },
+  { id: 'precipitation', icon: <CloudRain className="h-[17px] w-[17px]" />, label: 'Precipitation', short: 'RAIN', hint: 'Rainfall & drought extent' },
+  { id: 'clouds', icon: <Cloud className="h-[17px] w-[17px]" />, label: 'Cloud Cover', short: 'CLOUD', hint: 'Live cloud coverage' },
+  { id: 'wind', icon: <Wind className="h-[17px] w-[17px]" />, label: 'Wind', short: 'WIND', hint: 'Wind speed & storm tracks' },
+  { id: 'earthquakes', icon: <Activity className="h-[17px] w-[17px]" />, label: 'Earthquakes', short: 'QUAKE', hint: 'USGS seismic events' },
+  { id: 'disasters', icon: <AlertTriangle className="h-[17px] w-[17px]" />, label: 'Disasters', short: 'ALERT', hint: 'EONET natural events' },
+  { id: 'air_quality', icon: <Sparkles className="h-[17px] w-[17px]" />, label: 'Air Quality', short: 'AQI', hint: 'AQI & particulates' },
+  { id: 'wildfires', icon: <Flame className="h-[17px] w-[17px]" />, label: 'Wildfires', short: 'FIRE', hint: 'Active fire detections' },
 ];
 
 /**
@@ -91,7 +93,7 @@ function RailButton({
 }
 
 export default function LayerRail({ activeLayer, onLayerToggle, shortcutLayers = [] }: LayerRailProps) {
-  const activeLabel = activeLayer ? LAYER_CONFIG.find((l) => l.id === activeLayer)?.label : null;
+  const activeShort = activeLayer ? LAYER_CONFIG.find((l) => l.id === activeLayer)?.short : null;
 
   return (
     <>
@@ -116,7 +118,7 @@ export default function LayerRail({ activeLayer, onLayerToggle, shortcutLayers =
         </div>
         <div className="mx-3 my-1 border-t border-white/[0.07]" aria-hidden />
         <p className="sentinel-micro sentinel-mono flex h-6 items-center justify-center" aria-live="off">
-          {activeLabel ? activeLabel.slice(0, 4).toUpperCase() : '— —'}
+          {activeShort ?? '— —'}
         </p>
       </nav>
 

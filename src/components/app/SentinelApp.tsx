@@ -19,7 +19,6 @@ import ListStage from '@/components/shell/ListStage';
 import LayerHint from '@/components/shell/LayerHint';
 import StatusDock from '@/components/shell/StatusDock';
 import DataPanel from '@/components/intelligence/DataPanel';
-import SettingsModal from '@/components/panels/SettingsModal';
 import MarkerHoverCard from '@/components/overlays/MarkerHoverCard';
 import { useLayers, useLayerData, useIdlePrefetchLayer } from '@/hooks/useLayers';
 import { useSceneSearch } from '@/hooks/useSceneSearch';
@@ -38,14 +37,29 @@ import { useFlyTo } from '@/components/app/useFlyTo';
 import { usePendingEventResolution } from '@/components/app/usePendingEventResolution';
 import type { DataPoint, LayerId, SceneSummary } from '@/types';
 import type { CommittedSceneQuery } from '@/components/panels/SceneSearchPanel';
+import { Skeleton } from '@/components/ui/skeleton';
 
 // Phase 6: the scene-search panel is a lazy client-only chunk — the form +
 // results UI leaves the initial route graph (200 KiB budget protection) and
 // loads only when the user opens Scenes on the Cesium branch.
 const SceneSearchPanel = dynamic(
   () => import('@/components/panels/SceneSearchPanel'),
-  { ssr: false },
+  {
+    ssr: false,
+    // Without a fallback the panel slot sits empty while the chunk loads.
+    loading: () => (
+      <div className="intel-shell w-full p-4" role="status" aria-label="Loading scene search">
+        <Skeleton className="h-[160px] rounded-[7px] bg-white/[0.05]" />
+      </div>
+    ),
+  },
 );
+
+// Settings (Dialog/Sheet/Tabs/Switch) only matters after a click: keep it
+// out of the initial route JS (200 KiB budget); it loads after hydration.
+const SettingsModal = dynamic(() => import('@/components/panels/SettingsModal'), {
+  ssr: false,
+});
 
 // Memoized renderer boundary so shell-only state (hover, search typing)
 // never re-renders the 3D scene; the selection callbacks stay stable.

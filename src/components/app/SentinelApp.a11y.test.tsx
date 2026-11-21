@@ -6,7 +6,7 @@
  * announcer for provenance. No browser automation — jsdom + mocked API
  * boundary only, mirroring the firstrun harness.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { SWRConfig } from 'swr';
@@ -67,6 +67,10 @@ async function renderApp() {
   await screen.findByLabelText('Layer data', {}, { timeout: 5000 });
   return view;
 }
+
+// SettingsModal is a lazy chunk: compile it once up front so a cold first
+// transform cannot outrun findByRole's 1 s default when a test opens it.
+beforeAll(() => import('@/components/panels/SettingsModal'));
 
 async function openSettings() {
   fireEvent.click(screen.getByRole('button', { name: 'Open settings' }));

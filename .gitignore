@@ -20,25 +20,6 @@ public/cesium/
 .env.*
 !.env.example
 
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-.venv/
-venv/
-env/
-.env/
-*.egg-info/
-.pytest_cache/
-.mypy_cache/
-
-# Flask / Gunicorn
-instance/
-*.pid
-
-# Redis dump
-dump.rdb
-
 # OS / Editor
 .vscode/*
 !.vscode/extensions.json

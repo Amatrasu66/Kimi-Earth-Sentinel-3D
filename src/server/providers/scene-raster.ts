@@ -19,10 +19,10 @@
  *   `Id eq <guid>` filter — the only form the verified endpoint accepts;
  *   the GUID shape is validated by the route before interpolation), so
  *   client-supplied names are never trusted.
- * - The PC item is located by exact-name filter (`s2:product_uri` for L2A,
- *   `s1:product_identifier` for S1 GRD) and the returned item's identity is
- *   re-checked against the name; a mismatch is a failure, never a raster
- *   for the wrong product.
+ * - The PC item id is derived from the name (see `pcItemId`) and fetched
+ *   directly; the returned item's identity (`s2:product_uri` for L2A,
+ *   `s1:product_identifier` for S1 GRD) is re-checked against the name; a
+ *   mismatch is a failure, never a raster for the wrong product.
  *
  * Honesty contract: transport and shape failures throw (the route maps
  * them to STALE/UNAVAILABLE). `unsupported` and `not_found` are returned
@@ -72,8 +72,10 @@ const PC_ITEM_ID_RE = /^[A-Za-z0-9._-]+$/;
 
 const PC_PREVIEW_ORIGIN = "https://planetarycomputer.microsoft.com/";
 
+/** Product base name: no `.SAFE`, and no `_COG` (CDSE's cloud-optimised
+ * copy of the same product — PC indexes it under the original name). */
 function stripSafeSuffix(name: string): string {
-  return name.endsWith(".SAFE") ? name.slice(0, -5) : name;
+  return name.replace(/\.SAFE$/, "").replace(/_COG$/, "");
 }
 
 /**
@@ -102,28 +104,28 @@ export function buildCdseProductUrl(sceneId: string): string {
 }
 
 /**
- * Exact-name filter against the PC collection (verified live for both
- * collections: L2A matches on `s2:product_uri` including `.SAFE`; S1 GRD
- * matches on `s1:product_identifier` without it).
+ * Derive the PC item id from the canonical product name (verified live):
+ * - L2A: the name without `.SAFE` and without the `_Nxxxx` processing
+ *   baseline segment (`S2B_MSIL2A_<t>_N0513_R062_T47VLJ_<t>` →
+ *   `S2B_MSIL2A_<t>_R062_T47VLJ_<t>`).
+ * - S1 GRD: the product identifier without its trailing 4-hex checksum.
+ * Returns null when the name does not have the expected shape.
+ *
+ * The collection-items `?filter=` query is NOT usable: PC silently ignores
+ * it on that endpoint and returns the newest item in the collection.
  */
-export function pcItemFilter(collection: SceneRasterCollection, sceneName: string): string {
+export function pcItemId(collection: SceneRasterCollection, sceneName: string): string | null {
   const base = stripSafeSuffix(sceneName);
-  return collection === "sentinel-2-l2a"
-    ? `s2:product_uri = '${base}.SAFE'`
-    : `s1:product_identifier = '${base}'`;
+  const id =
+    collection === "sentinel-2-l2a"
+      ? base.replace(/^(S2[A-D]_MSIL2A_\d{8}T\d{6})_N\d{4}(_R\d{3}_T\w{5}_\d{8}T\d{6})$/, "$1$2")
+      : base.replace(/^(S1[A-D]_\w{2}_GRD\w_\w{4}_\d{8}T\d{6}_\d{8}T\d{6}_\w{6}_\w{6})_[0-9A-F]{4}$/, "$1");
+  return id !== base && PC_ITEM_ID_RE.test(id) ? id : null;
 }
 
-/**
- * PC item-search URL. Uses the collection-items endpoint with a GET CQL2
- * filter — the verified working shape (the `/search?filter=` endpoint
- * timed out in live probes and must not be used).
- */
-export function buildPcItemsUrl(collection: SceneRasterCollection, sceneName: string): string {
-  const filter = pcItemFilter(collection, sceneName);
-  return (
-    `${serverConfig.pcStacUrl}/collections/${collection}/items` +
-    `?filter=${encodeURIComponent(filter)}&limit=1`
-  );
+/** Direct PC item URL (`/collections/{c}/items/{id}`: 200 or 404). */
+export function buildPcItemUrl(collection: SceneRasterCollection, itemId: string): string {
+  return `${serverConfig.pcStacUrl}/collections/${collection}/items/${encodeURIComponent(itemId)}`;
 }
 
 /**
@@ -176,21 +178,11 @@ interface PcFeature {
   bbox: [number, number, number, number] | null;
 }
 
-function parsePcFeature(data: unknown): PcFeature | null {
-  if (
-    typeof data !== "object" ||
-    data === null ||
-    !Array.isArray((data as { features?: unknown }).features)
-  ) {
+function parsePcFeature(data: unknown): PcFeature {
+  if (typeof data !== "object" || data === null) {
     throw new Error("Unexpected Planetary Computer response shape");
   }
-  const features = (data as { features: unknown[] }).features;
-  if (features.length === 0) return null;
-  const raw = features[0];
-  if (typeof raw !== "object" || raw === null) {
-    throw new Error("Unexpected Planetary Computer feature shape");
-  }
-  const rec = raw as Record<string, unknown>;
+  const rec = data as Record<string, unknown>;
   const id = rec.id;
   if (typeof id !== "string" || id === "") {
     throw new Error("Planetary Computer feature is missing an id");
@@ -314,7 +306,7 @@ export function unsupportedResolution(sceneName: string | null): SceneRasterReso
 
 /**
  * Resolve one scene id end to end: CDSE by-id → canonical name → PC item by
- * exact-name filter → validated descriptor. Throws on transport/shape
+ * derived id → validated descriptor. Throws on transport/shape
  * failures and identity mismatches (route maps to STALE/UNAVAILABLE);
  * returns terminal `unsupported`/`not_found` answers as-is.
  */
@@ -345,16 +337,16 @@ export async function resolveSceneRaster(
     return unsupportedResolution(sceneName);
   }
 
-  const items = await fetchJsonWithTimeout(buildPcItemsUrl(collection, sceneName), {
+  const itemId = pcItemId(collection, sceneName);
+  if (itemId === null) {
+    return unsupportedResolution(sceneName);
+  }
+  const item = await fetchJsonWithTimeout(buildPcItemUrl(collection, itemId), {
     timeoutMs: serverConfig.pcTimeoutMs,
     signal,
     headers: { Accept: "application/json" },
   });
-  if (items.status !== 200) {
-    throw new Error(`Planetary Computer returned HTTP ${items.status}`);
-  }
-  const feature = parsePcFeature(items.json);
-  if (feature === null) {
+  if (item.status === 404) {
     return {
       status: "not_found",
       scene_name: sceneName,
@@ -362,6 +354,22 @@ export async function resolveSceneRaster(
       reason:
         "The scene exists in the Copernicus catalogue but is not yet mirrored in " +
         "the verified Planetary Computer collection used for rendering.",
+    };
+  }
+  if (item.status !== 200) {
+    throw new Error(`Planetary Computer returned HTTP ${item.status}`);
+  }
+  const feature = parsePcFeature(item.json);
+  // The radar composite needs both VV and VH; HH/HV-only scenes would
+  // render as failing tiles.
+  if (collection === "sentinel-1-grd" && !(feature.assets?.vv && feature.assets?.vh)) {
+    return {
+      status: "unsupported",
+      scene_name: sceneName,
+      raster: null,
+      reason:
+        "This Sentinel-1 scene has no VV+VH polarisation pair, which the radar composite needs. " +
+        "The scene remains selectable in the catalogue and its footprint stays on the globe.",
     };
   }
 

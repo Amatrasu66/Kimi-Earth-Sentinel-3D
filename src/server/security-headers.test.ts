@@ -32,6 +32,8 @@ describe("security headers (T1.2)", () => {
     for (const feature of ["camera=()", "microphone=()", "geolocation=()"]) {
       expect(pp).toContain(feature);
     }
+    // Chrome rejects unknown features with a console warning on every page.
+    expect(pp).not.toContain("bluetooth");
   });
 
   it("CSP is report-only (never enforcing) with frame-ancestors none", async () => {
@@ -66,6 +68,13 @@ describe("security headers (T1.2)", () => {
       "base-uri 'self'",
     ]) {
       expect(csp).toContain(directive);
+    }
+    // The Cesium globe loads GIBS base tiles and Planetary Computer scene
+    // tiles straight from the browser — both must be allowed or an enforced
+    // policy would blank the globe.
+    for (const host of ["https://gibs.earthdata.nasa.gov", "https://planetarycomputer.microsoft.com"]) {
+      expect(csp).toMatch(new RegExp(`img-src [^;]*${host}`));
+      expect(csp).toMatch(new RegExp(`connect-src [^;]*${host}`));
     }
     // Next.js App Router inline bootstrap scripts: documented exception.
     expect(csp).toContain("script-src 'self' 'unsafe-inline'");
