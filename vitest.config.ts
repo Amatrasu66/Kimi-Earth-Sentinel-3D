@@ -7,11 +7,6 @@ export default defineConfig({
       "@": path.resolve(__dirname, "src"),
     },
   },
-  // Automatic JSX runtime for .tsx tests (replaces @vitejs/plugin-react,
-  // which would force a Vite major-version conflict with vitest 2.1).
-  esbuild: {
-    jsx: "automatic",
-  },
   test: {
     // Single project (vitest 2.1 `projects` handling is unreliable here).
     // jsdom for the component/hook/lib tests; the backend API tests
