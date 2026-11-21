@@ -3,7 +3,6 @@ import DataStatusBanner from '@/components/overlays/DataStatusBanner';
 import LayerOverview from '@/components/intelligence/LayerOverview';
 import EventDetails from '@/components/intelligence/EventDetails';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
@@ -123,7 +122,7 @@ export default function ListStage({
       </div>
 
       {/* Content */}
-      <ScrollArea className="min-h-0 flex-1 border-t border-white/[0.07]">
+      <div className="overflow-y-auto overscroll-contain min-h-0 flex-1 border-t border-white/[0.07]">
         <div className="flex flex-col">
           {/* Provenance strip — always visible while data is shown */}
           {!selectedEvent && activeLayer && (
@@ -180,7 +179,7 @@ export default function ListStage({
             />
           )}
         </div>
-      </ScrollArea>
+      </div>
     </section>
   );
 }

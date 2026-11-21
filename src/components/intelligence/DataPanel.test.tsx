@@ -208,10 +208,11 @@ describe('DataPanel responsive layout (T3.9)', () => {
     expect(panel).toHaveClass('panel-enter');
   });
 
-  it('has ScrollArea with border-t for content', () => {
+  it('scrolls content natively with border-t (no Radix ScrollArea on first paint)', () => {
     render(<DataPanel {...baseProps} eventDetail={liveDetail} />);
-    const scrollArea = screen.getByLabelText('Event detail').querySelector('[data-radix-scroll-area-viewport]')?.parentElement;
-    expect(scrollArea).toBeInTheDocument();
+    const panel = screen.getByLabelText('Event detail');
+    expect(panel.querySelector('[data-radix-scroll-area-viewport]')).toBeNull();
+    expect(panel.querySelector('.overflow-y-auto')).toHaveClass('border-t');
   });
 
   it('title row uses flex with min-w-0 for truncation', () => {

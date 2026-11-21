@@ -1,6 +1,6 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+/* Theme tokens + tailwindcss-animate stay in the v3-style JS config. */
+@config "../../tailwind.config.js";
 
 /*
  * Sentinel design system — dark environmental-intelligence theme.
@@ -170,6 +170,12 @@
 
   * {
     @apply border-border;
+  }
+
+  /* Tailwind 4 preflight dropped `cursor: pointer` on buttons; keep v3 UX. */
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
   }
 
   body {

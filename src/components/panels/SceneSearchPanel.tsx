@@ -208,8 +208,10 @@ export default function SceneSearchPanel({
               </Tooltip>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-2">
-            <div>
+          {/* Collection spans the row: three columns in the 346px panel cut off
+              the collection name and the year of both dates. */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="col-span-2">
               <label htmlFor="scene-collection" className="sentinel-label mb-1 block">
                 Collection
               </label>
@@ -217,7 +219,7 @@ export default function SceneSearchPanel({
                 id="scene-collection"
                 value={collection}
                 onChange={(e) => setCollection(e.target.value)}
-                className="sentinel-mono h-8 w-full rounded-[6px] border border-white/10 bg-white/[0.04] px-1.5 text-xs text-white outline-none focus-visible:outline focus-visible:outline-1 focus-visible:outline-sentinel-accent"
+                className="sentinel-mono h-8 w-full rounded-[6px] border border-white/10 bg-white/[0.04] px-1.5 text-xs text-white outline-hidden focus-visible:outline focus-visible:outline-1 focus-visible:outline-sentinel-accent"
               >
                 {SCENE_COLLECTION_OPTIONS.map((id) => (
                   <option key={id} value={id} className="bg-sentinel-elev text-black">

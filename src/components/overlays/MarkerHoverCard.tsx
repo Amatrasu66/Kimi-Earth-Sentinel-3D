@@ -71,7 +71,7 @@ export default function MarkerHoverCard({ point, activeLayer = null }: MarkerHov
         }}
       >
         <div className="mb-0.5 flex items-center gap-2">
-          <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: severityColor }} aria-hidden />
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: severityColor }} aria-hidden />
           <span className="truncate text-xs font-semibold text-white">{point.title || 'Event'}</span>
         </div>
         <div className="truncate pl-3.5 text-[11px] text-white/50">

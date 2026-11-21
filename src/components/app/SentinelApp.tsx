@@ -449,7 +449,7 @@ function SentinelApp() {
         }
       />
 
-      {!hintDismissed && (
+      {!hintDismissed && view !== 'list' && (
         <LayerHint
           onDismiss={dismissHint}
           activeLayerName={activeLayer ? (activeLayerMeta?.name ?? 'Live data') : null}

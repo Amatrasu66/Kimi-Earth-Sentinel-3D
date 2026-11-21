@@ -164,7 +164,7 @@ Kimi-Earth-Sentinel-3D/
 ├── README.md                      # this file
 ├── package.json                   # Next.js app (root: lint/typecheck/test/build)
 ├── next.config.mjs              # Vercel deployment (single project, auto-detected)
-├── tailwind.config.js             # Tailwind v3 design tokens
+├── tailwind.config.js             # design tokens (Tailwind 4 loads it via @config in globals.css)
 ├── .env.example                   # API env template (server-only, no secrets)
 ├── public/textures/               # Earth day/night/cloud/topology/water
 ├── src/

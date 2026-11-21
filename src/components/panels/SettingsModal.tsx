@@ -248,7 +248,7 @@ function DiagnosticsPanel({
       <dl className="sentinel-inset space-y-1.5 rounded-lg p-3">
         {rows.map(([label, value]) => (
           <div key={label} className="flex items-baseline justify-between gap-3">
-            <dt className="sentinel-micro flex-shrink-0">{label}</dt>
+            <dt className="sentinel-micro shrink-0">{label}</dt>
             <dd className="break-all text-right text-xs text-white/80">{value}</dd>
           </div>
         ))}

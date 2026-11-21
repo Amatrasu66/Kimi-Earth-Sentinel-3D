@@ -114,7 +114,7 @@ export default function DataStatusBanner({ status, cacheHit = null, error = null
       />
       <div className={cn('flex items-center gap-2 pl-3 pr-2.5', compact ? 'py-1.5' : 'py-2')}>
         <span
-          className={cn('flex-shrink-0 rounded-full', kind === 'live' && 'sentinel-live-dot')}
+          className={cn('shrink-0 rounded-full', kind === 'live' && 'sentinel-live-dot')}
           style={{ width: 6, height: 6, background: style.dot }}
           aria-hidden
         />

@@ -140,6 +140,13 @@ describe('toggle reflects URL state (T3.15.1)', () => {
     expect(screen.queryByRole('button', { name: /M3\.1 Minor Quake/ })).not.toBeInTheDocument();
   });
 
+  it('hides the globe "Getting started" hint in list view (it overlapped the list)', async () => {
+    setUrl('?layer=earthquakes&view=list');
+    render(<SentinelApp />);
+    expect(await screen.findByTestId('list-stage')).toBeInTheDocument();
+    expect(screen.queryByText('Getting started')).not.toBeInTheDocument();
+  });
+
   it('exposes one View group with native buttons (keyboard-operable)', async () => {
     setUrl('');
     render(<SentinelApp />);

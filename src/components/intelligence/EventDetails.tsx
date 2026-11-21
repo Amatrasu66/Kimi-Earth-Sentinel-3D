@@ -9,7 +9,7 @@ import type { DataPoint, DataStatus, EventDetail, LayerId } from '@/types';
 function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3 py-1 text-sm">
-      <span className="sentinel-micro flex-shrink-0">{label}</span>
+      <span className="sentinel-micro shrink-0">{label}</span>
       <span className="text-right text-xs text-white/85">{children}</span>
     </div>
   );
